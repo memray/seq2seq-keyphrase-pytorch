@@ -4,28 +4,10 @@ def model_opts(parser):
     These options are passed to the construction of the model.
     Be careful with these as they will be used during translation.
     """
-    # Model options
-    parser.add_argument('-model_type', default='text',
-                        help="Type of encoder to use. Options are [text|img].")
     # Embedding Options
     parser.add_argument('-word_vec_size', type=int, default=-1,
                         help='Word embedding for both.')
-    parser.add_argument('-src_word_vec_size', type=int, default=500,
-                        help='Src word embedding sizes')
-    parser.add_argument('-trg_word_vec_size', type=int, default=500,
-                        help='trg word embedding sizes')
 
-    parser.add_argument('-feat_merge', type=str, default='concat',
-                        choices=['concat', 'sum', 'mlp'],
-                        help='Merge action for the features embeddings')
-    parser.add_argument('-feat_vec_size', type=int, default=-1,
-                        help="""If specified, feature embedding sizes
-                        will be set to this. Otherwise, feat_vec_exponent
-                        will be used.""")
-    parser.add_argument('-feat_vec_exponent', type=float, default=0.7,
-                        help="""If -feat_merge_size is not set, feature
-                        embedding sizes will be set to N^feat_vec_exponent
-                        where N is the number of values the feature takes.""")
     parser.add_argument('-position_encoding', action='store_true',
                         help='Use a sin to mark relative words positions.')
     parser.add_argument('-share_decoder_embeddings', action='store_true',
@@ -49,10 +31,6 @@ def model_opts(parser):
     parser.add_argument('-dec_layers', type=int, default=2,
                         help='Number of layers in the decoder')
 
-    parser.add_argument('-cnn_kernel_width', type=int, default=3,
-                        help="""Size of windows in the cnn, the kernel_size is
-                         (cnn_kernel_width, 1) in conv layer""")
-
     parser.add_argument('-rnn_size', type=int, default=500,
                         help='Size of LSTM hidden states')
     parser.add_argument('-input_feed', type=int, default=1,
@@ -65,6 +43,10 @@ def model_opts(parser):
                         help="""The gate type to use in the RNNs""")
     # parser.add_argument('-residual',   action="store_true",
     #                     help="Add residual connections between RNN layers.")
+
+    parser.add_argument('-bidirectional', default=True,
+                        action = "store_true",
+                        help="whether it's bidirectional")
 
     parser.add_argument('-brnn_merge', default='concat',
                         choices=['concat', 'sum'],
@@ -108,7 +90,7 @@ def preprocess_opts(parser):
     # Truncation options
     parser.add_argument('-src_seq_length_trunc', type=int, default=500,
                         help="Truncate source sequence length.")
-    parser.add_argument('-trg_seq_length_trunc', type=int, default=0,
+    parser.add_argument('-trg_seq_length_trunc', type=int, default=None,
                         help="Truncate target sequence length.")
 
     # Data processing options
@@ -126,6 +108,9 @@ def train_opts(parser):
     parser.add_argument('-data', required=True,
                         help="""Path prefix to the ".train.pt" and
                         ".valid.pt" file path from preprocess.py""")
+    parser.add_argument('-vocab', required=True,
+                        help="""Path prefix to the ".vocab.pt"
+                        file path from preprocess.py""")
 
     parser.add_argument('-save_model', default='model',
                         help="""Model filename (the model will be saved as
@@ -187,7 +172,7 @@ def train_opts(parser):
     parser.add_argument('-truncated_decoder', type=int, default=0,
                         help="""Truncated bptt.""")
     # learning rate
-    parser.add_argument('-learning_rate', type=float, default=1.0,
+    parser.add_argument('-learning_rate', type=float, default=0.001,
                         help="""Starting learning rate.
                         Recommended settings: sgd = 1, adagrad = 0.1,
                         adadelta = 1, adam = 0.001""")

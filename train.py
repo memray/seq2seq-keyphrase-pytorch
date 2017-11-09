@@ -8,12 +8,15 @@ import sys
 import argparse
 
 import torchtext
+from torch.optim import Adam
 
 import config
 
 import torch
 import torch.nn as nn
 from torch import cuda
+
+from pykp.Model import Seq2SeqAttentionSharedEmbedding
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -214,8 +217,18 @@ def evaluate_model():
 
 def load_train_valid_data():
     print("Loading train and validate data from '%s'" % opt.data)
-    train = torch.load(opt.data + '.train.pt')
-    valid = torch.load(opt.data + '.valid.pt')
+
+    print("Loading dict to disk: %s" % opt.save_data + '.vocab.pt')
+    word2id, id2word, vocab = torch.load(opt.save_data + '.vocab.pt', 'wb')
+    print("Loading train/valid to disk: %s" % (opt.save_data + '.train_valid.pt'))
+    data_dict = torch.load(opt.save_data + '.train_valid.pt', 'wb')
+
+    train = data_dict['train']
+    valid = data_dict['valid']
+
+    word2id = data_dict['word2id']
+    id2word = data_dict['id2word']
+    vocab = data_dict['vocab']
 
     train_iter= torchtext.data.BucketIterator(
         dataset=train, batch_size=opt.batch_size,
@@ -223,37 +236,43 @@ def load_train_valid_data():
         device = None, shuffle = True, repeat=False
     )
 
-    train_iter = make_train_data_iter(train_data, opt)
-    valid_iter = make_valid_data_iter(valid_data, opt)
+    valid_iter= torchtext.data.BucketIterator(
+        dataset=valid, batch_size=opt.batch_size,
+        sort_key=lambda x: torchtext.data.interleave_keys(len(x.src), len(x.trg)),
+        device = None, shuffle = True, repeat=False
+    )
 
-    train_batch_loader = data_dict['train_batch_loader']
-    valid_batch_loader = data_dict['valid_batch_loader']
-    test_batch_loader = data_dict['test_batch_loader']
-    Y_train = data_dict['Y_train']
-    Y_valid = data_dict['Y_valid']
-    Y_test = data_dict['Y_test']
+    return train_iter, valid_iter, word2id, id2word, vocab
 
-    best_loss = 0  # sys.float_info.max
-    stop_increasing = 0
-    all_training_losses = []
-    all_valid_losses = []
-    all_accuracy = []
-    all_f1_score = []
-
-
-def init_optimizer_criterion():
-    optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=model_param['LEARNING_RATE'])
+def init_optimizer_criterion(model, opt):
+    optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
     criterion = torch.nn.CrossEntropyLoss()
 
+    return optimizer, criterion
 
-def init_model():
-    pass
+def init_model(opt):
+    model = Seq2SeqAttentionSharedEmbedding(
+        emb_dim=config.word_vec_size,
+        vocab_size=config.vocab_size,
+        src_hidden_dim=config.rnn_size,
+        trg_hidden_dim=config.rnn_size,
+        ctx_hidden_dim=config.rnn_size,
+        attention_mode='dot',
+        batch_size=config.batch_size,
+        bidirectional=config.bidirectional,
+        pad_token_src=src['word2id']['<pad>'],
+        pad_token_trg=trg['word2id']['<pad>'],
+        nlayers=config['model']['n_layers_src'],
+        nlayers_trg=config['model']['n_layers_trg'],
+        dropout=0.,
+    )
 
+    return model
 
 def main():
-    data = load_train_valid_data()
-    optimizer = init_optimizer_criterion()
-    model = init_model()
+    train_iter, valid_iter = load_train_valid_data(opt)
+    model = init_model(opt)
+    optimizer, criterion = init_optimizer_criterion(model, opt)
     train_model()
     evaluate_model()
 

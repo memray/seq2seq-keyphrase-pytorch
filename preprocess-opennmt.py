@@ -47,58 +47,45 @@ def main():
     '''
     Load and process training data
     '''
+    fields = pykp.IO.initialize_fields(opt)
+    print("Building training...")
     # load keyphrase data from file, each data example is a pair of (src_str, [kp_1, kp_2 ... kp_m])
-
-    print("Loading training data...")
-    src_trgs_pairs = pykp.IO.load_json_data(opt.train_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
-
-    print("Processing training data...")
-    tokenized_train_pairs = pykp.IO.tokenize_filter_data(
-        src_trgs_pairs,
-        tokenize = pykp.IO.copyseq_tokenize,
-        lower = opt.lower,
-        src_seq_length=opt.src_seq_length,
+    src_trgs_pairs = pykp.IO.load_json_data(opt.train_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';', lower = opt.lower)
+    train = pykp.IO.One2OneKPDataset(
+        src_trgs_pairs, fields,
+        src_seq_length=opt.src_seq_length, 
         trg_seq_length=opt.trg_seq_length,
         src_seq_length_trunc=opt.src_seq_length_trunc,
-        trg_seq_length_trunc=opt.trg_seq_length_trunc)
-
+        trg_seq_length_trunc=opt.trg_seq_length_trunc,
+        dynamic_dict=opt.dynamic_dict)
     print("Building Vocab...")
-    word2id, id2word, vocab = pykp.IO.build_vocab(tokenized_train_pairs, opt)
-
-    print("Building training...")
-    train = pykp.IO.build_one2one_dataset(
-        tokenized_train_pairs, word2id, id2word, opt)
+    pykp.IO.build_vocab(train, opt)
 
     '''
     Load and process validation data
     '''
-    print("Loading validation data...")
-    src_trgs_pairs = pykp.IO.load_json_data(opt.valid_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
-
-    print("Processing validation data...")
-    tokenized_valid_pairs = pykp.IO.tokenize_filter_data(
-        src_trgs_pairs,
-        tokenize=pykp.IO.copyseq_tokenize,
-        lower=opt.lower,
+    print("Building validation...")
+    src_trgs_pairs = pykp.IO.load_json_data(opt.valid_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';', lower = opt.lower)
+    valid = pykp.IO.One2OneKPDataset(
+        src_trgs_pairs, fields,
         src_seq_length=opt.src_seq_length,
         trg_seq_length=opt.trg_seq_length,
         src_seq_length_trunc=opt.src_seq_length_trunc,
-        trg_seq_length_trunc=opt.trg_seq_length_trunc)
-
-    print("Building validation...")
-    valid = pykp.IO.build_one2one_dataset(
-        tokenized_valid_pairs, word2id, id2word, opt)
-
-    data_dict = {'train': train, 'valid': valid, 'word2id': word2id, 'id2word': id2word, 'vocab': vocab}
+        trg_seq_length_trunc=opt.trg_seq_length_trunc,
+        dynamic_dict=opt.dynamic_dict)
 
     '''
     dump to disk
     '''
     print("Dumping dict to disk: %s" % opt.save_data + '.vocab.pt')
-    torch.save([word2id, id2word, vocab],
+    # Can't save fields, so remove/reconstruct at training time.
+    torch.save(pykp.IO.save_vocab(fields),
                open(opt.save_data + '.vocab.pt', 'wb'))
-    print("Dumping train/valid to disk: %s" % (opt.save_data + '.train_valid.pt'))
-    torch.save(data_dict, open(opt.save_data + '.train_valid.pt', 'wb'))
-
+    train.fields = []
+    valid.fields = []
+    print("Dumping train/valid to disk: %s, %s" % (opt.save_data + '.train.pt', opt.save_data + '.valid.pt'))
+    torch.save(train, open(opt.save_data + '.train.pt', 'wb'))
+    torch.save(valid, open(opt.save_data + '.valid.pt', 'wb'))
+    
 if __name__ == "__main__":
     main()
