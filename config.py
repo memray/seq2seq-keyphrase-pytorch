@@ -140,7 +140,7 @@ def train_opts(parser):
                         help="""If training from a checkpoint then this is the
                         path to the pretrained model's state_dict.""")
     # GPU
-    parser.add_argument('-gpuid', default=[], nargs='+', type=int,
+    parser.add_argument('-gpuid', default=[0], nargs='+', type=int,
                         help="Use CUDA on the listed devices.")
     parser.add_argument('-seed', type=int, default=9527,
                         help="""Random seed used for the experiments
@@ -217,7 +217,7 @@ def train_opts(parser):
 
     parser.add_argument('-report_every', type=int, default=20,
                         help="Print stats at this interval.")
-    parser.add_argument('-exp_path', type=str, default="exp/kp20k/%s" % timemark,
+    parser.add_argument('-exp_path', type=str, default="exp/kp20k.%s" % timemark,
                         help="Path of experiment output/log/checkpoint.")
     parser.add_argument('-exp', type=str, default="kp20k",
                         help="Name of the experiment for logging.")
