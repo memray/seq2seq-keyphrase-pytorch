@@ -2,6 +2,8 @@ from os.path import join, dirname
 import numpy as np
 import time
 import sys,logging
+import matplotlib
+matplotlib.switch_backend('agg')
 import matplotlib.pyplot as plt
 
 DATA_DIR = join(dirname(dirname(__file__)), 'data')
