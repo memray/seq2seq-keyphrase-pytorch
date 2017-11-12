@@ -3,7 +3,7 @@ import numpy as np
 import time
 import sys,logging
 import matplotlib
-matplotlib.switch_backend('agg')
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
 
 DATA_DIR = join(dirname(dirname(__file__)), 'data')
@@ -198,7 +198,7 @@ def plot_learning_curve(train_scores, test_scores, title, curve1_name='curve1_na
         Defines minimum and maximum yvalues plotted.
     """
     train_sizes=np.linspace(1, len(train_scores), len(train_scores))
-    plt.figure()
+    plt.figure(dpi=200)
     plt.title(title)
     if ylim is not None:
         plt.ylim(*ylim)

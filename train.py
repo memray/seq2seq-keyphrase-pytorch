@@ -119,7 +119,6 @@ def _train(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
                 logging.info('======================  %d  =========================' % (i+1))
                 logging.info('\t\tPredicted : %s ' % (' '.join(sentence_pred)))
                 logging.info('\t\tReal : %s ' % (' '.join(sentence_real)))
-                break
 
     return losses
 
