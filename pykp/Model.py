@@ -301,6 +301,9 @@ class Seq2SeqLSTMAttention(nn.Module):
             self.src_hidden_dim
         ), requires_grad=False)
 
+        if torch.cuda.is_available():
+            return h0_encoder.cuda(), c0_encoder.cuda()
+
         return h0_encoder, c0_encoder
 
     def forward(self, input_src, input_trg, trg_mask=None, ctx_mask=None):

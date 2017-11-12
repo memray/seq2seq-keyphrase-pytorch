@@ -41,10 +41,10 @@ if opt.seed > 0:
     torch.manual_seed(opt.seed)
 
 if torch.cuda.is_available() and not opt.gpuid:
-    opt.gpuid = [0]
+    opt.gpuid = 0
 
 if opt.gpuid:
-    cuda.set_device(opt.gpuid[0])
+    cuda.set_device(0)
 
 if not os.path.exists(opt.exp_path):
     os.makedirs(opt.exp_path)
@@ -66,6 +66,10 @@ def _train(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
     for i, batch in enumerate(data_loader):
         src = batch.src
         trg = batch.trg
+
+        if torch.cuda.is_available():
+            src.cuda()
+            trg.cuda()
 
         decoder_logit = model.forward(src, trg)
 
@@ -124,7 +128,6 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
     if torch.cuda.is_available():
         logging.info('Running on GPU!')
         model.cuda()
-        optimizer.cuda()
         criterion.cuda()
     else:
         logging.info('Running on CPU!')
@@ -248,10 +251,13 @@ def init_model(word2id, config):
     return model
 
 def main():
-    training_data_loader, validation_data_loader, word2id, id2word, vocab = load_train_valid_data(opt)
-    model = init_model(word2id, opt)
-    optimizer, criterion = init_optimizer_criterion(model, opt)
-    train_model(model, optimizer, criterion, training_data_loader, validation_data_loader, opt)
+    try:
+        training_data_loader, validation_data_loader, word2id, id2word, vocab = load_train_valid_data(opt)
+        model = init_model(word2id, opt)
+        optimizer, criterion = init_optimizer_criterion(model, opt)
+        train_model(model, optimizer, criterion, training_data_loader, validation_data_loader, opt)
+    except Exception as e:
+        logging.exception("message")
 
 if __name__ == '__main__':
     main()
