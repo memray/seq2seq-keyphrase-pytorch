@@ -172,7 +172,7 @@ def train_opts(parser):
                         help="Fix word embeddings on the encoder side.")
 
     # Optimization options
-    parser.add_argument('-batch_size', type=int, default=64,
+    parser.add_argument('-batch_size', type=int, default=256,
                         help='Maximum batch size')
     parser.add_argument('-batch_workers', type=int, default=1,
                         help='Number of workers for generating batches')
