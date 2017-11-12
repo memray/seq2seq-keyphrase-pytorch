@@ -110,3 +110,4 @@ ENV/
 .DS_Store
 data/
 /exp/
+/data.zip
