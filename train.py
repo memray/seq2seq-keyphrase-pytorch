@@ -120,12 +120,16 @@ def _train(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
 
 
 def train_model(model, optimizer, criterion, training_data_loader, validation_data_loader, opt):
+    logging.info('======================  Checking GPU Availability  =========================')
     if torch.cuda.is_available():
         logging.info('Running on GPU!')
         model.cuda()
         optimizer.cuda()
         criterion.cuda()
+    else:
+        logging.info('Running on CPU!')
 
+    logging.info('======================  Start Training  =========================')
     training_epoch_losses = []
     valid_epoch_losses = []
     best_loss = sys.float_info.max

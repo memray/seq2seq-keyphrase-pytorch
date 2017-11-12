@@ -215,7 +215,7 @@ def train_opts(parser):
 
     timemark = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
 
-    parser.add_argument('-report_every', type=int, default=2,
+    parser.add_argument('-report_every', type=int, default=20,
                         help="Print stats at this interval.")
     parser.add_argument('-exp_path', type=str, default="exp/kp20k/%s" % timemark,
                         help="Path of experiment output/log/checkpoint.")
