@@ -1,3 +1,25 @@
+import logging
+
+import sys
+
+import time
+
+
+def init_logging(logfile):
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s',
+                                  datefmt='%m/%d/%Y %H:%M:%S'   )
+
+    fh = logging.FileHandler(logfile)
+    # ch = logging.StreamHandler()
+    ch = logging.StreamHandler(sys.stdout)
+
+    fh.setFormatter(formatter)
+    ch.setFormatter(formatter)
+    # fh.setLevel(logging.INFO)
+    ch.setLevel(logging.INFO)
+    logging.getLogger().addHandler(ch)
+    logging.getLogger().addHandler(fh)
+    logging.getLogger().setLevel(logging.INFO)
 
 def model_opts(parser):
     """
@@ -5,7 +27,7 @@ def model_opts(parser):
     Be careful with these as they will be used during translation.
     """
     # Embedding Options
-    parser.add_argument('-word_vec_size', type=int, default=-1,
+    parser.add_argument('-word_vec_size', type=int, default=300,
                         help='Word embedding for both.')
 
     parser.add_argument('-position_encoding', action='store_true',
@@ -24,14 +46,12 @@ def model_opts(parser):
                         choices=['rnn', 'transformer', 'cnn'],
                         help='Type of decoder layer to use.')
 
-    parser.add_argument('-layers', type=int, default=-1,
-                        help='Number of layers in enc/dec.')
-    parser.add_argument('-enc_layers', type=int, default=2,
+    parser.add_argument('-enc_layers', type=int, default=1,
                         help='Number of layers in the encoder')
-    parser.add_argument('-dec_layers', type=int, default=2,
+    parser.add_argument('-dec_layers', type=int, default=1,
                         help='Number of layers in the decoder')
 
-    parser.add_argument('-rnn_size', type=int, default=500,
+    parser.add_argument('-rnn_size', type=int, default=512,
                         help='Size of LSTM hidden states')
     parser.add_argument('-input_feed', type=int, default=1,
                         help="""Feed the context vector at each time step as
@@ -44,7 +64,7 @@ def model_opts(parser):
     # parser.add_argument('-residual',   action="store_true",
     #                     help="Add residual connections between RNN layers.")
 
-    parser.add_argument('-bidirectional', default=True,
+    parser.add_argument('-bidirectional', default=False,
                         action = "store_true",
                         help="whether it's bidirectional")
 
@@ -122,7 +142,7 @@ def train_opts(parser):
     # GPU
     parser.add_argument('-gpuid', default=[], nargs='+', type=int,
                         help="Use CUDA on the listed devices.")
-    parser.add_argument('-seed', type=int, default=-1,
+    parser.add_argument('-seed', type=int, default=9527,
                         help="""Random seed used for the experiments
                         reproducibility.""")
 
@@ -154,11 +174,9 @@ def train_opts(parser):
     # Optimization options
     parser.add_argument('-batch_size', type=int, default=64,
                         help='Maximum batch size')
-    parser.add_argument('-max_generator_batches', type=int, default=32,
-                        help="""Maximum batches of words in a sequence to run
-                        the generator on in parallel. Higher is faster, but
-                        uses more memory.""")
-    parser.add_argument('-epochs', type=int, default=13,
+    parser.add_argument('-batch_workers', type=int, default=1,
+                        help='Number of workers for generating batches')
+    parser.add_argument('-epochs', type=int, default=20,
                         help='Number of training epochs')
     parser.add_argument('-optim', default='sgd',
                         choices=['sgd', 'adagrad', 'adadelta', 'adam'],
@@ -167,7 +185,7 @@ def train_opts(parser):
                         help="""If the norm of the gradient vector exceeds this,
                         renormalize it to have the norm equal to
                         max_grad_norm""")
-    parser.add_argument('-dropout', type=float, default=0.3,
+    parser.add_argument('-dropout', type=float, default=0.5,
                         help="Dropout probability; applied in LSTM stacks.")
     parser.add_argument('-truncated_decoder', type=int, default=0,
                         help="""Truncated bptt.""")
@@ -192,11 +210,16 @@ def train_opts(parser):
     parser.add_argument('-warmup_steps', type=int, default=4000,
                         help="""Number of warmup steps for custom decay.""")
 
-    parser.add_argument('-report_every', type=int, default=50,
+    parser.add_argument('-early_stop_tolerance', type=int, default=1,
+                        help="Stop training if it doesn't improve any more for serveral epochs")
+
+    timemark = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
+
+    parser.add_argument('-report_every', type=int, default=2,
                         help="Print stats at this interval.")
-    parser.add_argument('-exp_host', type=str, default="",
-                        help="Send logs to this crayon server.")
-    parser.add_argument('-exp', type=str, default="",
+    parser.add_argument('-exp_path', type=str, default="exp/kp20k/%s" % timemark,
+                        help="Path of experiment output/log/checkpoint.")
+    parser.add_argument('-exp', type=str, default="kp20k",
                         help="Name of the experiment for logging.")
 
 
@@ -215,8 +238,8 @@ def translate_opts(parser):
                         be the decoded sequence""")
     parser.add_argument('-beam_size',  type=int, default=5,
                         help='Beam size')
-    parser.add_argument('-batch_size', type=int, default=30,
-                        help='Batch size')
+    parser.add_argument('-batch_workers', type=int, default=2,
+                        help='Number of workers for generating batches')
     parser.add_argument('-max_sent_length', type=int, default=100,
                         help='Maximum sentence length.')
     parser.add_argument('-replace_unk', action="store_true",

@@ -51,7 +51,7 @@ def main():
     print("Building training...")
     # load keyphrase data from file, each data example is a pair of (src_str, [kp_1, kp_2 ... kp_m])
     src_trgs_pairs = pykp.IO.load_json_data(opt.train_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';', lower = opt.lower)
-    train = pykp.IO.One2OneKPDataset(
+    train = pykp.IO.One2OneKPDatasetOpenNMT(
         src_trgs_pairs, fields,
         src_seq_length=opt.src_seq_length, 
         trg_seq_length=opt.trg_seq_length,
@@ -66,7 +66,7 @@ def main():
     '''
     print("Building validation...")
     src_trgs_pairs = pykp.IO.load_json_data(opt.valid_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';', lower = opt.lower)
-    valid = pykp.IO.One2OneKPDataset(
+    valid = pykp.IO.One2OneKPDatasetOpenNMT(
         src_trgs_pairs, fields,
         src_seq_length=opt.src_seq_length,
         trg_seq_length=opt.trg_seq_length,

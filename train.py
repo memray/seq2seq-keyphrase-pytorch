@@ -7,16 +7,23 @@ import os
 import sys
 import argparse
 
+import logging
+import numpy as np
 import torchtext
+from torch.autograd import Variable
 from torch.optim import Adam
+from torch.utils.data import DataLoader
 
 import config
 
 import torch
 import torch.nn as nn
 from torch import cuda
+from utils import Progbar, plot_learning_curve
 
-from pykp.Model import Seq2SeqAttentionSharedEmbedding
+import pykp
+from pykp.IO import KeyphraseDataset
+from pykp.Model import Seq2SeqLSTMAttention
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -25,19 +32,11 @@ __email__ = "rui.meng@pitt.edu"
 parser = argparse.ArgumentParser(
     description='train.py',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+config.preprocess_opts(parser)
 config.model_opts(parser)
 config.train_opts(parser)
 opt = parser.parse_args()
 
-if opt.word_vec_size != -1:
-    opt.src_word_vec_size = opt.word_vec_size
-    opt.tgt_word_vec_size = opt.word_vec_size
-
-if opt.layers != -1:
-    opt.enc_layers = opt.layers
-    opt.dec_layers = opt.layers
-
-opt.brnn = (opt.encoder_type == "brnn")
 if opt.seed > 0:
     torch.manual_seed(opt.seed)
 
@@ -47,202 +46,178 @@ if torch.cuda.is_available() and not opt.gpuid:
 if opt.gpuid:
     cuda.set_device(opt.gpuid[0])
 
-def train_model():
+if not os.path.exists(opt.exp_path):
+    os.makedirs(opt.exp_path)
 
-    for epoch in range(self.config['max_epoch']):
-        '''
-        Training
-        '''
+config.init_logging(opt.exp_path + '/output.log')
+
+logging.info('Parameters:')
+[logging.info('%s    :    %s' % (k, str(v))) for k,v in opt.__dict__.items()]
+
+def _train(data_loader, model, criterion, optimizer, epoch, opt, is_train=False):
+    progbar = Progbar(title='Training', target=len(data_loader), batch_size=opt.batch_size,
+                      total_examples=len(data_loader.dataset))
+    if is_train:
         model.train()
-        training_losses = []
-        for i, (x, y) in enumerate(train_batch_loader):
-            x = Variable(x)
-            y = Variable(y)
+    else:
+        model.eval()
 
-            output = model.forward(x)
-            loss = criterion.forward(output, y)
+    losses = []
+    for i, batch in enumerate(data_loader):
+        src = batch.src
+        trg = batch.trg
 
+        decoder_logit = model.forward(src, trg)
+
+        # simply average losses of all the predicitons
+        loss = criterion(
+            decoder_logit.contiguous().view(-1, opt.vocab_size),
+            trg.view(-1)
+        )
+
+        if is_train:
             optimizer.zero_grad()
             loss.backward()
-
-            if 'clip_grad_norm' in model_param:
-                grad_norm = torch.nn.utils.clip_grad_norm(model.parameters(), model_param['clip_grad_norm'])
-            else:
-                grad_norm = 0.0
-
+            if opt.max_grad_norm > 0:
+                torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
             optimizer.step()
-            training_losses.append(loss.data[0])
 
-            # constrain l2-norms of the weight vectors
-            if 'NORM_LIMIT' in model_param:
-                weight_norm = sum([float(p.weight.norm().data.numpy()) for p in model.parameters_to_normalize])
-                if weight_norm > model_param["NORM_LIMIT"]:
-                    for p in model.parameters_to_normalize:
-                        p.weight.data = p.weight.data * model_param["NORM_LIMIT"] / weight_norm
-            else:
-                weight_norm = 0.0
+        losses.append(loss.data[0])
 
-            print('Training %d/%d, loss=%.5f, weight_norm=%.5f, grad_norm=%5f' % (
-            i, len(train_batch_loader), np.average(loss.data[0]), weight_norm, grad_norm))
+        progbar.update(epoch, i, [('loss', loss.data[0])])
 
-        all_training_losses.append(training_losses)
-        training_loss_mean = np.average(training_losses)
-
-        '''
-        Validating
-        '''
-        model.eval()
-        valid_losses = []
-        valid_pred = []
-        for i, (x, y) in enumerate(valid_batch_loader):
-            x = Variable(x)
-            y = Variable(y)
-
-            output = model.forward(x)
-            loss = criterion.forward(output, y)
-            valid_losses.append(loss.data[0])
-            prob_i, pred_i = output.data.topk(1)
+        if i > 1 and i % opt.report_every == 0:
+            logging.info('Epoch : %d Minibatch : %d Loss : %.5f' % (epoch, i, np.mean(losses)))
+            sampled_size = 2
+            logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
             if torch.cuda.is_available():
-                valid_pred.extend(pred_i.cpu().numpy().flatten().tolist())
+                word_probs = model.decode(decoder_logit).data.cpu().numpy().argmax(axis=-1)
+                trg = trg.data.cpu().numpy()
             else:
-                valid_pred.extend(pred_i.numpy().flatten().tolist())
+                word_probs = model.decode(decoder_logit).data.numpy().argmax(axis=-1)
+                trg = trg.data.numpy()
 
-            print('Validating %d/%d, loss=%.5f' % (i, len(valid_batch_loader), np.average(loss.data[0])))
+            # TODO may need to make all the words in trg move 1 word left, because first word is padded with <s>, which is unnecessary for evaluating
+            sampled_trg_idx = np.random.random_integers(low=0, high=len(trg)-1, size=sampled_size)
+            word_probs  = [word_probs[i] for i in sampled_trg_idx]
+            trg         = [trg[i] for i in sampled_trg_idx]
 
-        valid_loss_mean = np.average(valid_losses)
-        all_valid_losses.append(valid_losses)
+            for i, (sentence_pred, sentence_real) in enumerate(zip(word_probs, trg)):
+                sentence_pred = [opt.id2word[x] for x in sentence_pred]
+                sentence_real = [opt.id2word[x] for x in sentence_real]
 
-        print('*' * 50)
-        print('Epoch=%d' % epoch)
-        print('Training loss=%.5f' % training_loss_mean)
-        print('Valid loss=%.5f' % valid_loss_mean)
+                if '</s>' in sentence_real:
+                    index = sentence_real.index('</s>')
+                    sentence_real = sentence_real[:index]
+                    sentence_pred = sentence_pred[:index]
 
-        print("Classification report:")
-        report = metrics.classification_report(Y_valid, valid_pred,
-                                               target_names=np.asarray(self.config['label_encoder'].classes_))
-        print(report)
+                logging.info('======================  %d  =========================' % (i+1))
+                logging.info('\t\tPredicted : %s ' % (' '.join(sentence_pred)))
+                logging.info('\t\tReal : %s ' % (' '.join(sentence_real)))
+            break
 
-        print("confusion matrix:")
-        confusion_mat = str(metrics.confusion_matrix(Y_valid, valid_pred))
-        print('\n' + confusion_mat)
+    return losses
 
-        acc_score = metrics.accuracy_score(Y_valid, valid_pred)
-        f1_score = metrics.f1_score(Y_valid, valid_pred, average='macro')
-        all_accuracy.append([acc_score])
-        all_f1_score.append([f1_score])
 
-        print("accuracy:   %0.3f" % acc_score)
-        print("f1_score:   %0.3f" % f1_score)
+def train_model(model, optimizer, criterion, training_data_loader, validation_data_loader, opt):
+    if torch.cuda.is_available():
+        logging.info('Running on GPU!')
+        model.cuda()
+        optimizer.cuda()
+        criterion.cuda()
 
-        is_best_loss = f1_score > best_loss
-        rate_of_change = float(f1_score - best_loss) / float(best_loss) if best_loss > 0 else 0
+    training_epoch_losses = []
+    valid_epoch_losses = []
+    best_loss = sys.float_info.max
+    for epoch in range(opt.start_epoch , opt.epochs):
+        # Training
+        training_epoch_losses.append(_train(training_data_loader, model, criterion, optimizer, epoch, opt, is_train=True))
+        # Validation
+        valid_epoch_losses.append(_train(validation_data_loader, model, criterion, optimizer, epoch, opt, is_train=False))
+
+        # Plot the learning curve
+        plot_learning_curve(training_epoch_losses, valid_epoch_losses, 'Training and Validation', curve1_name='Training Error', curve2_name='Validation Error', save_path=opt.exp_path+'/[epoch=%d]train_valid_curve.png' % epoch)
+        # Save the checkpoint
+        torch.save(
+            model.state_dict(),
+            open(os.path.join(opt.exp_path, '%s__epoch_%d' % (opt.exp, epoch) + '.model'), 'wb')
+        )
+
+        '''
+        determine if early stop training
+        '''
+        valid_loss = np.average(valid_epoch_losses[-1])
+        is_best_loss = valid_loss < best_loss
+        rate_of_change = float(valid_loss - best_loss) / float(best_loss)
 
         if is_best_loss:
-            print('Update best f1 (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
-            best_loss, f1_score, rate_of_change * 100))
+            logging.info('Update best loss (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
+            best_loss, valid_loss, rate_of_change * 100))
         else:
-            print('Best f1 is not updated (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
-            best_loss, f1_score, rate_of_change * 100))
+            logging.info('Best loss is not updated (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
+            best_loss, valid_loss, rate_of_change * 100))
+        best_loss = min(valid_loss, best_loss)
 
-        best_loss = max(f1_score, best_loss)
-
-        print('*' * 50)
-
-        if rate_of_change < 0.01:
+        if rate_of_change > 0:
             stop_increasing += 1
         else:
             stop_increasing = 0
 
-        if stop_increasing >= self.config['early_stop_tolerance']:
-            print('Have not increased for %d epoches, stop training' % stop_increasing)
+        if stop_increasing >= opt.early_stop_tolerance:
+            logging.info('Have not increased for %d epoches, early stop training' % stop_increasing)
             break
+        logging.info('*' * 50)
 
-    plot_learning_curve(all_training_losses, all_valid_losses, 'Training and Validation', curve1_name='Training Error',
-                        curve2_name='Validation Error',
-                        save_path=self.config['experiment_path'] + '/%s-train_valid_curve.png' % exp_name)
-    plot_learning_curve(all_accuracy, all_f1_score, 'Accuracy and F1-score', curve1_name='Accuracy',
-                        curve2_name='F1-score',
-                        save_path=self.config['experiment_path'] + '/%s-train_f1_curve.png' % exp_name)
+def load_train_valid_data(opt):
+    logging.info("Loading train and validate data from '%s'" % opt.data)
 
+    logging.info("Loading train/valid from disk: %s" % (opt.data))
+    data_dict = torch.load(opt.data, 'wb')
 
-def evaluate_model():
-    '''
-    Testing
-    '''
-    model.eval()
-    test_pred = []
-    test_losses = []
-    for i, (x, y) in enumerate(test_batch_loader):
-        x = Variable(x)
-        y = Variable(y)
-
-        output = model.forward(x)
-        loss = criterion.forward(output, y)
-        test_losses.append(loss.data[0])
-        prob_i, pred_i = output.data.topk(1)
-
-        if torch.cuda.is_available():
-            test_pred.extend(pred_i.cpu().numpy().flatten().tolist())
-        else:
-            test_pred.extend(pred_i.numpy().flatten().tolist())
-
-        test_losses.append(loss.data[0])
-
-        print('Testing %d/%d, loss=%.5f' % (i, len(test_batch_loader), loss.data[0]))
-
-    test_loss_mean = np.average(test_losses)
-    print('*' * 50)
-    print('Testing loss=%.5f' % test_loss_mean)
-    print("Classification report:")
-    report = metrics.classification_report(Y_test, test_pred,
-                                           target_names=np.asarray(self.config['label_encoder'].classes_))
-    print(report)
-
-    print("confusion matrix:")
-    confusion_mat = str(metrics.confusion_matrix(Y_test, test_pred))
-    print('\n' + confusion_mat)
-
-    acc_score = metrics.accuracy_score(Y_test, test_pred)
-    f1_score = metrics.f1_score(Y_test, test_pred, average='macro')
-
-    print("accuracy:   %0.3f" % acc_score)
-    print("f1_score:   %0.3f" % f1_score)
-
-    print('*' * 50)
-
-    result = self.classification_report(Y_test, test_pred, self.config['deep_model_name'], 'test')
-    results = [[result]]
-    return results
-
-def load_train_valid_data():
-    print("Loading train and validate data from '%s'" % opt.data)
-
-    print("Loading dict to disk: %s" % opt.save_data + '.vocab.pt')
-    word2id, id2word, vocab = torch.load(opt.save_data + '.vocab.pt', 'wb')
-    print("Loading train/valid to disk: %s" % (opt.save_data + '.train_valid.pt'))
-    data_dict = torch.load(opt.save_data + '.train_valid.pt', 'wb')
-
-    train = data_dict['train']
-    valid = data_dict['valid']
+    train_src = np.asarray([d['src'] for d in data_dict['train']])
+    train_trg = np.asarray([d['trg'] for d in data_dict['train']])
+    valid_src = np.asarray([d['src'] for d in data_dict['valid']])
+    valid_trg = np.asarray([d['trg'] for d in data_dict['valid']])
 
     word2id = data_dict['word2id']
     id2word = data_dict['id2word']
     vocab = data_dict['vocab']
 
-    train_iter= torchtext.data.BucketIterator(
-        dataset=train, batch_size=opt.batch_size,
-        sort_key=lambda x: torchtext.data.interleave_keys(len(x.src), len(x.trg)),
-        device = None, shuffle = True, repeat=False
+    opt.word2id = word2id
+    opt.id2word = id2word
+    opt.vocab   = vocab
+
+    # training_data_loader = DataLoader(dataset=list(zip(train_src, train_trg)), num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
+    # validation_data_loader = DataLoader(dataset=list(zip(valid_src, valid_trg)), num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
+
+    src_field = torchtext.data.Field(
+        use_vocab = False,
+        init_token=word2id[pykp.IO.BOS_WORD],
+        eos_token=word2id[pykp.IO.EOS_WORD],
+        pad_token=word2id[pykp.IO.PAD_WORD],
+        batch_first = True
+    )
+    trg_field = torchtext.data.Field(
+        use_vocab = False,
+        init_token=word2id[pykp.IO.BOS_WORD],
+        eos_token=word2id[pykp.IO.EOS_WORD],
+        pad_token=word2id[pykp.IO.PAD_WORD],
+        batch_first=True
     )
 
-    valid_iter= torchtext.data.BucketIterator(
-        dataset=valid, batch_size=opt.batch_size,
-        sort_key=lambda x: torchtext.data.interleave_keys(len(x.src), len(x.trg)),
-        device = None, shuffle = True, repeat=False
-    )
+    train = KeyphraseDataset(list(zip(train_src, train_trg)), [('src', src_field), ('trg', trg_field)])
+    valid = KeyphraseDataset(list(zip(valid_src, valid_trg)), [('src', src_field), ('trg', trg_field)])
 
-    return train_iter, valid_iter, word2id, id2word, vocab
+    if torch.cuda.is_available():
+        device = opt.gpuid
+    else:
+        device = -1
+
+    training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, repeat=False, sort=True, device = device)
+    validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, sort=True, device = device)
+
+    return training_data_loader, validation_data_loader, word2id, id2word, vocab
 
 def init_optimizer_criterion(model, opt):
     optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
@@ -250,8 +225,8 @@ def init_optimizer_criterion(model, opt):
 
     return optimizer, criterion
 
-def init_model(opt):
-    model = Seq2SeqAttentionSharedEmbedding(
+def init_model(word2id, config):
+    model = Seq2SeqLSTMAttention(
         emb_dim=config.word_vec_size,
         vocab_size=config.vocab_size,
         src_hidden_dim=config.rnn_size,
@@ -260,21 +235,20 @@ def init_model(opt):
         attention_mode='dot',
         batch_size=config.batch_size,
         bidirectional=config.bidirectional,
-        pad_token_src=src['word2id']['<pad>'],
-        pad_token_trg=trg['word2id']['<pad>'],
-        nlayers=config['model']['n_layers_src'],
-        nlayers_trg=config['model']['n_layers_trg'],
-        dropout=0.,
+        pad_token_src = word2id[pykp.IO.PAD_WORD],
+        pad_token_trg = word2id[pykp.IO.PAD_WORD],
+        nlayers_src=config.enc_layers,
+        nlayers_trg=config.dec_layers,
+        dropout=config.dropout,
     )
 
     return model
 
 def main():
-    train_iter, valid_iter = load_train_valid_data(opt)
-    model = init_model(opt)
+    training_data_loader, validation_data_loader, word2id, id2word, vocab = load_train_valid_data(opt)
+    model = init_model(word2id, opt)
     optimizer, criterion = init_optimizer_criterion(model, opt)
-    train_model()
-    evaluate_model()
+    train_model(model, optimizer, criterion, training_data_loader, validation_data_loader, opt)
 
 if __name__ == '__main__':
     main()

@@ -18,8 +18,9 @@ import os
 import torchtext
 import torch
 
-PAD_WORD = '<blank>'
-UNK = 0
+PAD_WORD = '<pad>'
+UNK_WORD = '<unk>'
+UNK = 3
 BOS_WORD = '<s>'
 EOS_WORD = '</s>'
 DIGIT = '<digit>'
@@ -34,6 +35,31 @@ def __setstate__(self, state):
 torchtext.vocab.Vocab.__getstate__ = __getstate__
 torchtext.vocab.Vocab.__setstate__ = __setstate__
 
+
+class KeyphraseDataset(torchtext.data.Dataset):
+    """Defines a dataset for machine translation."""
+
+    @staticmethod
+    def sort_key(ex):
+        return torchtext.data.interleave_keys(len(ex.src), len(ex.trg))
+
+    def __init__(self, raw_examples, fields, **kwargs):
+        """Create a KeyphraseDataset given paths and fields. Modified from the TranslationDataset
+
+        Arguments:
+            examples: The list of raw examples in the dataset, each example is a tuple of two lists (src_tokens, trg_tokens)
+            fields: A tuple containing the fields that will be used for source and target data.
+            Remaining keyword arguments: Passed to the constructor of data.Dataset.
+        """
+        if not isinstance(fields[0], (tuple, list)):
+            fields = [('src', fields[0]), ('trg', fields[1])]
+
+        examples = []
+        for (src_tokens, trg_tokens) in raw_examples:
+            examples.append(torchtext.data.Example.fromlist(
+                [src_tokens, trg_tokens], fields))
+
+        super(KeyphraseDataset, self).__init__(examples, fields, **kwargs)
 
 def load_json_data(path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';'):
     '''
@@ -51,8 +77,8 @@ def load_json_data(path, name='kp20k', src_fields=['title', 'abstract'], trg_fie
     src_trgs_pairs = []
     with codecs.open(path, "r", "utf-8") as corpus_file:
         for idx, line in enumerate(corpus_file):
-            # if idx == 10000:
-            #     break
+            if idx == 10000:
+                break
 
             json_ = json.loads(line)
             trg_strs = []

@@ -109,3 +109,4 @@ ENV/
 .mypy_cache/
 .DS_Store
 data/
+/exp/
