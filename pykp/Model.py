@@ -64,7 +64,7 @@ class SoftConcatAttention(nn.Module):
         self.attn = nn.Linear(enc_dim + trg_dim, trg_dim)
         self.v = nn.Parameter(torch.FloatTensor(1, trg_dim))
         self.softmax = nn.Softmax()
-        self.linear_out = nn.Linear(trg_dim * 2, trg_dim, bias=False)
+        self.linear_out = nn.Linear(enc_dim + trg_dim, trg_dim, bias=False)
         self.tanh = nn.Tanh()
         self.mask = None
         self.method = 'concat'
@@ -107,12 +107,12 @@ class SoftConcatAttention(nn.Module):
         attn = torch.nn.functional.softmax(attn_energies.t())
 
         # get the weighted context, (batch_size, src_layer_number * src_encoder_dim)
-        weighted_context = torch.bmm(encoder_outputs.permute(1, 2, 0), attn.unsqueeze(2)).squeeze()  # batch x hidden_dim
+        weighted_context = torch.bmm(encoder_outputs.permute(1, 2, 0), attn.unsqueeze(2)).squeeze()  # (batch_size, src_hidden_dim * num_directions)
 
         # update the hidden by = tanh(W_c[c_t, h_t])
-        hidden = hidden.squeeze()
+        hidden = hidden.squeeze() # (batch_size, trg_hidden_dim)
         h_tilde = torch.cat((weighted_context, hidden), 1)
-        h_tilde = self.tanh(self.linear_out(h_tilde))
+        h_tilde = self.tanh(self.linear_out(h_tilde)) # (batch_size, trg_hidden_dim)
 
         return h_tilde, attn
 
@@ -154,10 +154,11 @@ class LSTMAttentionDot(nn.Module):
         self.hidden_size = trg_hidden_size
         self.num_layers = 1
 
-        self.input_weights = nn.Linear(input_size, 4 * trg_hidden_size)
-        self.hidden_weights = nn.Linear(trg_hidden_size, 4 * trg_hidden_size)
-
         self.attention_layer = SoftConcatAttention(src_hidden_size, trg_hidden_size)
+
+        # (deprecated) for manual LSTM recurrence
+        # self.input_weights = nn.Linear(input_size, 4 * trg_hidden_size)
+        # self.hidden_weights = nn.Linear(trg_hidden_size, 4 * trg_hidden_size)
 
     def forward(self, input, hidden, ctx, ctx_mask=None):
         """
@@ -460,7 +461,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 trg_input, hidden
             )
 
-            # Get the h_tilde for output and new hidden for next time step
+            # Get the h_tilde (hidden after attention) and attention weights
             h_tilde, alpha = self.attention_layer(dec_h, enc_context)
 
             # compute the output with h_tilde: p_x = Softmax(W_s * h_tilde)
@@ -468,10 +469,9 @@ class Seq2SeqLSTMAttention(nn.Module):
             hiddens.append(hidden)
             attn_weights.append(alpha)
 
-        # convert output into the right shape
-        h_tildes = torch.cat(h_tildes, 0).view(input.size(0), *h_tildes[0].size())
-        # make batch first
-        h_tildes = h_tildes.transpose(0, 1)
+        # convert output into the right shape and make batch first
+        h_tildes        = torch.cat(h_tildes, 0).view(*input.size(), -1) # (batch_size, trg_seq_len, trg_hidden_size)
+        attn_weights    = torch.cat(attn_weights, 0).view(*input.size(), -1) # (batch_size, trg_seq_len, src_seq_len)
 
         # flatten the trg_output, feed into the readout layer, and get the decoder_logit
         # (batch_size, trg_length, trg_hidden_size) -> (batch_size * trg_length, trg_hidden_size)

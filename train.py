@@ -74,7 +74,9 @@ def _train(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
         decoder_logit, _, _ = model.forward(src, trg)
 
         # simply average losses of all the predicitons
-        # should I remove the <SOS> in trg?
+        # I remove the <SOS> for trg and the last prediction in decoder_logit for calculating loss
+        decoder_logit = decoder_logit.permute(1, 0, -1).index_select(0, Variable(torch.LongTensor(range(batch.trg.size(1) - 1))))
+        trg           = trg.permute(1, 0).index_select(0, Variable(torch.LongTensor(range(1, batch.trg.size(1)))))
         loss = criterion(
             decoder_logit.contiguous().view(-1, opt.vocab_size),
             trg.view(-1)
