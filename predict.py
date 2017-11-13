@@ -1,64 +1,198 @@
 # -*- coding: utf-8 -*-
-"""
-Python File Template 
-"""
-
 import os
+import sys
+import argparse
+
+import logging
+import numpy as np
+import torchtext
+from torch.autograd import Variable
+from torch.optim import Adam
+from torch.utils.data import DataLoader
+
+import config
+
+import torch
+import torch.nn as nn
+from torch import cuda
+from utils import Progbar, plot_learning_curve
+
+import pykp
+from pykp.IO import KeyphraseDataset
+from pykp.Model import Seq2SeqLSTMAttention
+
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
+# load settings for training
+parser = argparse.ArgumentParser(
+    description='train.py',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+config.preprocess_opts(parser)
+config.model_opts(parser)
+config.predict_opts(parser)
+opt = parser.parse_args()
 
-def evaluate_model():
-    '''
-    Testing
-    '''
+if torch.cuda.is_available() and not opt.gpuid:
+    opt.gpuid = 0
+    cuda.set_device(0)
+
+opt.exp_path = 'exp/kp20k.20171112-034158.kp20k__epoch_12/'
+if not os.path.exists(opt.exp_path):
+    os.makedirs(opt.exp_path)
+
+config.init_logging(opt.exp_path + '/output.log')
+
+logging.info('Parameters:')
+[logging.info('%s    :    %s' % (k, str(v))) for k,v in opt.__dict__.items()]
+
+def predict(model, data_loader, word2id, id2word, vocab, opt):
     model.eval()
-    test_pred = []
-    test_losses = []
-    for i, (x, y) in enumerate(test_batch_loader):
-        x = Variable(x)
-        y = Variable(y)
 
-        output = model.forward(x)
-        loss = criterion.forward(output, y)
-        test_losses.append(loss.data[0])
-        prob_i, pred_i = output.data.topk(1)
+    logging.info('======================  Checking GPU Availability  =========================')
+    if torch.cuda.is_available():
+        logging.info('Running on GPU!')
+        model.cuda()
+    else:
+        logging.info('Running on CPU!')
+
+    logging.info('======================  Start Predicting  =========================')
+    progbar = Progbar(title='Training', target=len(data_loader), batch_size=opt.batch_size,
+                      total_examples=len(data_loader.dataset))
+
+    for i, batch in enumerate(data_loader):
+        src = batch.src
+        trg = Variable(torch.from_numpy(np.zeros((batch.src.size(0), 1), dtype='int64')))
 
         if torch.cuda.is_available():
-            test_pred.extend(pred_i.cpu().numpy().flatten().tolist())
+            src.cuda()
+            trg.cuda()
+
+        decoder_logit = model.forward(src, trg, is_train=False)
+
+        progbar.update(None, i, [])
+
+        sampled_size = 2
+        logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
+
+        if torch.cuda.is_available():
+            word_probs = model.logit2prob(decoder_logit).data.cpu().numpy().argmax(axis=-1)
+            trg = trg.data.cpu().numpy()
         else:
-            test_pred.extend(pred_i.numpy().flatten().tolist())
+            word_probs = model.logit2prob(decoder_logit).data.numpy().argmax(axis=-1)
+            trg = trg.data.numpy()
 
-        test_losses.append(loss.data[0])
+        sampled_trg_idx = np.random.random_integers(low=0, high=len(trg) - 1, size=sampled_size)
+        word_probs = [word_probs[i] for i in sampled_trg_idx]
+        trg = [trg[i] for i in sampled_trg_idx]
 
-        logging.info('Testing %d/%d, loss=%.5f' % (i, len(test_batch_loader), loss.data[0]))
+        for i, (sentence_pred, sentence_real) in enumerate(zip(word_probs, trg)):
+            sentence_pred = [opt.id2word[x] for x in sentence_pred]
+            sentence_real = [opt.id2word[x] for x in sentence_real]
 
-    test_loss_mean = np.average(test_losses)
-    logging.info('*' * 50)
-    logging.info('Testing loss=%.5f' % test_loss_mean)
-    logging.info("Classification report:")
-    report = metrics.classification_report(Y_test, test_pred,
-                                           target_names=np.asarray(self.config['label_encoder'].classes_))
-    logging.info(report)
+            if '</s>' in sentence_real:
+                index = sentence_real.index('</s>')
+                sentence_real = sentence_real[:index]
+                sentence_pred = sentence_pred[:index]
 
-    logging.info("confusion matrix:")
-    confusion_mat = str(metrics.confusion_matrix(Y_test, test_pred))
-    logging.info('\n' + confusion_mat)
+            logging.info('======================  %d  =========================' % (i + 1))
+            logging.info('\t\tPredicted : %s ' % (' '.join(sentence_pred)))
+            logging.info('\t\tReal : %s ' % (' '.join(sentence_real)))
 
-    acc_score = metrics.accuracy_score(Y_test, test_pred)
-    f1_score = metrics.f1_score(Y_test, test_pred, average='macro')
+def load_test_data(opt):
+    logging.info("Loading vocab from: %s" % (opt.vocab))
+    word2id, id2word, vocab = torch.load(opt.vocab, 'wb')
 
-    logging.info("accuracy:   %0.3f" % acc_score)
-    logging.info("f1_score:   %0.3f" % f1_score)
+    if os.path.exists(opt.save_data):
+        logging.info("Loading train/valid from disk: %s" % (opt.save_data))
+        test_examples = torch.load(opt.save_data, 'rb')
+    else:
 
-    logging.info('*' * 50)
+        logging.info("Loading test data from '%s'" % opt.test_data)
+        src_trgs_pairs = pykp.IO.load_json_data(opt.test_data, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
-    result = self.classification_report(Y_test, test_pred, self.config['deep_model_name'], 'test')
-    results = [[result]]
-    return results
+        print("Processing testing data...")
+        tokenized_test_pairs = pykp.IO.tokenize_filter_data(
+            src_trgs_pairs,
+            tokenize=pykp.IO.copyseq_tokenize,
+            lower=opt.lower)
+
+        print("Building testing data...")
+        test_examples = pykp.IO.build_one2one_dataset(
+            tokenized_test_pairs, word2id, id2word, opt)
+
+        print("Dumping test data to disk: %s" % (opt.save_data))
+        torch.save(test_examples, open(opt.save_data, 'wb'))
+
+    # actually we only care about the source lines during prediction
+    test_src = np.asarray([d['src'] for d in test_examples])
+    test_trg = np.asarray([[] for d in test_examples])
+
+    src_field = torchtext.data.Field(
+        use_vocab = False,
+        init_token=word2id[pykp.IO.BOS_WORD],
+        eos_token=word2id[pykp.IO.EOS_WORD],
+        pad_token=word2id[pykp.IO.PAD_WORD],
+        batch_first = True
+    )
+
+    trg_field = torchtext.data.Field(
+        use_vocab = False,
+        init_token=word2id[pykp.IO.BOS_WORD],
+        eos_token=word2id[pykp.IO.EOS_WORD],
+        pad_token=word2id[pykp.IO.PAD_WORD],
+        batch_first=True
+    )
+
+    test = KeyphraseDataset(list(zip(test_src, test_trg)), [('src', src_field), ('trg', trg_field)])
+
+    if torch.cuda.is_available():
+        device = opt.gpuid
+    else:
+        device = -1
+
+    test_data_loader    = torchtext.data.BucketIterator(dataset=test, batch_size=opt.batch_size, repeat=False, sort=True, device = device)
+
+    opt.word2id = word2id
+    opt.id2word = id2word
+    opt.vocab   = vocab
+
+    return test_data_loader, test_examples, word2id, id2word, vocab
+
+def load_model(opt):
+    model = Seq2SeqLSTMAttention(
+        emb_dim=opt.word_vec_size,
+        vocab_size=opt.vocab_size,
+        src_hidden_dim=opt.rnn_size,
+        trg_hidden_dim=opt.rnn_size,
+        ctx_hidden_dim=opt.rnn_size,
+        attention_mode='dot',
+        batch_size=opt.batch_size,
+        bidirectional=opt.bidirectional,
+        pad_token_src=opt.word2id[pykp.IO.PAD_WORD],
+        pad_token_trg=opt.word2id[pykp.IO.PAD_WORD],
+        nlayers_src=opt.enc_layers,
+        nlayers_trg=opt.dec_layers,
+    )
+
+    if torch.cuda.is_available():
+        model.load_state_dict(torch.load(open(opt.model_path, 'rb')))
+    else:
+        model.load_state_dict(torch.load(
+            open(opt.model_path, 'rb'), map_location=lambda storage, loc: storage
+        ))
+
+    return model
+
+def main():
+    try:
+        test_data_loader, test_examples, word2id, id2word, vocab = load_test_data(opt)
+        model = load_model(opt)
+        predict(model, test_data_loader, word2id, id2word, vocab, opt)
+    except Exception as e:
+        logging.exception("message")
+
 
 if __name__ == '__main__':
-    load_test_data()
-    load_model()
-    predict()
+    main()

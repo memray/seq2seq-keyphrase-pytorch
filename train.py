@@ -71,9 +71,10 @@ def _train(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             src.cuda()
             trg.cuda()
 
-        decoder_logit = model.forward(src, trg)
+        decoder_logit, _, _ = model.forward(src, trg)
 
         # simply average losses of all the predicitons
+        # should I remove the <SOS> in trg?
         loss = criterion(
             decoder_logit.contiguous().view(-1, opt.vocab_size),
             trg.view(-1)
@@ -96,10 +97,10 @@ def _train(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
             if torch.cuda.is_available():
-                word_probs = model.decode(decoder_logit).data.cpu().numpy().argmax(axis=-1)
+                word_probs = model.logit2prob(decoder_logit).data.cpu().numpy().argmax(axis=-1)
                 trg = trg.data.cpu().numpy()
             else:
-                word_probs = model.decode(decoder_logit).data.numpy().argmax(axis=-1)
+                word_probs = model.logit2prob(decoder_logit).data.numpy().argmax(axis=-1)
                 trg = trg.data.numpy()
 
             # TODO may need to make all the words in trg move 1 word left, because first word is padded with <s>, which is unnecessary for evaluating

@@ -64,9 +64,9 @@ def model_opts(parser):
     # parser.add_argument('-residual',   action="store_true",
     #                     help="Add residual connections between RNN layers.")
 
-    parser.add_argument('-bidirectional', default=False,
+    parser.add_argument('-bidirectional', default=True,
                         action = "store_true",
-                        help="whether it's bidirectional")
+                        help="whether the encoder is bidirectional")
 
     parser.add_argument('-brnn_merge', default='concat',
                         choices=['concat', 'sum'],
@@ -223,23 +223,22 @@ def train_opts(parser):
                         help="Name of the experiment for logging.")
 
 
-def translate_opts(parser):
-    parser.add_argument('-model', required=True,
-                        help='Path to model .pt file')
-    parser.add_argument('-src',   required=True,
+def predict_opts(parser):
+    parser.add_argument('-test_data',   required=True,
                         help="""Source sequence to decode (one line per
                         sequence)""")
-    parser.add_argument('-src_img_dir',   default="",
-                        help='Source image directory')
-    parser.add_argument('-trg',
-                        help='True target sequence (optional)')
+    parser.add_argument('-save_data', required=True,
+                        help="Output file for the prepared test data")
+    parser.add_argument('-model_path', required=True,
+                        help='Path to model .pt file')
+    parser.add_argument('-vocab', required=True,
+                        help="""Path prefix to the ".vocab.pt"
+                        file path from preprocess.py""")
     parser.add_argument('-output', default='pred.txt',
                         help="""Path to output the predictions (each line will
                         be the decoded sequence""")
     parser.add_argument('-beam_size',  type=int, default=5,
                         help='Beam size')
-    parser.add_argument('-batch_workers', type=int, default=2,
-                        help='Number of workers for generating batches')
     parser.add_argument('-max_sent_length', type=int, default=100,
                         help='Maximum sentence length.')
     parser.add_argument('-replace_unk', action="store_true",
@@ -259,11 +258,8 @@ def translate_opts(parser):
     parser.add_argument('-n_best', type=int, default=1,
                         help="""If verbose is set, will output the n_best
                         decoded sentences""")
-    parser.add_argument('-gpu', type=int, default=-1,
-                        help="Device to run on")
-    # Options most relevant to summarization.
-    parser.add_argument('-dynamic_dict', action='store_true',
-                        help="Create dynamic dictionaries")
-    parser.add_argument('-share_vocab', action='store_true',
-                        help="Share source and target vocabulary")
 
+    parser.add_argument('-batch_size', type=int, default=32,
+                        help='Maximum batch size')
+    parser.add_argument('-batch_workers', type=int, default=1,
+                        help='Number of workers for generating batches')

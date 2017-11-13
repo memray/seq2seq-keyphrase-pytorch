@@ -77,9 +77,6 @@ def load_json_data(path, name='kp20k', src_fields=['title', 'abstract'], trg_fie
     src_trgs_pairs = []
     with codecs.open(path, "r", "utf-8") as corpus_file:
         for idx, line in enumerate(corpus_file):
-            if idx == 10000:
-                break
-
             json_ = json.loads(line)
             trg_strs = []
             src_str = '.'.join([json_[f] for f in src_fields])
@@ -106,6 +103,58 @@ def copyseq_tokenize(text):
     tokens = [w if not re.match('^\d+$', w) else DIGIT for w in tokens]
 
     return tokens
+
+def build_one2many_dataset(src_trgs_pairs, word2id, id2word, opt):
+    examples = []
+
+    for idx, (source, targets) in enumerate(src_trgs_pairs):
+        src_all = [word2id[w] if w in word2id else word2id['<unk>'] for w in source]
+        src = [word2id[w] if w in word2id and word2id[w] < opt.vocab_size else word2id['<unk>'] for w in source]
+
+        # create a local vocab for the current source text
+        src_vocab = torchtext.vocab.Vocab(Counter(source))
+        # mapping source tokens to indices in the dynamic dict
+        src_map = [src_vocab.stoi[w] for w in source]
+
+        example = {}
+        example['src_str']   = source
+        example['trg_str']   = targets
+        example['src_all']   = src_all
+        example['src']       = src
+        example['trg_all']   = []
+        example['trg']       = []
+        example["src_map"]   = src_map
+        example["alignment"] = []
+
+        for target in targets:
+            example['trg_all'].append([word2id[w] if w in word2id else word2id['<unk>'] for w in target])
+            example['trg'].append([word2id[w] if w in word2id and word2id[w] < opt.vocab_size else word2id['<unk>'] for w in target])
+            mask = [src_vocab.stoi[w] for w in target]
+            example["alignment"].append(mask)
+
+
+            C = [0 if w not in source else source.index(w) + opt.vocab_size for w in target]
+
+        examples.append(example)
+            # A = [word2idx[w] if w in word2idx else word2idx['<unk>'] for w in source]
+            # B = [[word2idx[w] if w in word2idx else word2idx['<unk>'] for w in p] for p in target]
+            # C = [[0 if w not in source else source.index(w) + Lmax for w in p] for p in target]
+
+        if idx % 2000 == 0:
+            print('-------------------- %s: %d ---------------------------' % (inspect.getframeinfo(inspect.currentframe()).function, idx))
+            print('source    [len=%d]:\n\t\t %s' % (len(example['src_str']), example['src_str']))
+            print('targets   [len=%d]:\n\t\t %s' % (len(example['trg_str']), example['trg_str']))
+            print('src_all   [len=%d]:\n\t\t %s' % (len(example['src_all']), example['src_all']))
+            print('trg_all   [len=%d]:\n\t\t %s' % (len(example['trg_all']), example['trg_all']))
+            print('src       [len=%d]:\n\t\t %s' % (len(example['src']), example['src']))
+            print('trg       [len=%d]:\n\t\t %s' % (len(example['trg']), example['trg']))
+
+            print('src_map   [len=%d]:\n\t\t %s' % (len(example["src_map"]), example["src_map"]))
+            print('alignment [len=%d]:\n\t\t %s' % (len(example["alignment"]), example["alignment"]))
+            print('copy_mask [len=%d]:\n\t\t %s' % (len(C), C))
+
+    return examples
+
 
 def build_one2one_dataset(src_trgs_pairs, word2id, id2word, opt):
     examples = []
@@ -229,7 +278,7 @@ def tokenize_filter_data(
         src_tokens = tokenize(src)
         if src_seq_length_trunc and len(src) > src_seq_length_trunc:
             src_tokens = src_tokens[:src_seq_length_trunc]
-        if len(src_tokens) > src_seq_length:
+        if src_seq_length and len(src_tokens) > src_seq_length:
             filter_flag = True
 
         trgs_tokens = []
@@ -238,7 +287,7 @@ def tokenize_filter_data(
             trg_tokens = tokenize(trg)
             if trg_seq_length_trunc and len(trg) > trg_seq_length_trunc:
                 trg_tokens = trg_tokens[:trg_seq_length_trunc]
-            if len(trg_tokens) > trg_seq_length:
+            if trg_seq_length and len(trg_tokens) > trg_seq_length:
                 filter_flag = True
                 break
             trgs_tokens.append(trg_tokens)

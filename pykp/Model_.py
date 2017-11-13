@@ -84,38 +84,6 @@ class SoftConcatAttention(nn.Module):
             energy = torch.matmul(energy, self.v.t())
             return energy
 
-    def forward(self, hidden, encoder_outputs):
-        '''
-        Compute the attention and h_tilde
-        :param hidden:
-        :param encoder_outputs:
-        :return:
-        '''
-
-        # Calculate energies for each encoder output
-        hidden = hidden.squeeze(0)
-
-        # Create variable to store attention energies
-        attn_energies = Variable(torch.zeros(encoder_outputs.size(0), encoder_outputs.size(1))) # seq_len * batch_size
-        if torch.cuda.is_available(): attn_energies = attn_energies.cuda()
-
-        # Calculate energies for each encoder output
-        for i in range(encoder_outputs.size(0)):
-            attn_energies[i] = self.score(hidden, encoder_outputs[i])
-
-        # Normalize energies to weights in range 0 to 1, resize to batch_size * seq_len
-        attn = torch.nn.functional.softmax(attn_energies.t())
-
-        # get the weighted context, (batch_size, src_layer_number * src_encoder_dim)
-        weighted_context = torch.bmm(encoder_outputs.permute(1, 2, 0), attn.unsqueeze(2)).squeeze()  # batch x hidden_dim
-
-        # update the hidden by = tanh(W_c[c_t, h_t])
-        hidden = hidden.squeeze()
-        h_tilde = torch.cat((weighted_context, hidden), 1)
-        h_tilde = self.tanh(self.linear_out(h_tilde))
-
-        return h_tilde, attn
-
     def forward_(self, hidden, context):
         """
         Original forward for DotAttention, it doesn't work if the dim of encoder and decoder are not same
@@ -136,6 +104,30 @@ class SoftConcatAttention(nn.Module):
         # Update h by tanh(torch.cat(weighted_context, input))
         h_tilde = torch.cat((weighted_context, hidden), 1) # batch_size * (src_hidden_dim + trg_hidden_dim)
         h_tilde = self.tanh(self.linear_out(h_tilde)) # batch_size * trg_hidden_dim
+
+        return h_tilde, attn
+
+    def forward(self, hidden, encoder_outputs):
+        '''
+        Compute the attention and h_tilde
+        :param hidden:
+        :param encoder_outputs:
+        :return:
+        '''
+
+        # Calculate energies for each encoder output
+        hidden = hidden.unsqueeze(2)
+        attn_energies = torch.bmm(encoder_outputs, hidden)
+        # Normalize energies to weights in range 0 to 1, resize to 1 x 1 x seq_len
+        attn = torch.nn.functional.softmax(attn_energies)
+
+        # get the weighted context
+        weighted_context = torch.bmm(encoder_outputs.permute(0, 2, 1), attn).squeeze()  # batch x hidden_dim
+
+        # update the hidden by = tanh(W_c[c_t, h_t])
+        hidden = hidden.squeeze()
+        h_tilde = torch.cat((weighted_context, hidden), 1)
+        h_tilde = self.tanh(self.linear_out(h_tilde))
 
         return h_tilde, attn
 
@@ -277,16 +269,11 @@ class Seq2SeqLSTMAttention(nn.Module):
             dropout         = self.dropout
         )
 
-        self.decoder = nn.LSTM(
-            input_size      = emb_dim,
-            hidden_size     = self.trg_hidden_dim,
-            num_layers      = nlayers_trg,
-            bidirectional   = False,
-            batch_first     = False,
-            dropout         = self.dropout
+        self.decoder = LSTMAttentionDot(
+            emb_dim,
+            self.src_hidden_dim * self.num_directions,
+            trg_hidden_dim
         )
-
-        self.attention_layer = SoftConcatAttention(self.src_hidden_dim * self.num_directions, trg_hidden_dim)
 
         self.encoder2decoder_hidden = nn.Linear(
             self.src_hidden_dim * self.num_directions,
@@ -334,8 +321,8 @@ class Seq2SeqLSTMAttention(nn.Module):
 
     def forward(self, input_src, input_trg, trg_mask=None, ctx_mask=None, ):
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
-        decoder_logit, hiddens, attn_weights = self.decode(input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask)
-        return decoder_logit, hiddens, attn_weights
+        decoder_logit = self.decode(input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask)
+        return decoder_logit
 
     def forward_(self, input_src, input_trg, trg_mask=None, ctx_mask=None, ):
         """Propogate input through the network."""
@@ -433,61 +420,34 @@ class Seq2SeqLSTMAttention(nn.Module):
             Nov. 11st: update: change to pass c_t as well
             People also do that directly feed the end hidden state of encoder and initialize cell state as zeros
         '''
-        h_t, c_t = enc_hidden # (batch_size, src_hidden_dim)
+        h_t, c_t = enc_hidden
+        trg_emb = self.embedding(input)
+        decoder_init_hidden = nn.Tanh()(self.encoder2decoder_hidden(h_t))
+        decoder_init_cell   = nn.Tanh()(self.encoder2decoder_cell(c_t))
 
-        # get target embedding and reshape the targets to be time step first
-        trg_emb = self.embedding(input) # (batch_size, trg_len, src_hidden_dim)
-        trg_emb  = trg_emb.permute(1, 0, 2) # (trg_len, batch_size, src_hidden_dim)
+        # context vector ctx0 = outputs of encoder(seq_len, batch_size, hidden_size * num_directions)
+        ctx = enc_context.transpose(0, 1)
 
-        # prepare the init hidden vector, (batch_size, dec_hidden_dim) -> (num_layers * num_directions, batch_size, dec_hidden_dim)
-        decoder_init_hidden = nn.Tanh()(self.encoder2decoder_hidden(h_t)).unsqueeze(0)
-        decoder_init_cell   = nn.Tanh()(self.encoder2decoder_cell(c_t)).unsqueeze(0)
-        hidden = (decoder_init_hidden, decoder_init_cell)
-
-        h_tildes = []
-        hiddens = []
-        attn_weights = []
-
-        # context vector ctx0 is outputs of encoder (src_len, batch_size, hidden_size * num_directions)
-        enc_context = enc_context.permute(1, 0, 2)
-
-        # iterate each time step of target sequences and generate decode outputs
-        for i in range(input.size(1)):
-            trg_input = trg_emb[i].unsqueeze(0)
-
-            # (seq_len, batch_size, hidden_size * num_directions)
-            dec_h, hidden = self.decoder(
-                trg_input, hidden
-            )
-
-            # Get the h_tilde for output and new hidden for next time step
-            h_tilde, alpha = self.attention_layer(dec_h, enc_context)
-
-            # compute the output with h_tilde: p_x = Softmax(W_s * h_tilde)
-            h_tildes.append(h_tilde)
-            hiddens.append(hidden)
-            attn_weights.append(alpha)
-
-        # convert output into the right shape
-        h_tildes = torch.cat(h_tildes, 0).view(input.size(0), *h_tildes[0].size())
-        # make batch first
-        h_tildes = h_tildes.transpose(0, 1)
-
+        # output, (hidden, cell)
+        trg_h, (_, _) = self.decoder(
+            trg_emb,
+            (decoder_init_hidden, decoder_init_cell),
+            ctx,
+            ctx_mask
+        )
         # flatten the trg_output, feed into the readout layer, and get the decoder_logit
         # (batch_size, trg_length, trg_hidden_size) -> (batch_size * trg_length, trg_hidden_size)
-        h_tildes_reshape = h_tildes.contiguous().view(
-            h_tildes.size()[0] * h_tildes.size()[1],
-            h_tildes.size()[2]
+        trg_h_reshape = trg_h.contiguous().view(
+            trg_h.size()[0] * trg_h.size()[1],
+            trg_h.size()[2]
         )
 
         # (batch_size * trg_length, vocab_size)
-        decoder_logit = self.decoder2vocab(h_tildes_reshape)
+        decoder_logit = self.decoder2vocab(trg_h_reshape)
         # (batch_size * trg_length, vocab_size) -> (batch_size, trg_length, vocab_size)
         decoder_logit = decoder_logit.view(
-            h_tildes.size()[0],
-            h_tildes.size()[1],
+            trg_h.size()[0],
+            trg_h.size()[1],
             decoder_logit.size()[1]
         )
-
-        # Return final outputs, hidden states, and attention weights (for visualization)
-        return decoder_logit, hiddens, attn_weights
+        return decoder_logit

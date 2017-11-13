@@ -105,7 +105,7 @@ class Progbar(object):
 
             numdigits = int(np.floor(np.log10(self.target))) + 1
 
-            epoch_info = '%s Epoch=%d -' % (self.title, current_epoch)
+            epoch_info = '%s Epoch=%d -' % (self.title, current_epoch) if current_epoch else '%s -' % (self.title)
 
             barstr = epoch_info + '%%%dd/%%%dd' % (numdigits, numdigits, ) + ' (%.2f%%)['
             bar = barstr % (current, self.target, float(current)/float(self.target) * 100.0)
