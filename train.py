@@ -75,8 +75,11 @@ def _train(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
 
         # simply average losses of all the predicitons
         # I remove the <SOS> for trg and the last prediction in decoder_logit for calculating loss
-        decoder_logit = decoder_logit.permute(1, 0, -1).index_select(0, Variable(torch.LongTensor(range(batch.trg.size(1) - 1))))
-        trg           = trg.permute(1, 0).index_select(0, Variable(torch.LongTensor(range(1, batch.trg.size(1)))))
+        logit_idx = Variable(torch.LongTensor(range(batch.trg.size(1) - 1))).cuda() if torch.cuda.is_available() else Variable(torch.LongTensor(range(batch.trg.size(1) - 1)))
+        trg_idx   = Variable(torch.LongTensor(range(1, batch.trg.size(1)))).cuda() if torch.cuda.is_available() else Variable(torch.LongTensor(range(1, batch.trg.size(1))))
+
+        decoder_logit = decoder_logit.permute(1, 0, -1).index_select(0, logit_idx).permute(1, 0, -1)
+        trg           = trg.permute(1, 0).index_select(0, trg_idx).permute(1, 0).contiguous()
         loss = criterion(
             decoder_logit.contiguous().view(-1, opt.vocab_size),
             trg.view(-1)
