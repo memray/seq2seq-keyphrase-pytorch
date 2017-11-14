@@ -99,5 +99,9 @@ def main():
     print("Dumping train/valid to disk: %s" % (opt.save_data + '.train_valid.pt'))
     torch.save(data_dict, open(opt.save_data + '.train_valid.pt', 'wb'))
 
+    print('Vocab size = %d' % len(vocab))
+    print('Training data size = %d' % len(tokenized_train_pairs))
+    print('Validation data size = %d' % len(tokenized_valid_pairs))
+
 if __name__ == "__main__":
     main()

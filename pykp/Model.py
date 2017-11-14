@@ -454,7 +454,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             else:
                 top_v, top_idx = decoder_prob.data.topk(1, dim = 1)
                 # top_idx and next_index are (batch_size, 1)
-                next_index = Variable(torch.LongTensor(top_idx)).cuda() if torch.cuda.is_available() else Variable(torch.LongTensor(top_idx))
+                next_index = Variable(top_idx).cuda() if torch.cuda.is_available() else Variable(top_idx)
                 trg_emb_i  = self.embedding(next_index).permute(1, 0, -1) # reshape to (1, batch_size, emb_dim)
 
         # convert output into the right shape and make batch first

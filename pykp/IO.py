@@ -83,6 +83,9 @@ def load_json_data(path, name='kp20k', src_fields=['title', 'abstract'], trg_fie
             [trg_strs.extend(re.split(trg_delimiter, json_[f])) for f in trg_fields]
             src_trgs_pairs.append((src_str, trg_strs))
 
+            if idx >= 20000:
+                break
+
     return src_trgs_pairs
 
 def copyseq_tokenize(text):
@@ -103,6 +106,72 @@ def copyseq_tokenize(text):
     tokens = [w if not re.match('^\d+$', w) else DIGIT for w in tokens]
 
     return tokens
+
+def tokenize_filter_data(
+                 src_trgs_pairs, tokenize=None,
+                 lower = True,
+                 src_seq_length=None, trg_seq_length=None,
+                 src_seq_length_trunc=None, trg_seq_length_trunc=None):
+    '''
+    tokenize and truncate data, filter examples that exceed the length limit
+    :param src_trgs_pairs:
+    :param tokenize:
+    :param src_seq_length:
+    :param trg_seq_length:
+    :param src_seq_length_trunc:
+    :param trg_seq_length_trunc:
+    :return:
+    '''
+    return_pairs = []
+    for idx, (src, trgs) in enumerate(src_trgs_pairs):
+        filter_flag = False
+
+        src = src.lower() if lower else src
+        src_tokens = tokenize(src)
+        if src_seq_length_trunc and len(src) > src_seq_length_trunc:
+            src_tokens = src_tokens[:src_seq_length_trunc]
+        if src_seq_length and len(src_tokens) > src_seq_length:
+            filter_flag = True
+
+        trgs_tokens = []
+        for trg in trgs:
+            trg = trg.lower() if lower else trg
+
+            # remove all the abbreviations/acronyms in parentheses in keyphrases
+            trg = re.sub(r'\(.*?\)', '', trg)
+
+            # ingore all the phrases that contains strange punctuations, very DIRTY data!
+            puncts = re.findall(r'[,_\"<>\(\){}\[\]\?~`!@$%\^=]', trg)
+
+            trg_tokens = tokenize(trg)
+
+            if len(puncts) > 0:
+                print('-' * 50)
+                print('%s' % trg)
+                print('- tokens: %s' % str(trg_tokens))
+                continue
+
+            if trg_seq_length_trunc and len(trg) > trg_seq_length_trunc:
+                trg_tokens = trg_tokens[:trg_seq_length_trunc]
+            if trg_seq_length and len(trg_tokens) > trg_seq_length:
+                filter_flag = True
+                break
+            trgs_tokens.append(trg_tokens)
+
+        # if length of src/trg exceeds limit, discard
+        if filter_flag:
+            continue
+
+        return_pairs.append((src_tokens, trgs_tokens))
+
+        if idx % 2000 == 0:
+            print('-------------------- %s: %d ---------------------------' % (inspect.getframeinfo(inspect.currentframe()).function, idx))
+            print(src)
+            print(src_tokens)
+            print(trgs)
+            print(trgs_tokens)
+
+    return return_pairs
 
 def build_one2many_dataset(src_trgs_pairs, word2id, id2word, opt):
     examples = []
@@ -125,6 +194,7 @@ def build_one2many_dataset(src_trgs_pairs, word2id, id2word, opt):
         example['trg']       = []
         example["src_map"]   = src_map
         example["alignment"] = []
+        example["copy_mask"] = []
 
         for target in targets:
             example['trg_all'].append([word2id[w] if w in word2id else word2id['<unk>'] for w in target])
@@ -132,8 +202,8 @@ def build_one2many_dataset(src_trgs_pairs, word2id, id2word, opt):
             mask = [src_vocab.stoi[w] for w in target]
             example["alignment"].append(mask)
 
-
             C = [0 if w not in source else source.index(w) + opt.vocab_size for w in target]
+            example["copy_mask"].append(C)
 
         examples.append(example)
             # A = [word2idx[w] if w in word2idx else word2idx['<unk>'] for w in source]
@@ -151,7 +221,7 @@ def build_one2many_dataset(src_trgs_pairs, word2id, id2word, opt):
 
             print('src_map   [len=%d]:\n\t\t %s' % (len(example["src_map"]), example["src_map"]))
             print('alignment [len=%d]:\n\t\t %s' % (len(example["alignment"]), example["alignment"]))
-            print('copy_mask [len=%d]:\n\t\t %s' % (len(C), C))
+            print('copy_mask [len=%d]:\n\t\t %s' % (len(example["copy_mask"]), example["copy_mask"]))
 
     return examples
 
@@ -180,8 +250,8 @@ def build_one2one_dataset(src_trgs_pairs, word2id, id2word, opt):
             mask = [src_vocab.stoi[w] for w in target]
             example["alignment"] = mask
 
-
             C = [0 if w not in source else source.index(w) + opt.vocab_size for w in target]
+            example["copy_mask"] = C
 
             examples.append(example)
             # A = [word2idx[w] if w in word2idx else word2idx['<unk>'] for w in source]
@@ -199,7 +269,7 @@ def build_one2one_dataset(src_trgs_pairs, word2id, id2word, opt):
 
                 print('src_map   [len=%d]:\n\t\t %s' % (len(src_map), src_map))
                 print('alignment [len=%d]:\n\t\t %s' % (len(mask), mask))
-                print('copy_mask [len=%d]:\n\t\t %s' % (len(C), C))
+                print('copy_mask [len=%d]:\n\t\t %s' % (len(example["copy_mask"]), example["copy_mask"]))
 
     return examples
 
@@ -254,58 +324,6 @@ def build_vocab(tokenized_src_trgs_pairs, opt):
         id2word[ind + 4] = word
 
     return word2id, id2word, vocab
-
-def tokenize_filter_data(
-                 src_trgs_pairs, tokenize=(lambda s: s.split()),
-                 lower = True,
-                 src_seq_length=None, trg_seq_length=None,
-                 src_seq_length_trunc=None, trg_seq_length_trunc=None):
-    '''
-    tokenize and truncate data, filter examples that exceed the length limit
-    :param src_trgs_pairs:
-    :param tokenize:
-    :param src_seq_length:
-    :param trg_seq_length:
-    :param src_seq_length_trunc:
-    :param trg_seq_length_trunc:
-    :return:
-    '''
-    return_pairs = []
-    for idx, (src, trgs) in enumerate(src_trgs_pairs):
-        filter_flag = False
-
-        src = src.lower() if lower else src
-        src_tokens = tokenize(src)
-        if src_seq_length_trunc and len(src) > src_seq_length_trunc:
-            src_tokens = src_tokens[:src_seq_length_trunc]
-        if src_seq_length and len(src_tokens) > src_seq_length:
-            filter_flag = True
-
-        trgs_tokens = []
-        for trg in trgs:
-            trg = trg.lower() if lower else trg
-            trg_tokens = tokenize(trg)
-            if trg_seq_length_trunc and len(trg) > trg_seq_length_trunc:
-                trg_tokens = trg_tokens[:trg_seq_length_trunc]
-            if trg_seq_length and len(trg_tokens) > trg_seq_length:
-                filter_flag = True
-                break
-            trgs_tokens.append(trg_tokens)
-
-        # if length of src/trg exceeds limit, discard
-        if filter_flag:
-            continue
-
-        return_pairs.append((src_tokens, trgs_tokens))
-
-        if idx % 2000 == 0:
-            print('-------------------- %s: %d ---------------------------' % (inspect.getframeinfo(inspect.currentframe()).function, idx))
-            print(src)
-            print(src_tokens)
-            print(trgs)
-            print(trgs_tokens)
-
-    return return_pairs
 
 class One2OneKPDatasetOpenNMT(torchtext.data.Dataset):
     def __init__(self, src_trgs_pairs, fields,
