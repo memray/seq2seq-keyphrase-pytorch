@@ -343,7 +343,12 @@ class Seq2SeqLSTMAttention(nn.Module):
         trg = Variable(torch.from_numpy(np.zeros((input_src.size(0), max_sent_length), dtype='int64')))
         decoder_probs, hiddens, attn_weights = self.decode(trg_input=trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, is_train=False)
 
-        return decoder_probs, hiddens, attn_weights
+        if torch.cuda.is_available():
+            max_words_pred    = decoder_probs.data.cpu().numpy().argmax(axis=-1).flatten()
+        else:
+            max_words_pred    = decoder_probs.data.numpy().argmax(axis=-1).flatten()
+
+        return max_words_pred
 
     def beam_search(self, input_src,
                  max_sent_length=10, beam_size=6,

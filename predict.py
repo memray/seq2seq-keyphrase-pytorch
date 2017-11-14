@@ -70,14 +70,8 @@ def predict(model, data_loader, test_examples, opt):
         if torch.cuda.is_available():
             src.cuda()
 
-        decoder_probs, _, _ = model.greedy_predict(src, opt.max_sent_length)
-
+        max_words_pred = model.greedy_predict(src, opt.max_sent_length)
         progbar.update(None, i, [])
-
-        if torch.cuda.is_available():
-            max_words_pred    = decoder_probs.data.cpu().numpy().argmax(axis=-1).flatten()
-        else:
-            max_words_pred    = decoder_probs.data.numpy().argmax(axis=-1).flatten()
 
         sentence_pred = [opt.id2word[x] for x in max_words_pred]
         sentence_real = example['trg_str']
