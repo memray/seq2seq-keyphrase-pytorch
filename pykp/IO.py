@@ -83,9 +83,6 @@ def load_json_data(path, name='kp20k', src_fields=['title', 'abstract'], trg_fie
             [trg_strs.extend(re.split(trg_delimiter, json_[f])) for f in trg_fields]
             src_trgs_pairs.append((src_str, trg_strs))
 
-            if idx >= 20000:
-                break
-
     return src_trgs_pairs
 
 def copyseq_tokenize(text):
@@ -124,23 +121,26 @@ def tokenize_filter_data(
     '''
     return_pairs = []
     for idx, (src, trgs) in enumerate(src_trgs_pairs):
-        filter_flag = False
+        src_filter_flag = False
 
         src = src.lower() if lower else src
         src_tokens = tokenize(src)
         if src_seq_length_trunc and len(src) > src_seq_length_trunc:
             src_tokens = src_tokens[:src_seq_length_trunc]
         if src_seq_length and len(src_tokens) > src_seq_length:
-            filter_flag = True
+            src_filter_flag = True
 
         trgs_tokens = []
         for trg in trgs:
+            trg_filter_flag = False
             trg = trg.lower() if lower else trg
 
-            # remove all the abbreviations/acronyms in parentheses in keyphrases
+            # FILTER 1: remove all the abbreviations/acronyms in parentheses in keyphrases
             trg = re.sub(r'\(.*?\)', '', trg)
+            trg = re.sub(r'\[.*?\]', '', trg)
+            trg = re.sub(r'\{.*?\}', '', trg)
 
-            # ingore all the phrases that contains strange punctuations, very DIRTY data!
+            # FILTER 2: ingore all the phrases that contains strange punctuations, very DIRTY data!
             puncts = re.findall(r'[,_\"<>\(\){}\[\]\?~`!@$%\^=]', trg)
 
             trg_tokens = tokenize(trg)
@@ -151,16 +151,32 @@ def tokenize_filter_data(
                 print('- tokens: %s' % str(trg_tokens))
                 continue
 
+            # FILTER 3: if length of src/trg exceeds limit, discard
             if trg_seq_length_trunc and len(trg) > trg_seq_length_trunc:
                 trg_tokens = trg_tokens[:trg_seq_length_trunc]
             if trg_seq_length and len(trg_tokens) > trg_seq_length:
-                filter_flag = True
-                break
-            trgs_tokens.append(trg_tokens)
+                trg_filter_flag = True
 
-        # if length of src/trg exceeds limit, discard
-        if filter_flag:
-            continue
+            filtered_by_heuristic_rule = False
+            # FILTER 4: check the quality of long keyphrases (>5 words) with a heuristic rule
+            if len(trg_tokens) > 5:
+                trg_set = set(trg_tokens)
+                if len(trg_set) * 2 < len(trg_tokens):
+                    filtered_by_heuristic_rule = True
+
+            if src_filter_flag or trg_filter_flag or filtered_by_heuristic_rule:
+                print('*' * 50)
+                if filtered_by_heuristic_rule:
+                    print('INVALID by heuristic_rule')
+                else:
+                    print('VALID by heuristic_rule')
+                print('length of src/trg exceeds limit: len(src)=%d, len(trg)=%d' % (len(src_tokens), len(trg_tokens)))
+                print('src: %s' % str(src))
+                print('trg: %s' % str(trg))
+                print('*' * 50)
+                continue
+
+            trgs_tokens.append(trg_tokens)
 
         return_pairs.append((src_tokens, trgs_tokens))
 

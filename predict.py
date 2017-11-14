@@ -73,8 +73,6 @@ def predict(model, data_loader, test_examples, opt):
         decoder_probs, _, _ = model.greedy_predict(src, opt.max_sent_length)
 
         progbar.update(None, i, [])
-        logging.info('Printing predictions on sampled examples by greedy search')
-
 
         if torch.cuda.is_available():
             max_words_pred    = decoder_probs.data.cpu().numpy().argmax(axis=-1).flatten()
@@ -111,7 +109,7 @@ def load_test_data(opt):
             lower=opt.lower)
 
         print("Building testing data...")
-        test_examples = pykp.IO.build_one2one_dataset(
+        test_examples = pykp.IO.build_one2many_dataset(
             tokenized_test_pairs, word2id, id2word, opt)
 
         print("Dumping test data to disk: %s" % (opt.save_data))

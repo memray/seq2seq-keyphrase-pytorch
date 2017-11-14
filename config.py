@@ -104,7 +104,7 @@ def preprocess_opts(parser):
     # Length filter options
     parser.add_argument('-src_seq_length', type=int, default=500,
                         help="Maximum source sequence length")
-    parser.add_argument('-trg_seq_length', type=int, default=10,
+    parser.add_argument('-trg_seq_length', type=int, default=8,
                         help="Maximum target sequence length to keep.")
 
     # Truncation options

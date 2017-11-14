@@ -101,7 +101,9 @@ def main():
 
     print('Vocab size = %d' % len(vocab))
     print('Training data size = %d' % len(tokenized_train_pairs))
+    print('Training data pairs = %d' % len(train))
     print('Validation data size = %d' % len(tokenized_valid_pairs))
+    print('Validation data pairs = %d' % len(valid))
 
 if __name__ == "__main__":
     main()
