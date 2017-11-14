@@ -47,7 +47,7 @@ config.init_logging(opt.exp_path + '/output.log')
 logging.info('Parameters:')
 [logging.info('%s    :    %s' % (k, str(v))) for k,v in opt.__dict__.items()]
 
-def predict(model, data_loader, word2id, id2word, vocab, opt):
+def predict(model, data_loader, test_examples, opt):
     model.eval()
 
     logging.info('======================  Checking GPU Availability  =========================')
@@ -58,47 +58,39 @@ def predict(model, data_loader, word2id, id2word, vocab, opt):
         logging.info('Running on CPU!')
 
     logging.info('======================  Start Predicting  =========================')
-    progbar = Progbar(title='Training', target=len(data_loader), batch_size=opt.batch_size,
+    progbar = Progbar(title='Testing', target=len(data_loader), batch_size=opt.batch_size,
                       total_examples=len(data_loader.dataset))
 
-    for i, batch in enumerate(data_loader):
+    '''
+    Note here each batch only contains one data example, thus decoder_probs is flattened
+    '''
+    for i, (batch, example) in enumerate(zip(data_loader, test_examples)):
         src = batch.src
-        trg = Variable(torch.from_numpy(np.zeros((batch.src.size(0), 1), dtype='int64')))
 
         if torch.cuda.is_available():
             src.cuda()
-            trg.cuda()
 
-        decoder_logit = model.forward(src, trg, is_train=False)
+        decoder_probs, _, _ = model.greedy_predict(src, opt.max_sent_length)
 
         progbar.update(None, i, [])
+        logging.info('Printing predictions on sampled examples by greedy search')
 
-        sampled_size = 2
-        logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
         if torch.cuda.is_available():
-            word_probs = model.logit2prob(decoder_logit).data.cpu().numpy().argmax(axis=-1)
-            trg = trg.data.cpu().numpy()
+            max_words_pred    = decoder_probs.data.cpu().numpy().argmax(axis=-1).flatten()
         else:
-            word_probs = model.logit2prob(decoder_logit).data.numpy().argmax(axis=-1)
-            trg = trg.data.numpy()
+            max_words_pred    = decoder_probs.data.numpy().argmax(axis=-1).flatten()
 
-        sampled_trg_idx = np.random.random_integers(low=0, high=len(trg) - 1, size=sampled_size)
-        word_probs = [word_probs[i] for i in sampled_trg_idx]
-        trg = [trg[i] for i in sampled_trg_idx]
+        sentence_pred = [opt.id2word[x] for x in max_words_pred]
+        sentence_real = example['trg_str']
 
-        for i, (sentence_pred, sentence_real) in enumerate(zip(word_probs, trg)):
-            sentence_pred = [opt.id2word[x] for x in sentence_pred]
-            sentence_real = [opt.id2word[x] for x in sentence_real]
+        if '</s>' in sentence_real:
+            index = sentence_real.index('</s>')
+            sentence_pred = sentence_pred[:index]
 
-            if '</s>' in sentence_real:
-                index = sentence_real.index('</s>')
-                sentence_real = sentence_real[:index]
-                sentence_pred = sentence_pred[:index]
-
-            logging.info('======================  %d  =========================' % (i + 1))
-            logging.info('\t\tPredicted : %s ' % (' '.join(sentence_pred)))
-            logging.info('\t\tReal : %s ' % (' '.join(sentence_real)))
+        logging.info('======================  %d  =========================' % (i + 1))
+        logging.info('\t\tPredicted : %s ' % (' '.join(sentence_pred)))
+        logging.info('\t\tReal : %s ' % (sentence_real))
 
 def load_test_data(opt):
     logging.info("Loading vocab from: %s" % (opt.vocab))
@@ -130,19 +122,19 @@ def load_test_data(opt):
     test_trg = np.asarray([[] for d in test_examples])
 
     src_field = torchtext.data.Field(
-        use_vocab = False,
-        init_token=word2id[pykp.IO.BOS_WORD],
-        eos_token=word2id[pykp.IO.EOS_WORD],
-        pad_token=word2id[pykp.IO.PAD_WORD],
+        use_vocab   = False,
+        init_token  = word2id[pykp.IO.BOS_WORD],
+        eos_token   = word2id[pykp.IO.EOS_WORD],
+        pad_token   = word2id[pykp.IO.PAD_WORD],
         batch_first = True
     )
 
     trg_field = torchtext.data.Field(
-        use_vocab = False,
-        init_token=word2id[pykp.IO.BOS_WORD],
-        eos_token=word2id[pykp.IO.EOS_WORD],
-        pad_token=word2id[pykp.IO.PAD_WORD],
-        batch_first=True
+        use_vocab   = False,
+        init_token  = word2id[pykp.IO.BOS_WORD],
+        eos_token   = word2id[pykp.IO.EOS_WORD],
+        pad_token   = word2id[pykp.IO.PAD_WORD],
+        batch_first = True
     )
 
     test = KeyphraseDataset(list(zip(test_src, test_trg)), [('src', src_field), ('trg', trg_field)])
@@ -176,12 +168,12 @@ def load_model(opt):
         nlayers_trg=opt.dec_layers,
     )
 
-    if torch.cuda.is_available():
-        model.load_state_dict(torch.load(open(opt.model_path, 'rb')))
-    else:
-        model.load_state_dict(torch.load(
-            open(opt.model_path, 'rb'), map_location=lambda storage, loc: storage
-        ))
+    # if torch.cuda.is_available():
+    #     model.load_state_dict(torch.load(open(opt.model_path, 'rb')))
+    # else:
+    #     model.load_state_dict(torch.load(
+    #         open(opt.model_path, 'rb'), map_location=lambda storage, loc: storage
+    #     ))
 
     return model
 
@@ -189,10 +181,9 @@ def main():
     try:
         test_data_loader, test_examples, word2id, id2word, vocab = load_test_data(opt)
         model = load_model(opt)
-        predict(model, test_data_loader, word2id, id2word, vocab, opt)
+        predict(model, test_data_loader, test_examples, opt)
     except Exception as e:
         logging.exception("message")
-
 
 if __name__ == '__main__':
     main()

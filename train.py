@@ -71,17 +71,16 @@ def _train(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             src.cuda()
             trg.cuda()
 
-        decoder_logit, _, _ = model.forward(src, trg)
+        decoder_probs, _, _ = model.forward(src, trg)
 
         # simply average losses of all the predicitons
-        # I remove the <SOS> for trg and the last prediction in decoder_logit for calculating loss
+        # I remove the <SOS> for trg and the last prediction in decoder_logit for calculating loss (make all the words move 1 word left)
         logit_idx = Variable(torch.LongTensor(range(batch.trg.size(1) - 1))).cuda() if torch.cuda.is_available() else Variable(torch.LongTensor(range(batch.trg.size(1) - 1)))
         trg_idx   = Variable(torch.LongTensor(range(1, batch.trg.size(1)))).cuda() if torch.cuda.is_available() else Variable(torch.LongTensor(range(1, batch.trg.size(1))))
-
-        decoder_logit = decoder_logit.permute(1, 0, -1).index_select(0, logit_idx).permute(1, 0, -1)
+        decoder_probs = decoder_probs.permute(1, 0, -1).index_select(0, logit_idx).permute(1, 0, -1)
         trg           = trg.permute(1, 0).index_select(0, trg_idx).permute(1, 0).contiguous()
         loss = criterion(
-            decoder_logit.contiguous().view(-1, opt.vocab_size),
+            decoder_probs.contiguous().view(-1, opt.vocab_size),
             trg.view(-1)
         )
 
@@ -102,18 +101,17 @@ def _train(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
             if torch.cuda.is_available():
-                word_probs = model.logit2prob(decoder_logit).data.cpu().numpy().argmax(axis=-1)
+                max_words_pred = decoder_probs.data.cpu().numpy().argmax(axis=-1)
                 trg = trg.data.cpu().numpy()
             else:
-                word_probs = model.logit2prob(decoder_logit).data.numpy().argmax(axis=-1)
+                max_words_pred    = decoder_probs.data.numpy().argmax(axis=-1)
                 trg = trg.data.numpy()
 
-            # TODO may need to make all the words in trg move 1 word left, because first word is padded with <s>, which is unnecessary for evaluating
             sampled_trg_idx = np.random.random_integers(low=0, high=len(trg)-1, size=sampled_size)
-            word_probs  = [word_probs[i] for i in sampled_trg_idx]
+            max_words_pred  = [max_words_pred[i] for i in sampled_trg_idx]
             trg         = [trg[i] for i in sampled_trg_idx]
 
-            for i, (sentence_pred, sentence_real) in enumerate(zip(word_probs, trg)):
+            for i, (sentence_pred, sentence_real) in enumerate(zip(max_words_pred, trg)):
                 sentence_pred = [opt.id2word[x] for x in sentence_pred]
                 sentence_real = [opt.id2word[x] for x in sentence_real]
 
@@ -155,7 +153,6 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             model.state_dict(),
             open(os.path.join(opt.exp_path, '%s__epoch_%d' % (opt.exp, epoch) + '.model'), 'wb')
         )
-
         '''
         determine if early stop training
         '''
@@ -169,6 +166,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
         else:
             logging.info('Best loss is not updated (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
             best_loss, valid_loss, rate_of_change * 100))
+
         best_loss = min(valid_loss, best_loss)
 
         if rate_of_change > 0:
@@ -195,10 +193,6 @@ def load_train_valid_data(opt):
     word2id = data_dict['word2id']
     id2word = data_dict['id2word']
     vocab = data_dict['vocab']
-
-    opt.word2id = word2id
-    opt.id2word = id2word
-    opt.vocab   = vocab
 
     # training_data_loader = DataLoader(dataset=list(zip(train_src, train_trg)), num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
     # validation_data_loader = DataLoader(dataset=list(zip(valid_src, valid_trg)), num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
@@ -228,6 +222,10 @@ def load_train_valid_data(opt):
 
     training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, repeat=False, sort=True, device = device)
     validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, sort=True, device = device)
+
+    opt.word2id = word2id
+    opt.id2word = id2word
+    opt.vocab   = vocab
 
     return training_data_loader, validation_data_loader, word2id, id2word, vocab
 
