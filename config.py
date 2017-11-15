@@ -64,7 +64,7 @@ def model_opts(parser):
     # parser.add_argument('-residual',   action="store_true",
     #                     help="Add residual connections between RNN layers.")
 
-    parser.add_argument('-bidirectional', default=False,
+    parser.add_argument('-bidirectional', default=True,
                         action = "store_true",
                         help="whether the encoder is bidirectional")
 
@@ -223,7 +223,7 @@ def train_opts(parser):
 
     parser.add_argument('-report_every', type=int, default=50,
                         help="Print stats at this interval.")
-    parser.add_argument('-exp_path', type=str, default="exp/stackexchange.%s(new training/data,uni-directional)" % timemark,
+    parser.add_argument('-exp_path', type=str, default="exp/stackexchange.%s(new training/data,bi-directional)" % timemark,
                         help="Path of experiment output/log/checkpoint.")
     parser.add_argument('-exp', type=str, default="stackexchange",
                         help="Name of the experiment for logging.")
