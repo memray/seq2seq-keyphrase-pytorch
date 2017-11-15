@@ -12,4 +12,4 @@
 #module restore
 
 # Run the job
-srun python -m train -data data/kp20k/kp20k.train_valid.pt -vocab data/kp20k/kp20k.vocab.pt
+srun python -m train -data data/stackexchange/stackexchange.train_valid.pt -vocab data/stackexchange/stackexchange.vocab.pt -bidirectional -exp_path "exp/stackexchange.%s(new training&data,bi-directional)" -exp "stackexchange"
