@@ -9,6 +9,7 @@ import argparse
 
 import logging
 import numpy as np
+import time
 import torchtext
 from torch.autograd import Variable
 from torch.optim import Adam
@@ -46,6 +47,11 @@ if torch.cuda.is_available() and not opt.gpuid:
 
 if opt.gpuid:
     cuda.set_device(0)
+
+# fill time into the name
+if opt.exp_path.find('%s') > 0:
+    timemark        = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
+    opt.exp_path    = opt.exp_path % timemark
 
 if not os.path.exists(opt.exp_path):
     os.makedirs(opt.exp_path)
