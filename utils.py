@@ -51,6 +51,24 @@ def init_logging(logfile_path):
 
     return logging
 
+def tally_parameters(model):
+    if logging.getLogger() == None:
+        printer = print
+    else:
+        printer = logging.getLogger().info
+
+    n_params = sum([p.nelement() for p in model.parameters()])
+    printer('* number of parameters: %d' % n_params)
+    enc = 0
+    dec = 0
+    for name, param in model.named_parameters():
+        if 'encoder' in name:
+            enc += param.nelement()
+        elif 'decoder' or 'generator' in name:
+            dec += param.nelement()
+    printer('encoder: %d' % enc)
+    printer('decoder: %d' % dec)
+
 def _print_progress(epoch_i, batch_i, num_batches):
     progress = round((batch_i + 1) / num_batches * 100)
     print("\rEpoch {:d}".format(epoch_i + 1), end='')

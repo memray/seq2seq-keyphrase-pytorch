@@ -15,6 +15,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 import config
+import utils
 
 import torch
 import torch.nn as nn
@@ -150,13 +151,18 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
 
     train_losses = []
     total_batch = 0
+    early_stop_flag = False
 
     for epoch in range(opt.start_epoch , opt.epochs):
+        if early_stop_flag:
+            break
+
         progbar = Progbar(title='Training', target=len(training_data_loader), batch_size=opt.batch_size,
                           total_examples=len(training_data_loader.dataset))
         model.train()
 
         for batch_i, batch in enumerate(training_data_loader):
+            batch_i += 1
             total_batch += 1
             src = batch.src
             trg = batch.trg
@@ -167,16 +173,19 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
 
             decoder_probs, _, _ = model.forward(src, trg)
 
-            # simply average losses of all the predicitons
-            # I remove the <SOS> for trg and the last prediction in decoder_logit for calculating loss (make all the words move 1 word left)
+            '''
+            # (deprecated, mask both BOS and PAD in criterion) I remove the <BOS> for trg and the last prediction in decoder_logit for calculating loss (make all the words move 1 word left)
             logit_idx = Variable(
                 torch.LongTensor(range(batch.trg.size(1) - 1))).cuda() if torch.cuda.is_available() else Variable(
                 torch.LongTensor(range(batch.trg.size(1) - 1)))
             trg_idx = Variable(
                 torch.LongTensor(range(1, batch.trg.size(1)))).cuda() if torch.cuda.is_available() else Variable(
                 torch.LongTensor(range(1, batch.trg.size(1))))
+
             decoder_probs = decoder_probs.permute(1, 0, -1).index_select(0, logit_idx).permute(1, 0, -1)
             trg = trg.permute(1, 0).index_select(0, trg_idx).permute(1, 0).contiguous()
+            '''
+            # simply average losses of all the predicitons
             loss = criterion(
                 decoder_probs.contiguous().view(-1, opt.vocab_size),
                 trg.view(-1)
@@ -185,6 +194,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             optimizer.zero_grad()
             loss.backward()
             if opt.max_grad_norm > 0:
+                # print('clip grad (%e -> %f)' % ((sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2), opt.max_grad_norm))
                 torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
             optimizer.step()
 
@@ -194,6 +204,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
 
             if batch_i > 1 and batch_i % opt.report_every == 0:
                 logging.info('Epoch : %d Minibatch : %d Loss : %.5f' % (epoch, batch_i, np.mean(loss.data[0])))
+                logging.info('grad norm = %e' % (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2))
                 sampled_size = 2
                 logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
@@ -222,7 +233,8 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                     logging.info('\t\tReal : %s ' % (' '.join(sentence_real)))
 
             if total_batch > 1 and total_batch % opt.run_valid_every == 0:
-                logging.info('Run validation test @Epoch=%d,Minibatch=%d' % (epoch, total_batch))
+                logging.info('*' * 50)
+                logging.info('Run validation test @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
                 valid_losses = _valid(validation_data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
 
                 train_history_losses.append(train_losses)
@@ -247,22 +259,23 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 is_best_loss = valid_loss < best_loss
                 rate_of_change = float(valid_loss - best_loss) / float(best_loss)
 
-                if is_best_loss:
-                    logging.info('Update best loss (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
-                        best_loss, valid_loss, rate_of_change * 100))
-                else:
-                    logging.info('Best loss is not updated (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
-                        best_loss, valid_loss, rate_of_change * 100))
-
-                best_loss = min(valid_loss, best_loss)
-
-                if rate_of_change > 0:
+                # valid error doesn't decrease
+                if rate_of_change >= 0:
                     stop_increasing += 1
                 else:
                     stop_increasing = 0
 
+                if is_best_loss:
+                    logging.info('Update best loss (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
+                        best_loss, valid_loss, rate_of_change * 100))
+                else:
+                    logging.info('Best loss is not updated for %d times (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
+                        stop_increasing, best_loss, valid_loss, rate_of_change * 100))
+
+                best_loss = min(valid_loss, best_loss)
                 if stop_increasing >= opt.early_stop_tolerance:
                     logging.info('Have not increased for %d epoches, early stop training' % stop_increasing)
+                    early_stop_flag = True
                     break
                 logging.info('*' * 50)
 
@@ -318,8 +331,9 @@ def load_train_valid_data(opt):
     return training_data_loader, validation_data_loader, word2id, id2word, vocab
 
 def init_optimizer_criterion(model, opt):
-    # mask the <pad> when computing loss
+    # mask the BOS <s> and PAD <pad> when computing loss
     weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
+    weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
     weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
     criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
 
@@ -343,6 +357,7 @@ def init_model(word2id, config):
         nlayers_trg=config.dec_layers,
         dropout=config.dropout,
     )
+    utils.tally_parameters(model)
 
     return model
 
