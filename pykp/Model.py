@@ -348,6 +348,8 @@ class Seq2SeqLSTMAttention(nn.Module):
     def greedy_predict(self, input_src, max_sent_length=10, trg_mask=None, ctx_mask=None):
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
         trg = Variable(torch.from_numpy(np.zeros((input_src.size(0), max_sent_length), dtype='int64')))
+        if torch.cuda.is_available():
+            trg = trg.cuda()
         decoder_probs, hiddens, attn_weights = self.decode(trg_input=trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, is_train=False)
 
         if torch.cuda.is_available():

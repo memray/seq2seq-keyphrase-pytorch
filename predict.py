@@ -159,11 +159,10 @@ def load_test_data(opt):
     word2id, id2word, vocab = torch.load(opt.vocab, 'wb')
 
     if os.path.exists(opt.save_data):
-        logging.info("Loading train/valid from disk: %s" % (opt.save_data))
+        logging.info("Loading test data from disk: %s" % (opt.save_data))
         test_examples = torch.load(opt.save_data, 'rb')
     else:
-
-        logging.info("Loading test data from '%s'" % opt.test_data)
+        logging.info("Loading test json data from '%s'" % opt.test_data)
         src_trgs_pairs = pykp.IO.load_json_data(opt.test_data, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
         print("Processing testing data...")
