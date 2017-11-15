@@ -216,7 +216,7 @@ def train_opts(parser):
 
     parser.add_argument('-run_valid_every', type=int, default=2000,
                         help="Run validation test at this interval (every run_valid_every epochs)")
-    parser.add_argument('-early_stop_tolerance', type=int, default=1,
+    parser.add_argument('-early_stop_tolerance', type=int, default=5,
                         help="Stop training if it doesn't improve any more for serveral epochs")
 
     timemark = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
@@ -224,7 +224,7 @@ def train_opts(parser):
     parser.add_argument('-report_every', type=int, default=50,
                         help="Print stats at this interval.")
 
-    parser.add_argument('-exp_path', type=str, default="exp/stackexchange.%s(new training&data,bi-directional)" % timemark,
+    parser.add_argument('-exp_path', type=str, default="exp/stackexchange.%s" % timemark,
                         help="Path of experiment output/log/checkpoint.")
 
     parser.add_argument('-exp', type=str, default="stackexchange",
