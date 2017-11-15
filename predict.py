@@ -53,7 +53,6 @@ logging.info('Parameters:')
 def predict_(model, generator, src):
     """src_tokens is a list of sentences, each of which consists of tokenized words"""
 
-    seqs = generator.beam_search(bos, state_list, src_context)
 
     # remove forced  tokens
     preds = [s.sentence[len(self.insert_target_start):] for s in seqs]
@@ -102,7 +101,7 @@ def predict_beam_search(model, data_loader, test_examples, opt):
         if torch.cuda.is_available():
             src.cuda()
 
-        output_seqs = predict_(model, generator, src)
+        output_seqs = generator.beam_search(src, opt.word2id)
 
         progbar.update(None, i, [])
 
@@ -245,6 +244,7 @@ def main():
         test_data_loader, test_examples, word2id, id2word, vocab = load_test_data(opt)
         model = load_model(opt)
         predict_beam_search(model, test_data_loader, test_examples, opt)
+        # predict_greedy(model, test_data_loader, test_examples, opt)
     except Exception as e:
         logging.exception("message")
 

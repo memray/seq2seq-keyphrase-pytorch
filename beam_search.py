@@ -11,6 +11,7 @@ from __future__ import print_function
 import heapq
 
 import torch
+from torch.autograd import Variable
 
 import pykp
 
@@ -137,11 +138,14 @@ class SequenceGenerator(object):
         :param sequences:
         :return:
         '''
-        inputs = torch.cat([self.model.embedding(seq.sentence[-1]) for seq in sequences])
+        batch_size = len(sequences)
+        # (batch_size, 1)
+        inputs = torch.cat([Variable(torch.LongTensor([seq.sentence[-1]])) for seq in sequences]).view(batch_size, -1)
 
+        # (batch_size, trg_hidden_dim)
         if isinstance(sequences[0].state, tuple):
-            h_states = torch.cat([self.model.embedding(seq.state[0]) for seq in sequences])
-            c_states = torch.cat([self.model.embedding(seq.state[1]) for seq in sequences])
+            h_states = torch.cat([seq.state[0] for seq in sequences]).view(batch_size, -1)
+            c_states = torch.cat([seq.state[1] for seq in sequences]).view(batch_size, -1)
             states  = (h_states, c_states)
         else:
             states = torch.cat([self.model.embedding(seq.state[0]) for seq in sequences])
@@ -181,7 +185,7 @@ class SequenceGenerator(object):
 
         for batch_i in range(batch_size):
             seq = Sequence(
-                    sentence=initial_input[batch_i],
+                    sentence=[initial_input[batch_i]],
                     state=initial_state[batch_i],
                     logprob=0,
                     score=0,
@@ -189,42 +193,28 @@ class SequenceGenerator(object):
             partial_sequences.append(seq)
 
         # Run beam search.
-        for current_len in range(self.max_sequence_length):
-            inputs, states = self.sequence_to_batch(partial_sequences)
-            words, logprobs, new_state = self.model.generate(
-                inputs, states, src_context,
-                k=self.beam_size,
-                feed_all_timesteps=True,
-                return_attention=self.return_attention)
-
-            partial_sequences_list = [p.extract() for p in partial_sequences]
-            for p in partial_sequences:
-                p.reset()
-
-            # Keep a flattened list of parial hypotheses, to easily feed
-            # through a model as whole batch
-            flattened_partial = [
-                s for sub_partial in partial_sequences_list for s in sub_partial]
-
-            input_feed = [c.sentence for c in flattened_partial]
-            state_feed = [c.state for c in flattened_partial]
-            if len(input_feed) == 0:
-                # We have run out of partial candidates; happens when
-                # beam_size=1
+        for current_len in range(1, self.max_sequence_length + 1):
+            if len(partial_sequences) == 0:
+                # We have run out of partial candidates; often happens when beam_size is small
                 break
 
-            # Feed current hypotheses through the model, and recieve new outputs and states
-            # logprobs are needed to rank hypotheses
-            words, logprobs, new_states \
-                = self.model.generate(
-                    input_feed, state_feed,
-                    k=self.beam_size + 1, get_attention=self.get_attention)
+            inputs, states = self.sequence_to_batch(partial_sequences)
+            words, probs, new_states, attn_weights = self.model.generate(
+                inputs, states, src_context,
+                k=self.beam_size,
+                feed_all_timesteps=False,
+                return_attention=self.return_attention)
+
+            # tuple of (num_layers * num_directions, batch_size, trg_hidden_dim)=(1, batch_size, trg_hidden_dim), squeeze the first dim
+            if isinstance(new_states, tuple):
+                new_states1 = new_states[0].squeeze()
+                new_states2 = new_states[1].squeeze()
+                new_states = [(new_states1[i], new_states2[i]) for i in range(batch_size)]
 
             idx = 0
-            for b in range(batch_size):
-                # For every entry in batch, find and trim to the most likely
-                # beam_size hypotheses
-                for partial in partial_sequences_list[b]:
+            for batch_i in range(batch_size):
+                # For every entry in batch, find and trim to the most likely beam_size hypotheses
+                for partial in partial_sequences[batch_i]:
                     state = new_states[idx]
                     if self.get_attention:
                         attention = partial.attention + \
@@ -236,7 +226,7 @@ class SequenceGenerator(object):
                     while num_hyp < self.beam_size:
                         w = words[idx][k]
                         sentence = partial.sentence + [w]
-                        logprob = partial.logprob + logprobs[idx][k]
+                        logprob = partial.logprob + probs[idx][k]
                         score = logprob
                         k += 1
                         num_hyp += 1
@@ -248,21 +238,21 @@ class SequenceGenerator(object):
                                 score /= length_penalty ** self.length_normalization_factor
                             beam = Sequence(sentence, state,
                                             logprob, score, attention)
-                            complete_sequences[b].push(beam)
+                            complete_sequences[batch_i].push(beam)
                             num_hyp -= 1  # we can fit another hypotheses as this one is over
                         else:
                             beam = Sequence(sentence, state,
                                             logprob, score, attention)
-                            partial_sequences[b].push(beam)
+                            partial_sequences[batch_i].push(beam)
                     idx += 1
 
         # If we have no complete sequences then fall back to the partial sequences.
         # But never output a mixture of complete and partial sequences because a
         # partial sequence could have a higher score than all the complete
         # sequences.
-        for b in range(batch_size):
-            if not complete_sequences[b].size():
-                complete_sequences[b] = partial_sequences[b]
+        for batch_i in range(batch_size):
+            if not complete_sequences[batch_i].size():
+                complete_sequences[batch_i] = partial_sequences[batch_i]
         seqs = [complete.extract(sort=True)[0]
                 for complete in complete_sequences]
         return seqs

@@ -231,8 +231,12 @@ def load_train_valid_data(opt):
     return training_data_loader, validation_data_loader, word2id, id2word, vocab
 
 def init_optimizer_criterion(model, opt):
+    # mask the <pad> when computing loss
+    weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
+    weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
+    criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
+
     optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
-    criterion = torch.nn.CrossEntropyLoss()
 
     return optimizer, criterion
 

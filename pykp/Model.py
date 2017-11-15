@@ -334,9 +334,9 @@ class Seq2SeqLSTMAttention(nn.Module):
         return h0_encoder, c0_encoder
 
     def init_decoder_state(self, enc_h, enc_c):
-        # prepare the init hidden vector, (batch_size, dec_hidden_dim) -> (num_layers * num_directions, batch_size, dec_hidden_dim)
-        decoder_init_hidden = nn.Tanh()(self.encoder2decoder_hidden(enc_h)).unsqueeze(0)
-        decoder_init_cell   = nn.Tanh()(self.encoder2decoder_cell(enc_c)).unsqueeze(0)
+        # prepare the init hidden vector for decoder, (batch_size, num_layers * num_directions * enc_hidden_dim) -> (batch_size, dec_hidden_dim)
+        decoder_init_hidden = nn.Tanh()(self.encoder2decoder_hidden(enc_h))
+        decoder_init_cell   = nn.Tanh()(self.encoder2decoder_cell(enc_c))
 
         return decoder_init_hidden, decoder_init_cell
 
@@ -359,7 +359,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return max_words_pred
 
-    def generate(self, input, hidden, enc_context, k=1, feed_all_timesteps=False, return_attention=False):
+    def generate(self, input, hidden, enc_context, k = 1, feed_all_timesteps=False, return_attention=False):
         '''
         Given the initial input, state and the source contexts, return the top K restuls for each time step
         :param input: just word indexes of target texts (usually zeros indicating BOS <s>)
@@ -371,18 +371,23 @@ class Seq2SeqLSTMAttention(nn.Module):
         :return:
         '''
         # assert isinstance(input_list, list) or isinstance(input_list, tuple)
-        # assert isinstance(input_list[0], list) or isinstance(
-            # input_list[0], tuple)
+        # assert isinstance(input_list[0], list) or isinstance(input_list[0], tuple)
 
+        # input_emb = (batch_size, trg_len, emb_dim)
         if feed_all_timesteps:
             input_emb = self.embedding(input)
         else:
-            input = torch.index_select(input, 1, input.size(1))
+            # retain the last input (what if it's <pad>?)
+            input = torch.index_select(input, 1, torch.LongTensor([input.size(1) - 1]))
             input_emb = self.embedding(input)
 
-        hiddens = []
+        pred_words = []
         attn_weights = []
         decoder_probs = []
+
+        # reshape them to be length first
+        input_emb   = input_emb.permute(1, 0, 2) # (trg_len, batch_size, embed_dim)
+        enc_context = enc_context.permute(1, 0, 2) # (src_len, batch_size, num_direction * enc_hidden_dim)
 
         for i in range(input.size(1)):
             # (seq_len, batch_size, hidden_size * num_directions)
@@ -397,36 +402,33 @@ class Seq2SeqLSTMAttention(nn.Module):
             decoder_logit = self.decoder2vocab(h_tilde) # (batch_size, vocab_size)
             decoder_prob  = func.softmax(decoder_logit) # (batch_size, vocab_size)
 
-            hiddens.append(hidden)
-            attn_weights.append(alpha)
-            decoder_probs.append(decoder_prob)
+            # Get the top word, top_idx and next_index are (batch_size, K)
+            decoder_prob, top_idx = decoder_prob.data.topk(k, dim=1)
 
-            # prepare the next input
-            if is_train and i < trg_input.size(1) - 1:
-                trg_emb_i = trg_emb[i + 1].unsqueeze(0)
-            else:
-                top_v, top_idx = decoder_prob.data.topk(1, dim = 1)
-                # top_idx and next_index are (batch_size, 1)
-                next_index = Variable(top_idx).cuda() if torch.cuda.is_available() else Variable(top_idx)
-                trg_emb_i  = self.embedding(next_index).permute(1, 0, -1) # reshape to (1, batch_size, emb_dim)
+            # append to return lists
+            pred_words.append(top_idx) # (batch_size, K)
+            decoder_probs.append(decoder_prob) # (batch_size, K)
+            attn_weights.append(alpha) # (batch_size, src_len)
+
+            # prepare for the next iteration
+            top_1_idx  = torch.index_select(top_idx, dim=1, index=torch.LongTensor([0]))
+            next_index = Variable(top_1_idx).cuda() if torch.cuda.is_available() else Variable(top_1_idx)
+            input_emb  = self.embedding(next_index).permute(1, 0, -1) # reshape to (1, batch_size, emb_dim)
 
         # convert output into the right shape and make batch first
-        attn_weights    = torch.cat(attn_weights, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, src_seq_len)
-        decoder_probs   = torch.cat(decoder_probs, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
+        pred_words      = torch.cat(pred_words, 0).view(*input.size(), -1)
+        attn_weights    = torch.cat(attn_weights, 0).view(*input.size(), -1) # (batch_size, trg_seq_len, src_seq_len)
+        decoder_probs   = torch.cat(decoder_probs, 0).view(*input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
+
+        # Only return the hidden vectors of the last time step.
+        #   tuple of (num_layers * num_directions, batch_size, trg_hidden_dim)=(1, batch_size, trg_hidden_dim)
 
         # Return final outputs, hidden states, and attention weights (for visualization)
-        return decoder_probs, hiddens, attn_weights
+        if return_attention:
+            return pred_words, decoder_probs, hidden, attn_weights
+        else:
+            return pred_words, decoder_probs, hidden
 
-
-        logits, new_states = self.decode(
-            inputs_var, states, get_attention=get_attention)
-        # use only last prediction
-        logits = logits.select(
-            time_dim, logits.size(time_dim) - 1).contiguous()
-        logprobs = log_softmax(logits, dim=1)
-        logprobs, words = logprobs.data.topk(k, 1)
-        new_states_list = [new_states[i] for i in range(len(input_list))]
-        return words, logprobs, new_states_list
 
     def encode(self, input_src):
         """Propogate input through the network."""
