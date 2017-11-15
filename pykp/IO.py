@@ -4,17 +4,15 @@ Python File Template
 """
 import codecs
 import inspect
+import itertools
 import json
 import re
 from collections import Counter
 from collections import defaultdict
 
-import itertools
-
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
-import os
 import torchtext
 import torch
 
@@ -77,7 +75,9 @@ def load_json_data(path, name='kp20k', src_fields=['title', 'abstract'], trg_fie
     src_trgs_pairs = []
     with codecs.open(path, "r", "utf-8") as corpus_file:
         for idx, line in enumerate(corpus_file):
+            print(line)
             json_ = json.loads(line)
+
             trg_strs = []
             src_str = '.'.join([json_[f] for f in src_fields])
             [trg_strs.extend(re.split(trg_delimiter, json_[f])) for f in trg_fields]
@@ -98,7 +98,9 @@ def copyseq_tokenize(text):
     # pad spaces to the left and right of special punctuations
     text = re.sub(r'[_<>,\(\)\.\'%]', ' \g<0> ', text)
     # tokenize by non-letters
-    tokens = filter(lambda w: len(w) > 0, re.split(r'[^a-zA-Z0-9_<>,\(\)\.\'%]', text))
+    tokens = filter(lambda w: len(w) > 0, re.split(r'[^a-zA-Z0-9_<>,#&\+\*\(\)\.\'%]', text))
+
+    # TODO : Add + # & *
     # replace the digit terms with <digit>
     tokens = [w if not re.match('^\d+$', w) else DIGIT for w in tokens]
 
