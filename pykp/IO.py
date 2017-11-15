@@ -97,10 +97,9 @@ def copyseq_tokenize(text):
     text = re.sub(r'[\r\n\t]', ' ', text)
     # pad spaces to the left and right of special punctuations
     text = re.sub(r'[_<>,\(\)\.\'%]', ' \g<0> ', text)
-    # tokenize by non-letters
+    # tokenize by non-letters (new-added + # & *, but don't pad spaces, to make them as one whole word)
     tokens = filter(lambda w: len(w) > 0, re.split(r'[^a-zA-Z0-9_<>,#&\+\*\(\)\.\'%]', text))
 
-    # TODO : Add + # & *
     # replace the digit terms with <digit>
     tokens = [w if not re.match('^\d+$', w) else DIGIT for w in tokens]
 

@@ -54,8 +54,8 @@ config.init_logging(opt.exp_path + '/output.log')
 logging.info('Parameters:')
 [logging.info('%s    :    %s' % (k, str(v))) for k,v in opt.__dict__.items()]
 
-def _train(data_loader, model, criterion, optimizer, epoch, opt, is_train=False):
-    progbar = Progbar(title='Training', target=len(data_loader), batch_size=opt.batch_size,
+def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False):
+    progbar = Progbar(title='Validating', target=len(data_loader), batch_size=opt.batch_size,
                       total_examples=len(data_loader.dataset))
     if is_train:
         model.train()
@@ -63,6 +63,8 @@ def _train(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
         model.eval()
 
     losses = []
+
+    # Note that the data should be shuffled every time
     for i, batch in enumerate(data_loader):
         src = batch.src
         trg = batch.trg
@@ -93,8 +95,12 @@ def _train(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
 
         losses.append(loss.data[0])
 
-        progbar.update(epoch, i, [('loss', loss.data[0])])
+        progbar.update(epoch, i, [('valid_loss', loss.data[0])])
 
+        # Don't run through all the validation data, take 5% of training batches. we skip all the remaining iterations
+        if i > int(opt.run_valid_every * 0.05):
+            break
+        '''
         if i > 1 and i % opt.report_every == 0:
             logging.info('Epoch : %d Minibatch : %d Loss : %.5f' % (epoch, i, np.mean(losses)))
             sampled_size = 2
@@ -123,7 +129,7 @@ def _train(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
                 logging.info('======================  %d  =========================' % (i+1))
                 logging.info('\t\tPredicted : %s ' % (' '.join(sentence_pred)))
                 logging.info('\t\tReal : %s ' % (' '.join(sentence_real)))
-
+        '''
     return losses
 
 
@@ -137,47 +143,129 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
         logging.info('Running on CPU!')
 
     logging.info('======================  Start Training  =========================')
-    training_epoch_losses = []
-    valid_epoch_losses = []
+
+    train_history_losses = []
+    valid_history_losses = []
     best_loss = sys.float_info.max
+
+    train_losses = []
+    total_batch = 0
+
     for epoch in range(opt.start_epoch , opt.epochs):
-        # Training
-        training_epoch_losses.append(_train(training_data_loader, model, criterion, optimizer, epoch, opt, is_train=True))
-        # Validation
-        valid_epoch_losses.append(_train(validation_data_loader, model, criterion, optimizer, epoch, opt, is_train=False))
+        progbar = Progbar(title='Training', target=len(training_data_loader), batch_size=opt.batch_size,
+                          total_examples=len(training_data_loader.dataset))
+        model.train()
 
-        # Plot the learning curve
-        plot_learning_curve(training_epoch_losses, valid_epoch_losses, 'Training and Validation', curve1_name='Training Error', curve2_name='Validation Error', save_path=opt.exp_path+'/[epoch=%d]train_valid_curve.png' % epoch)
-        # Save the checkpoint
-        torch.save(
-            model.state_dict(),
-            open(os.path.join(opt.exp_path, '%s__epoch_%d' % (opt.exp, epoch) + '.model'), 'wb')
-        )
-        '''
-        determine if early stop training
-        '''
-        valid_loss = np.average(valid_epoch_losses[-1])
-        is_best_loss = valid_loss < best_loss
-        rate_of_change = float(valid_loss - best_loss) / float(best_loss)
+        for batch_i, batch in enumerate(training_data_loader):
+            total_batch += 1
+            src = batch.src
+            trg = batch.trg
 
-        if is_best_loss:
-            logging.info('Update best loss (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
-            best_loss, valid_loss, rate_of_change * 100))
-        else:
-            logging.info('Best loss is not updated (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
-            best_loss, valid_loss, rate_of_change * 100))
+            if torch.cuda.is_available():
+                src.cuda()
+                trg.cuda()
 
-        best_loss = min(valid_loss, best_loss)
+            decoder_probs, _, _ = model.forward(src, trg)
 
-        if rate_of_change > 0:
-            stop_increasing += 1
-        else:
-            stop_increasing = 0
+            # simply average losses of all the predicitons
+            # I remove the <SOS> for trg and the last prediction in decoder_logit for calculating loss (make all the words move 1 word left)
+            logit_idx = Variable(
+                torch.LongTensor(range(batch.trg.size(1) - 1))).cuda() if torch.cuda.is_available() else Variable(
+                torch.LongTensor(range(batch.trg.size(1) - 1)))
+            trg_idx = Variable(
+                torch.LongTensor(range(1, batch.trg.size(1)))).cuda() if torch.cuda.is_available() else Variable(
+                torch.LongTensor(range(1, batch.trg.size(1))))
+            decoder_probs = decoder_probs.permute(1, 0, -1).index_select(0, logit_idx).permute(1, 0, -1)
+            trg = trg.permute(1, 0).index_select(0, trg_idx).permute(1, 0).contiguous()
+            loss = criterion(
+                decoder_probs.contiguous().view(-1, opt.vocab_size),
+                trg.view(-1)
+            )
 
-        if stop_increasing >= opt.early_stop_tolerance:
-            logging.info('Have not increased for %d epoches, early stop training' % stop_increasing)
-            break
-        logging.info('*' * 50)
+            optimizer.zero_grad()
+            loss.backward()
+            if opt.max_grad_norm > 0:
+                torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
+            optimizer.step()
+
+            train_losses.append(loss.data[0])
+
+            progbar.update(epoch, batch_i, [('train_loss', loss.data[0])])
+
+            if batch_i > 1 and batch_i % opt.report_every == 0:
+                logging.info('Epoch : %d Minibatch : %d Loss : %.5f' % (epoch, batch_i, np.mean(loss.data[0])))
+                sampled_size = 2
+                logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
+
+                if torch.cuda.is_available():
+                    max_words_pred = decoder_probs.data.cpu().numpy().argmax(axis=-1)
+                    trg = trg.data.cpu().numpy()
+                else:
+                    max_words_pred = decoder_probs.data.numpy().argmax(axis=-1)
+                    trg = trg.data.numpy()
+
+                sampled_trg_idx = np.random.random_integers(low=0, high=len(trg) - 1, size=sampled_size)
+                max_words_pred = [max_words_pred[i] for i in sampled_trg_idx]
+                trg = [trg[i] for i in sampled_trg_idx]
+
+                for i, (sentence_pred, sentence_real) in enumerate(zip(max_words_pred, trg)):
+                    sentence_pred = [opt.id2word[x] for x in sentence_pred]
+                    sentence_real = [opt.id2word[x] for x in sentence_real]
+
+                    if '</s>' in sentence_real:
+                        index = sentence_real.index('</s>')
+                        sentence_real = sentence_real[:index]
+                        sentence_pred = sentence_pred[:index]
+
+                    logging.info('======================  %d  =========================' % (i + 1))
+                    logging.info('\t\tPredicted : %s ' % (' '.join(sentence_pred)))
+                    logging.info('\t\tReal : %s ' % (' '.join(sentence_real)))
+
+            if total_batch > 1 and total_batch % opt.run_valid_every == 0:
+                logging.info('Run validation test @Epoch=%d,Minibatch=%d' % (epoch, total_batch))
+                valid_losses = _valid(validation_data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
+
+                train_history_losses.append(train_losses)
+                valid_history_losses.append(valid_losses)
+                train_losses = []
+                valid_losses = []
+
+                # Plot the learning curve
+                plot_learning_curve(train_history_losses, valid_history_losses, 'Training and Validation',
+                                    curve1_name='Training Error', curve2_name='Validation Error',
+                                    save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_curve.png' % (epoch, batch_i, total_batch))
+
+                # Save the checkpoint
+                torch.save(
+                    model.state_dict(),
+                    open(os.path.join(opt.exp_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
+                )
+                '''
+                determine if early stop training
+                '''
+                valid_loss = np.average(valid_history_losses[-1])
+                is_best_loss = valid_loss < best_loss
+                rate_of_change = float(valid_loss - best_loss) / float(best_loss)
+
+                if is_best_loss:
+                    logging.info('Update best loss (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
+                        best_loss, valid_loss, rate_of_change * 100))
+                else:
+                    logging.info('Best loss is not updated (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
+                        best_loss, valid_loss, rate_of_change * 100))
+
+                best_loss = min(valid_loss, best_loss)
+
+                if rate_of_change > 0:
+                    stop_increasing += 1
+                else:
+                    stop_increasing = 0
+
+                if stop_increasing >= opt.early_stop_tolerance:
+                    logging.info('Have not increased for %d epoches, early stop training' % stop_increasing)
+                    break
+                logging.info('*' * 50)
+
 
 def load_train_valid_data(opt):
     logging.info("Loading train and validate data from '%s'" % opt.data)
@@ -220,8 +308,8 @@ def load_train_valid_data(opt):
     else:
         device = -1
 
-    training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, repeat=False, sort=True, device = device)
-    validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, sort=True, device = device)
+    training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True,  repeat=False, shuffle=True, sort=True, device = device)
+    validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, shuffle=True, sort=True, device = device)
 
     opt.word2id = word2id
     opt.id2word = id2word
