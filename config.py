@@ -102,13 +102,17 @@ def preprocess_opts(parser):
     parser.add_argument('-words_min_frequency', type=int, default=0)
 
     # Length filter options
-    parser.add_argument('-src_seq_length', type=int, default=500,
+    parser.add_argument('-max_src_seq_length', type=int, default=None,
                         help="Maximum source sequence length")
-    parser.add_argument('-trg_seq_length', type=int, default=8,
+    parser.add_argument('-min_src_seq_length', type=int, default=None,
+                        help="Minimum source sequence length")
+    parser.add_argument('-max_trg_seq_length', type=int, default=8,
                         help="Maximum target sequence length to keep.")
+    parser.add_argument('-min_trg_seq_length', type=int, default=None,
+                        help="Minimun target sequence length to keep.")
 
     # Truncation options
-    parser.add_argument('-src_seq_length_trunc', type=int, default=500,
+    parser.add_argument('-src_seq_length_trunc', type=int, default=None,
                         help="Truncate source sequence length.")
     parser.add_argument('-trg_seq_length_trunc', type=int, default=None,
                         help="Truncate target sequence length.")
@@ -178,7 +182,7 @@ def train_opts(parser):
                         help='Number of workers for generating batches')
     parser.add_argument('-epochs', type=int, default=20,
                         help='Number of training epochs')
-    parser.add_argument('-optim', default='sgd',
+    parser.add_argument('-optim', default='adam',
                         choices=['sgd', 'adagrad', 'adadelta', 'adam'],
                         help="""Optimization method.""")
     parser.add_argument('-max_grad_norm', type=float, default=5,
@@ -237,9 +241,9 @@ def predict_opts(parser):
     parser.add_argument('-output', default='pred.txt',
                         help="""Path to output the predictions (each line will
                         be the decoded sequence""")
-    parser.add_argument('-beam_size',  type=int, default=5,
+    parser.add_argument('-beam_size',  type=int, default=6,
                         help='Beam size')
-    parser.add_argument('-max_sent_length', type=int, default=10,
+    parser.add_argument('-max_sent_length', type=int, default=7,
                         help='Maximum sentence length.')
     parser.add_argument('-replace_unk', action="store_true",
                         help="""Replace the generated UNK tokens with the

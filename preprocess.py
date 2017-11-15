@@ -54,12 +54,7 @@ def main():
     print("Processing training data...")
     tokenized_train_pairs = pykp.IO.tokenize_filter_data(
         src_trgs_pairs,
-        tokenize = pykp.IO.copyseq_tokenize,
-        lower = opt.lower,
-        src_seq_length=opt.src_seq_length,
-        trg_seq_length=opt.trg_seq_length,
-        src_seq_length_trunc=opt.src_seq_length_trunc,
-        trg_seq_length_trunc=opt.trg_seq_length_trunc)
+        tokenize = pykp.IO.copyseq_tokenize, opt=opt, valid_check=True)
 
     print("Building Vocab...")
     word2id, id2word, vocab = pykp.IO.build_vocab(tokenized_train_pairs, opt)
@@ -77,12 +72,7 @@ def main():
     print("Processing validation data...")
     tokenized_valid_pairs = pykp.IO.tokenize_filter_data(
         src_trgs_pairs,
-        tokenize=pykp.IO.copyseq_tokenize,
-        lower=opt.lower,
-        src_seq_length=opt.src_seq_length,
-        trg_seq_length=opt.trg_seq_length,
-        src_seq_length_trunc=opt.src_seq_length_trunc,
-        trg_seq_length_trunc=opt.trg_seq_length_trunc)
+        tokenize=pykp.IO.copyseq_tokenize, opt=opt, valid_check=True)
 
     print("Building validation...")
     valid = pykp.IO.build_one2one_dataset(
@@ -104,6 +94,16 @@ def main():
     print('Training data pairs = %d' % len(train))
     print('Validation data size = %d' % len(tokenized_valid_pairs))
     print('Validation data pairs = %d' % len(valid))
+
+    print("***************** Length Statistics ******************")
+    len_counter = {}
+    for src_tokens, trgs_tokens in tokenized_train_pairs:
+        len_count = len_counter.get(len(src_tokens), 0) + 1
+        len_counter[len(src_tokens)] = len_count
+    sorted_len = sorted(len_counter.items(), key=lambda x:x[0], reverse=True)
+
+    for len_, count in sorted_len:
+        print('%d,%d' % (len_, count))
 
 if __name__ == "__main__":
     main()

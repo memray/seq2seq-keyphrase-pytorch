@@ -105,10 +105,7 @@ def copyseq_tokenize(text):
     return tokens
 
 def tokenize_filter_data(
-                 src_trgs_pairs, tokenize=None,
-                 lower = True,
-                 src_seq_length=None, trg_seq_length=None,
-                 src_seq_length_trunc=None, trg_seq_length_trunc=None):
+                 src_trgs_pairs, tokenize, opt, valid_check=False):
     '''
     tokenize and truncate data, filter examples that exceed the length limit
     :param src_trgs_pairs:
@@ -123,17 +120,24 @@ def tokenize_filter_data(
     for idx, (src, trgs) in enumerate(src_trgs_pairs):
         src_filter_flag = False
 
-        src = src.lower() if lower else src
+        src = src.lower() if opt.lower else src
         src_tokens = tokenize(src)
-        if src_seq_length_trunc and len(src) > src_seq_length_trunc:
-            src_tokens = src_tokens[:src_seq_length_trunc]
-        if src_seq_length and len(src_tokens) > src_seq_length:
+        if opt.src_seq_length_trunc and len(src) > opt.src_seq_length_trunc:
+            src_tokens = src_tokens[:opt.src_seq_length_trunc]
+
+        # FILTER 3.1: if length of src exceeds limit, discard
+        if opt.max_src_seq_length and len(src_tokens) > opt.max_src_seq_length:
             src_filter_flag = True
+        if opt.min_src_seq_length and len(src_tokens) < opt.min_src_seq_length:
+            src_filter_flag = True
+
+        if valid_check and src_filter_flag:
+                continue
 
         trgs_tokens = []
         for trg in trgs:
             trg_filter_flag = False
-            trg = trg.lower() if lower else trg
+            trg = trg.lower() if src.lower else trg
 
             # FILTER 1: remove all the abbreviations/acronyms in parentheses in keyphrases
             trg = re.sub(r'\(.*?\)', '', trg)
@@ -151,20 +155,23 @@ def tokenize_filter_data(
                 print('- tokens: %s' % str(trg_tokens))
                 continue
 
-            # FILTER 3: if length of src/trg exceeds limit, discard
-            if trg_seq_length_trunc and len(trg) > trg_seq_length_trunc:
-                trg_tokens = trg_tokens[:trg_seq_length_trunc]
-            if trg_seq_length and len(trg_tokens) > trg_seq_length:
+            # FILTER 3.2: if length of trg exceeds limit, discard
+            if opt.trg_seq_length_trunc and len(trg) > opt.trg_seq_length_trunc:
+                trg_tokens = trg_tokens[:src.trg_seq_length_trunc]
+            if opt.max_trg_seq_length and len(trg_tokens) > opt.max_trg_seq_length:
+                trg_filter_flag = True
+            if opt.min_trg_seq_length and len(trg_tokens) < opt.min_trg_seq_length:
                 trg_filter_flag = True
 
             filtered_by_heuristic_rule = False
+
             # FILTER 4: check the quality of long keyphrases (>5 words) with a heuristic rule
             if len(trg_tokens) > 5:
                 trg_set = set(trg_tokens)
                 if len(trg_set) * 2 < len(trg_tokens):
                     filtered_by_heuristic_rule = True
 
-            if src_filter_flag or trg_filter_flag or filtered_by_heuristic_rule:
+            if valid_check and (trg_filter_flag or filtered_by_heuristic_rule):
                 print('*' * 50)
                 if filtered_by_heuristic_rule:
                     print('INVALID by heuristic_rule')

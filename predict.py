@@ -15,6 +15,8 @@ import config
 import torch
 import torch.nn as nn
 from torch import cuda
+
+from beam_search import SequenceGenerator
 from utils import Progbar, plot_learning_curve
 
 import pykp
@@ -47,7 +49,75 @@ config.init_logging(opt.exp_path + '/output.log')
 logging.info('Parameters:')
 [logging.info('%s    :    %s' % (k, str(v))) for k,v in opt.__dict__.items()]
 
-def predict(model, data_loader, test_examples, opt):
+
+def predict_(model, generator, src):
+    """src_tokens is a list of sentences, each of which consists of tokenized words"""
+
+    seqs = generator.beam_search(bos, state_list, src_context)
+
+    # remove forced  tokens
+    preds = [s.sentence[len(self.insert_target_start):] for s in seqs]
+    output = [self.target_tok.detokenize(p[:-1]) for p in preds]
+
+    output = output[0] if flatten else output
+    if self.get_attention:
+        attentions = [s.attention for s in seqs]
+        # if target_priming is not None:
+        # preds = [preds[b][-len(attentions[b]):] for b in range(batch)]
+        attentions = attentions[0] if flatten else attentions
+
+        preds = [[self.target_tok.idx2word(
+            idx) for idx in p] for p in preds]
+        preds = preds[0] if flatten else preds
+        src = [[self.src_tok.idx2word(idx)
+                for idx in list(s)] for s in src_tok]
+        src = src[0] if flatten else src
+        return output, (attentions, src, preds)
+    else:
+        return output
+
+def predict_beam_search(model, data_loader, test_examples, opt):
+    model.eval()
+
+    if torch.cuda.is_available():
+        logging.info('Running on GPU!')
+        model.cuda()
+    else:
+        logging.info('Running on CPU!')
+
+    logging.info('======================  Start Predicting  =========================')
+    progbar = Progbar(title='Testing', target=len(data_loader), batch_size=opt.batch_size,
+                      total_examples=len(data_loader.dataset))
+    generator = SequenceGenerator(model,
+                 eos_id=opt.word2id[pykp.IO.EOS_WORD],
+                 beam_size=opt.beam_size,
+                 max_sequence_length=opt.max_sent_length)
+
+    '''
+    Note here each batch only contains one data example, thus decoder_probs is flattened
+    '''
+    for i, (batch, example) in enumerate(zip(data_loader, test_examples)):
+        src = batch.src
+
+        if torch.cuda.is_available():
+            src.cuda()
+
+        output_seqs = predict_(model, generator, src)
+
+        progbar.update(None, i, [])
+
+        logging.info('======================  %d  =========================' % (i + 1))
+        logging.info('\t\tReal : %s ' % (sentence_real))
+        for seq in output_seqs:
+            sentence_pred = [opt.id2word[x] for x in seq]
+            sentence_real = example['trg_str']
+
+            if '</s>' in sentence_real:
+                index = sentence_real.index('</s>')
+                sentence_pred = sentence_pred[:index]
+            logging.info('\t\tPredicted : %s ' % (' '.join(sentence_pred)))
+
+def predict_greedy(model, data_loader, test_examples, opt):
     model.eval()
 
     logging.info('======================  Checking GPU Availability  =========================')
@@ -100,7 +170,7 @@ def load_test_data(opt):
         tokenized_test_pairs = pykp.IO.tokenize_filter_data(
             src_trgs_pairs,
             tokenize=pykp.IO.copyseq_tokenize,
-            lower=opt.lower)
+            opt=opt, valid_check=True)
 
         print("Building testing data...")
         test_examples = pykp.IO.build_one2many_dataset(
@@ -142,6 +212,8 @@ def load_test_data(opt):
     opt.id2word = id2word
     opt.vocab   = vocab
 
+    print('Vocab size = %d' % len(vocab))
+    print('Testing data size after filtering = %d' % len(test))
     return test_data_loader, test_examples, word2id, id2word, vocab
 
 def load_model(opt):
@@ -173,7 +245,7 @@ def main():
     try:
         test_data_loader, test_examples, word2id, id2word, vocab = load_test_data(opt)
         model = load_model(opt)
-        predict(model, test_data_loader, test_examples, opt)
+        predict_beam_search(model, test_data_loader, test_examples, opt)
     except Exception as e:
         logging.exception("message")
 

@@ -311,7 +311,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.encoder2decoder_cell.bias.data.fill_(0)
         self.decoder2vocab.bias.data.fill_(0)
 
-    def get_state(self, input):
+    def init_encoder_state(self, input):
         """Get cell states and hidden states."""
         batch_size = input.size(0) \
             if self.encoder.batch_first else input.size(1)
@@ -333,6 +333,13 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return h0_encoder, c0_encoder
 
+    def init_decoder_state(self, enc_h, enc_c):
+        # prepare the init hidden vector, (batch_size, dec_hidden_dim) -> (num_layers * num_directions, batch_size, dec_hidden_dim)
+        decoder_init_hidden = nn.Tanh()(self.encoder2decoder_hidden(enc_h)).unsqueeze(0)
+        decoder_init_cell   = nn.Tanh()(self.encoder2decoder_cell(enc_c)).unsqueeze(0)
+
+        return decoder_init_hidden, decoder_init_cell
+
     def forward(self, input_src, input_trg, trg_mask=None, ctx_mask=None):
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
         decoder_probs, hiddens, attn_weights = self.decode(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask)
@@ -350,46 +357,81 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return max_words_pred
 
-    def beam_search(self, input_src,
-                 max_sent_length=10, beam_size=6,
-                 length_normalization_factor=0.0,
-                 length_normalization_const=5.):
-        # Get source text encodings
-        enc_context, (src_h_t, src_c_t) = self.encode(input_src)
+    def generate(self, input, hidden, enc_context, k=1, feed_all_timesteps=False, return_attention=False):
+        '''
+        Given the initial input, state and the source contexts, return the top K restuls for each time step
+        :param input: just word indexes of target texts (usually zeros indicating BOS <s>)
+        :param hidden: hidden states of RNN to start with
+        :param enc_context: context encoding vectors
+        :param k: Top K to return
+        :param feed_all_timesteps: it's one-step predicting or feed all inputs to run through all the time steps
+        :param get_attention: return attention vectors?
+        :return:
+        '''
+        # assert isinstance(input_list, list) or isinstance(input_list, tuple)
+        # assert isinstance(input_list[0], list) or isinstance(
+            # input_list[0], tuple)
 
-        # Beam search begins with BOS `<s>`
-        trg = Variable(torch.from_numpy(np.zeros((input_src.size(0), max_sent_length), dtype='int64')))
-        hyp_trg     = trg
-        hyp_src_h   = src_h_t
-        hyp_src_c   = src_c_t
+        if feed_all_timesteps:
+            input_emb = self.embedding(input)
+        else:
+            input = torch.index_select(input, 1, input.size(1))
+            input_emb = self.embedding(input)
 
-        # Start searching, repeat `max_sent_length` times
-        for i in range(max_sent_length):
+        hiddens = []
+        attn_weights = []
+        decoder_probs = []
+
+        for i in range(input.size(1)):
             # (seq_len, batch_size, hidden_size * num_directions)
             dec_h, hidden = self.decoder(
-                hyp_trg, (hyp_src_h, hyp_src_c)
+                input_emb, hidden
             )
 
             # Get the h_tilde (hidden after attention) and attention weights
             h_tilde, alpha = self.attention_layer(dec_h, enc_context)
 
             # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
-            decoder_prob = func.softmax(self.decoder2vocab(h_tilde)) # (batch_size, vocab_size)
+            decoder_logit = self.decoder2vocab(h_tilde) # (batch_size, vocab_size)
+            decoder_prob  = func.softmax(decoder_logit) # (batch_size, vocab_size)
 
-            top_v, top_idx = decoder_prob.data.topk(beam_size, dim = 1)
-            # top_idx and next_index are (batch_size, 1)
-            next_index = Variable(torch.LongTensor(top_idx)).cuda() if torch.cuda.is_available() else Variable(torch.LongTensor(top_idx))
-            trg_emb_i  = self.embedding(next_index).permute(1, 0, -1) # reshape to (1, batch_size, emb_dim)
+            hiddens.append(hidden)
+            attn_weights.append(alpha)
+            decoder_probs.append(decoder_prob)
+
+            # prepare the next input
+            if is_train and i < trg_input.size(1) - 1:
+                trg_emb_i = trg_emb[i + 1].unsqueeze(0)
+            else:
+                top_v, top_idx = decoder_prob.data.topk(1, dim = 1)
+                # top_idx and next_index are (batch_size, 1)
+                next_index = Variable(top_idx).cuda() if torch.cuda.is_available() else Variable(top_idx)
+                trg_emb_i  = self.embedding(next_index).permute(1, 0, -1) # reshape to (1, batch_size, emb_dim)
+
+        # convert output into the right shape and make batch first
+        attn_weights    = torch.cat(attn_weights, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, src_seq_len)
+        decoder_probs   = torch.cat(decoder_probs, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
+
+        # Return final outputs, hidden states, and attention weights (for visualization)
+        return decoder_probs, hiddens, attn_weights
 
 
-        return
+        logits, new_states = self.decode(
+            inputs_var, states, get_attention=get_attention)
+        # use only last prediction
+        logits = logits.select(
+            time_dim, logits.size(time_dim) - 1).contiguous()
+        logprobs = log_softmax(logits, dim=1)
+        logprobs, words = logprobs.data.topk(k, 1)
+        new_states_list = [new_states[i] for i in range(len(input_list))]
+        return words, logprobs, new_states_list
 
     def encode(self, input_src):
         """Propogate input through the network."""
         src_emb = self.embedding(input_src)
 
         # initial encoder state, two zero-matrix as h and c at time=0
-        self.h0_encoder, self.c0_encoder = self.get_state(input_src) # (self.encoder.num_layers * self.num_directions, batch_size, self.src_hidden_dim)
+        self.h0_encoder, self.c0_encoder = self.init_encoder_state(input_src) # (self.encoder.num_layers * self.num_directions, batch_size, self.src_hidden_dim)
 
         # src_h (batch_size, seq_len, hidden_size * num_directions): outputs (h_t) of all the time steps
         # src_h_t, src_c_t (num_layers * num_directions, batch, hidden_size): hidden and cell state at last time step
@@ -414,16 +456,13 @@ class Seq2SeqLSTMAttention(nn.Module):
             Nov. 11st: update: change to pass c_t as well
             People also do that directly feed the end hidden state of encoder and initialize cell state as zeros
         '''
-        h_t, c_t = enc_hidden # (batch_size, src_hidden_dim)
 
         # get target embedding and reshape the targets to be time step first
         trg_emb = self.embedding(trg_input) # (batch_size, trg_len, src_hidden_dim)
         trg_emb  = trg_emb.permute(1, 0, 2) # (trg_len, batch_size, src_hidden_dim)
 
         # prepare the init hidden vector, (batch_size, dec_hidden_dim) -> (num_layers * num_directions, batch_size, dec_hidden_dim)
-        decoder_init_hidden = nn.Tanh()(self.encoder2decoder_hidden(h_t)).unsqueeze(0)
-        decoder_init_cell   = nn.Tanh()(self.encoder2decoder_cell(c_t)).unsqueeze(0)
-        hidden = (decoder_init_hidden, decoder_init_cell)
+        hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
 
         hiddens = []
         attn_weights = []
