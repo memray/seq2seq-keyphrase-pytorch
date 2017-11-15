@@ -176,7 +176,7 @@ def train_opts(parser):
                         help="Fix word embeddings on the encoder side.")
 
     # Optimization options
-    parser.add_argument('-batch_size', type=int, default=32,
+    parser.add_argument('-batch_size', type=int, default=192,
                         help='Maximum batch size')
     parser.add_argument('-batch_workers', type=int, default=1,
                         help='Number of workers for generating batches')
@@ -223,7 +223,7 @@ def train_opts(parser):
 
     parser.add_argument('-report_every', type=int, default=50,
                         help="Print stats at this interval.")
-    parser.add_argument('-exp_path', type=str, default="exp/kp20k.%s" % timemark,
+    parser.add_argument('-exp_path', type=str, default="exp/kp20k.%s(new training/data)" % timemark,
                         help="Path of experiment output/log/checkpoint.")
     parser.add_argument('-exp', type=str, default="kp20k",
                         help="Name of the experiment for logging.")
