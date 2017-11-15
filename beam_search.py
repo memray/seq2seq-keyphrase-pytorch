@@ -24,7 +24,7 @@ EOS = 0
 class Sequence(object):
     """Represents a complete or partial sequence."""
 
-    def __init__(self, batch_id, sentence, state, logprob, score, attention=None):
+    def __init__(self, batch_id, sentence, state, context, logprob, score, attention=None):
         """Initializes the Sequence.
 
         Args:
@@ -34,12 +34,13 @@ class Sequence(object):
           logprob: Log-probability of the sequence.
           score: Score of the sequence.
         """
-        self.batch_id = batch_id
-        self.sentence = sentence
-        self.state = state
-        self.logprob = logprob
-        self.score = score
-        self.attention = attention
+        self.batch_id   = batch_id
+        self.sentence   = sentence
+        self.state      = state
+        self.context    = context
+        self.logprob    = logprob
+        self.score      = score
+        self.attention  = attention
 
     def __cmp__(self, other):
         """Compares Sequences by score."""
@@ -144,6 +145,7 @@ class SequenceGenerator(object):
         :return:
         '''
         batch_size = len(sequences)
+
         # (batch_size, 1)
         inputs = torch.cat([Variable(torch.LongTensor([seq.sentence[-1]])) for seq in sequences]).view(batch_size, -1)
 
@@ -153,9 +155,11 @@ class SequenceGenerator(object):
             c_states = torch.cat([seq.state[1] for seq in sequences]).view(1, batch_size, -1)
             states  = (h_states, c_states)
         else:
-            states = torch.cat([self.model.embedding(seq.state[0]) for seq in sequences])
+            states = torch.cat([seq.state for seq in sequences])
 
-        return inputs, states
+        contexts = torch.cat([seq.context for seq in sequences]).view(batch_size, *sequences[0].context.size())
+
+        return inputs, states, contexts
 
     def beam_search(self, src_input, word2id):
         """Runs beam search sequence generation given input (padded word indexes)
@@ -179,22 +183,24 @@ class SequenceGenerator(object):
         # each state is (trg_seq_len, dec_hidden_dim)
         initial_input = [word2id[pykp.IO.BOS_WORD]] * batch_size
         if isinstance(dec_hidden, tuple):
+            dec_hidden = (dec_hidden[0].squeeze(0), dec_hidden[1].squeeze(0))
             initial_state = [(dec_hidden[0][i], dec_hidden[1][i]) for i in range(batch_size)]
         elif isinstance(dec_hidden, list):
             initial_state = dec_hidden
 
         partial_sequences = []
-        complete_sequences = []
+        complete_sequences = [[] for _ in range(batch_size)]
         # partial_sequences = [TopN(self.beam_size) for _ in range(batch_size)]
         # complete_sequences = [TopN(self.beam_size) for _ in range(batch_size)]
 
         for batch_i in range(batch_size):
             seq = Sequence(
-                    batch_id = batch_i,
-                    sentence=[0],
-                    state=initial_state[batch_i],
-                    logprob=0,
-                    score=0,
+                    batch_id  = batch_i,
+                    sentence  = [initial_input[batch_i]],
+                    state     = initial_state[batch_i],
+                    context   = src_context[batch_i],
+                    logprob   = 0,
+                    score     = 0,
                     attention = [])
             partial_sequences.append(seq)
 
@@ -207,62 +213,93 @@ class SequenceGenerator(object):
                 break
 
             # convert sequences into new batches to feed model
-            inputs, states = self.sequence_to_batch(partial_sequences)
+            inputs, states, contexts = self.sequence_to_batch(partial_sequences)
             words, probs, new_states, attn_weights = self.model.generate(
-                inputs, states, src_context,
-                k=self.beam_size,
+                inputs, states, contexts,
+                k=self.beam_size+1,
                 feed_all_timesteps=False,
                 return_attention=self.return_attention)
 
+            # squeeze these outputs, (batch_size, trg_len=1, K+1) -> (batch_size, K+1)
+            words = words.squeeze(1)
+            probs = probs.squeeze(1)
+            # (batch_size, trg_len=1, src_len) -> (batch_size, src_len)
+            attn_weights = attn_weights.squeeze(1)
+
             # tuple of (num_layers * num_directions, batch_size, trg_hidden_dim)=(1, batch_size, trg_hidden_dim), squeeze the first dim
             if isinstance(new_states, tuple):
-                new_states1 = new_states[0].squeeze()
-                new_states2 = new_states[1].squeeze()
-                new_states = [(new_states1[i], new_states2[i]) for i in range(batch_size)]
+                new_states1 = new_states[0].squeeze(0)
+                new_states2 = new_states[1].squeeze(0)
+                new_states = [(new_states1[i], new_states2[i]) for i in range(len(partial_sequences))]
 
-            idx = 0
             new_partial_sequences = []
 
             # For every entry in partial_sequences, find and trim to the most likely beam_size hypotheses
             for partial_id, partial_seq in enumerate(partial_sequences):
-                new_partial_seq = copy.deepcopy(partial_seq)
+                num_new_hyp = 0
 
                 # check each new beam and decide to add to hypotheses or completed list
-                for beam_i in range(self.beam_size):
-                    new_partial_seq.state = new_states[partial_id][beam_i]
-                    if self.get_attention:
-                        attention = new_partial_seq.attention + attn_weights[partial_id][beam_i]
+                for beam_i in range(self.beam_size + 1):
+                    new_partial_seq = Sequence(
+                        batch_id    =   partial_seq.batch_id,
+                        sentence    =   copy.copy(partial_seq.sentence),
+                        state       =   None,
+                        context     =   partial_seq.context,
+                        logprob     =   copy.copy(partial_seq.logprob),
+                        score       =   copy.copy(partial_seq.score),
+                        attention   =   copy.copy(partial_seq.attention)
+                    )
+
+                    # we have generated self.beam_size new hypotheses, stop generating
+                    if num_new_hyp == self.beam_size:
+                        break
+
+                    # state and attention of this partial_seq are shared by its descendant beams
+                    new_partial_seq.state = new_states[partial_id]
+                    if self.return_attention:
+                        new_partial_seq.attention.append(attn_weights[partial_id])
                     else:
-                        attention = None
+                        new_partial_seq.attention = None
 
                     w = words[partial_id][beam_i]
-                    new_partial_seq.sentence = new_partial_seq.sentence + [w]
-                    new_partial_seq.logprob  = new_partial_seq.logprob - np.log(probs[partial_id][beam_i])
-                    score = logprob
-                    k += 1
-                    num_hyp += 1
 
+                    # score=0 means this is the first word, empty the sentence
+                    if new_partial_seq.score == 0:
+                        new_partial_seq.sentence = []
+
+                    new_partial_seq.sentence.append(w)
+                    new_partial_seq.logprob  = new_partial_seq.logprob - np.log(probs[partial_id][beam_i])
+                    new_partial_seq.score    = new_partial_seq.logprob
+
+                    # if predict EOS, push it into complete_sequences
                     if w == self.eos_id:
                         if self.length_normalization_factor > 0:
                             L = self.length_normalization_const
-                            length_penalty = (L + len(sentence)) / (L + 1)
-                            score /= length_penalty ** self.length_normalization_factor
-                        beam = Sequence(sentence, state,
-                                        logprob, score, attention)
-                        complete_sequences[batch_i].push(beam)
-                        num_hyp -= 1  # we can fit another hypotheses as this one is over
+                            length_penalty = (L + len(new_partial_seq.sentence)) / (L + 1)
+                            new_partial_seq.score /= length_penalty ** self.length_normalization_factor
+                        complete_sequences[new_partial_seq.batch_id].append(new_partial_seq)
                     else:
-                        beam = Sequence(sentence, state,
-                                        logprob, score, attention)
-                        partial_sequences[batch_i].push(beam)
+                        new_partial_sequences.append(new_partial_seq)
+                        num_new_hyp += 1
+
+                # print('Finished no.%d partial sequence' % partial_id)
+                # print('\t#(hypothese) = %d' % (len(new_partial_sequences)))
+                # print('\t#(completed) = %d' % (sum([len(c) for c in complete_sequences])))
+                # pass
+
+            partial_sequences = new_partial_sequences
+            print('Round=%d  \t#(hypothese) = %d  \t#(completed) = %d' % (current_len, len(new_partial_sequences), sum([len(c) for c in complete_sequences])))
+            # print('\t#(hypothese) = %d' % (len(new_partial_sequences)))
+            # print('\t#(completed) = %d' % (sum([len(c) for c in complete_sequences])))
+
 
         # If we have no complete sequences then fall back to the partial sequences.
         # But never output a mixture of complete and partial sequences because a
         # partial sequence could have a higher score than all the complete
         # sequences.
         for batch_i in range(batch_size):
-            if not complete_sequences[batch_i].size():
-                complete_sequences[batch_i] = partial_sequences[batch_i]
-        seqs = [complete.extract(sort=True)[0]
-                for complete in complete_sequences]
-        return seqs
+            if len(complete_sequences[batch_i]) == 0:
+                complete_sequences[batch_i] = [s for s in partial_sequences if s.batch_id == batch_i]
+            complete_sequences[batch_i] = sorted(complete_sequences[batch_i], key=lambda x:x.score)
+
+        return complete_sequences

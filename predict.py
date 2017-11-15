@@ -49,32 +49,6 @@ config.init_logging(opt.exp_path + '/output.log')
 logging.info('Parameters:')
 [logging.info('%s    :    %s' % (k, str(v))) for k,v in opt.__dict__.items()]
 
-
-def predict_(model, generator, src):
-    """src_tokens is a list of sentences, each of which consists of tokenized words"""
-
-
-    # remove forced  tokens
-    preds = [s.sentence[len(self.insert_target_start):] for s in seqs]
-    output = [self.target_tok.detokenize(p[:-1]) for p in preds]
-
-    output = output[0] if flatten else output
-    if self.get_attention:
-        attentions = [s.attention for s in seqs]
-        # if target_priming is not None:
-        # preds = [preds[b][-len(attentions[b]):] for b in range(batch)]
-        attentions = attentions[0] if flatten else attentions
-
-        preds = [[self.target_tok.idx2word(
-            idx) for idx in p] for p in preds]
-        preds = preds[0] if flatten else preds
-        src = [[self.src_tok.idx2word(idx)
-                for idx in list(s)] for s in src_tok]
-        src = src[0] if flatten else src
-        return output, (attentions, src, preds)
-    else:
-        return output
-
 def predict_beam_search(model, data_loader, test_examples, opt):
     model.eval()
 
@@ -101,20 +75,20 @@ def predict_beam_search(model, data_loader, test_examples, opt):
         if torch.cuda.is_available():
             src.cuda()
 
-        output_seqs = generator.beam_search(src, opt.word2id)
+        pred_seqs = generator.beam_search(src, opt.word2id)
 
         progbar.update(None, i, [])
 
         logging.info('======================  %d  =========================' % (i + 1))
-        logging.info('\t\tReal : %s ' % (sentence_real))
-        for seq in output_seqs:
-            sentence_pred = [opt.id2word[x] for x in seq]
-            sentence_real = example['trg_str']
+        for pred_seq, true_seq in zip(pred_seqs, test_examples):
+            sentence_real = true_seq['trg_str']
+            sentence_pred = [([opt.id2word[x] for x in seq.sentence], seq.score) for seq in pred_seq[:5]]
+            logging.info('\t\tReal : %s \n' % (sentence_real))
 
-            if '</s>' in sentence_real:
-                index = sentence_real.index('</s>')
-                sentence_pred = sentence_pred[:index]
-            logging.info('\t\tPredicted : %s ' % (' '.join(sentence_pred)))
+            logging.info('\t\tTop 5 predicted sequences: ')
+
+            for words, score in sentence_pred:
+                logging.info('\t\t[%.4f]\t%s' % (score, ' '.join(words)))
 
 def predict_greedy(model, data_loader, test_examples, opt):
     model.eval()
