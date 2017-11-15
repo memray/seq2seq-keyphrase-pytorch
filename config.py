@@ -223,9 +223,9 @@ def train_opts(parser):
 
     parser.add_argument('-report_every', type=int, default=50,
                         help="Print stats at this interval.")
-    parser.add_argument('-exp_path', type=str, default="exp/stackexchange.%s(new training&data,bi-directional)" % timemark,
+    parser.add_argument('-exp_path', type=str, default="exp/kp20k.%s(new training&data,bi-directional)" % timemark,
                         help="Path of experiment output/log/checkpoint.")
-    parser.add_argument('-exp', type=str, default="stackexchange",
+    parser.add_argument('-exp', type=str, default="kp20k",
                         help="Name of the experiment for logging.")
 
 
