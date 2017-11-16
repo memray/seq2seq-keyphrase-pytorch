@@ -203,7 +203,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             if opt.max_grad_norm > 0:
                 pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
                 after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
-                # logging.info('clip grad (%e -> %f)' % (pre_norm, after_norm))
+                logging.info('clip grad (%e -> %f)' % (pre_norm, after_norm))
             optimizer.step()
 
             train_losses.append(loss.data[0])
@@ -212,7 +212,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
 
             if batch_i > 1 and batch_i % opt.report_every == 0:
                 logging.info('Epoch : %d Minibatch : %d Loss : %.5f' % (epoch, batch_i, np.mean(loss.data[0])))
-                logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
+                # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
                 # logging.info('grad norm = %e' % (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2))
                 sampled_size = 2
                 logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
@@ -342,14 +342,22 @@ def load_train_valid_data(opt):
     opt.id2word = id2word
     opt.vocab   = vocab
 
+
+    logging.info('======================  Dataset  =========================')
+    logging.info('#(training data pairs)=%d' % len(training_data_loader.dataset))
+    logging.info('#(validation data pairs)=%d' % len(validation_data_loader.dataset))
+    logging.info('#(vocab)=%d' % len(vocab))
+    logging.info('#(vocab used)=%d' % opt.vocab_size)
+
     return training_data_loader, validation_data_loader, word2id, id2word, vocab
 
 def init_optimizer_criterion(model, opt):
     # mask the BOS <s> and PAD <pad> when computing loss
-    weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
-    weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
-    weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
-    criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
+    # weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
+    # weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
+    # weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
+    # criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
+    criterion = torch.nn.CrossEntropyLoss()
 
     optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
 
@@ -371,6 +379,8 @@ def init_model(word2id, config):
         nlayers_trg=config.dec_layers,
         dropout=config.dropout,
     )
+
+    logging.info('======================  Model Parameters  =========================')
     utils.tally_parameters(model)
 
     return model
