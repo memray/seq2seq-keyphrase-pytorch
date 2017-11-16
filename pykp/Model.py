@@ -462,9 +462,9 @@ class Seq2SeqLSTMAttention(nn.Module):
             No transformation for cell state c_t. Pass directly to decoder.
             Nov. 11st: update: change to pass c_t as well
             People also do that directly feed the end hidden state of encoder and initialize cell state as zeros
-        :param is_train:  if is_train=True, we apply teacher forcing for training (which significantly speed up the training at the beginning)
-                            otherwise we use model's own predictions as the next input, times of iteration still depend on the length of trg_input (flexiable to one-time prediction, just input a one-word-long tensor initialized with zeros)
-                            (TODO: we could simply add training without teacher forcing later)
+        :param is_train:  if is_train=True, we apply teacher forcing for training
+                otherwise we use model's own predictions as the next input, times of iteration still depend on the length of trg_input (flexiable to one-time prediction, just input a one-word-long tensor initialized with zeros)
+                (TODO: we could simply add training without teacher forcing later)
         '''
 
         # get target embedding and reshape the targets to be time step first
@@ -476,7 +476,8 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         hiddens = []
         attn_weights = []
-        decoder_probs = []
+        # decoder_probs = []
+        decoder_logits = []
 
         # context vector ctx0 is outputs of encoder (src_len, batch_size, hidden_size * num_directions)
         enc_context = enc_context.permute(1, 0, 2)
@@ -494,27 +495,29 @@ class Seq2SeqLSTMAttention(nn.Module):
 
             # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
             decoder_logit = self.decoder2vocab(h_tilde) # (batch_size, vocab_size)
-            decoder_prob  = func.softmax(decoder_logit) # (batch_size, vocab_size)
+            # decoder_prob  = func.softmax(decoder_logit) # (batch_size, vocab_size)
 
             hiddens.append(hidden)
             attn_weights.append(alpha)
-            decoder_probs.append(decoder_prob)
+            decoder_logits.append(decoder_logit)
+            # decoder_probs.append(decoder_prob)
 
             # prepare the next input
             if is_train and i < trg_input.size(1) - 1:
                 trg_emb_i = trg_emb[i + 1].unsqueeze(0)
             else:
-                top_v, top_idx = decoder_prob.data.topk(1, dim = 1)
+                top_v, top_idx = decoder_logit.data.topk(1, dim = 1)
                 # top_idx and next_index are (batch_size, 1)
                 next_index = Variable(top_idx).cuda() if torch.cuda.is_available() else Variable(top_idx)
                 trg_emb_i  = self.embedding(next_index).permute(1, 0, -1) # reshape to (1, batch_size, emb_dim)
 
         # convert output into the right shape and make batch first
         attn_weights    = torch.cat(attn_weights, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, src_seq_len)
-        decoder_probs   = torch.cat(decoder_probs, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
+        decoder_logits  = torch.cat(decoder_logits, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
+        # decoder_probs   = torch.cat(decoder_probs, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
 
         # Return final outputs, hidden states, and attention weights (for visualization)
-        return decoder_probs, hiddens, attn_weights
+        return decoder_logits, hiddens, attn_weights
 
     def forward_(self, input_src, input_trg, trg_mask=None, ctx_mask=None, ):
         """Propogate input through the network."""

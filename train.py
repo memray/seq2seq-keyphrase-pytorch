@@ -190,19 +190,20 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 trg.cuda()
 
             optimizer.zero_grad()
-            decoder_probs, _, _ = model.forward(src, trg, is_train=True)
+            decoder_logits, _, _ = model.forward(src, trg, is_train=True)
 
             # simply average losses of all the predicitons
+            # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
             loss = criterion(
-                decoder_probs.contiguous().view(-1, opt.vocab_size),
+                decoder_logits.contiguous().view(-1, opt.vocab_size),
                 trg.view(-1)
             )
 
             loss.backward()
             if opt.max_grad_norm > 0:
-                pre_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
-                after_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
-                logging.info('clip grad (%e -> %f)' % (pre_norm, after_norm))
+                pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
+                after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
+                # logging.info('clip grad (%e -> %f)' % (pre_norm, after_norm))
             optimizer.step()
 
             train_losses.append(loss.data[0])
@@ -211,24 +212,31 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
 
             if batch_i > 1 and batch_i % opt.report_every == 0:
                 logging.info('Epoch : %d Minibatch : %d Loss : %.5f' % (epoch, batch_i, np.mean(loss.data[0])))
-                logging.info('grad norm = %e' % (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2))
+                logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
+                # logging.info('grad norm = %e' % (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2))
                 sampled_size = 2
                 logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
+                # softmax logits to get probabilities (batch_size, trg_len, vocab_size)
+                decoder_probs = torch.nn.functional.softmax(decoder_logits.view(trg.size(0) * trg.size(1), -1)).view(*trg.size(), -1)
                 if torch.cuda.is_available():
-                    max_words_pred = decoder_probs.data.cpu().numpy().argmax(axis=-1)
+                    decoder_probs = decoder_probs.data.cpu().numpy()
+                    max_words_pred = decoder_probs.argmax(axis=-1)
                     trg = trg.data.cpu().numpy()
                 else:
-                    max_words_pred = decoder_probs.data.numpy().argmax(axis=-1)
+                    decoder_probs = decoder_probs.data.numpy()
+                    max_words_pred = decoder_probs.argmax(axis=-1)
                     trg = trg.data.numpy()
 
                 sampled_trg_idx = np.random.random_integers(low=0, high=len(trg) - 1, size=sampled_size)
-                max_words_pred = [max_words_pred[i] for i in sampled_trg_idx]
+                max_words_pred  = [max_words_pred[i] for i in sampled_trg_idx]
+                decoder_probs   = decoder_probs[sampled_trg_idx]
                 trg = [trg[i] for i in sampled_trg_idx]
 
-                for i, (sentence_pred, sentence_real) in enumerate(zip(max_words_pred, trg)):
-                    sentence_pred = [opt.id2word[x] for x in sentence_pred]
-                    sentence_real = [opt.id2word[x] for x in sentence_real]
+                for i, (pred_wi, real_wi) in enumerate(zip(max_words_pred, trg)):
+                    nll_prob = -np.sum(np.log2([decoder_probs[i][l][pred_wi[l]] for l in range(len(real_wi))]))
+                    sentence_pred = [opt.id2word[x] for x in pred_wi]
+                    sentence_real = [opt.id2word[x] for x in real_wi]
 
                     if '</s>' in sentence_real:
                         index = sentence_real.index('</s>')
@@ -236,7 +244,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                         sentence_pred = sentence_pred[:index]
 
                     logging.info('======================  %d  =========================' % (i + 1))
-                    logging.info('\t\tPredicted : %s ' % (' '.join(sentence_pred)))
+                    logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob))
                     logging.info('\t\tReal : %s ' % (' '.join(sentence_real)))
 
             if total_batch > 1 and total_batch % opt.run_valid_every == 0:
@@ -247,7 +255,6 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 train_history_losses.append(train_losses)
                 valid_history_losses.append(valid_losses)
                 train_losses = []
-                valid_losses = []
 
                 # Plot the learning curve
                 plot_learning_curve(train_history_losses, valid_history_losses, 'Training and Validation',
@@ -339,11 +346,10 @@ def load_train_valid_data(opt):
 
 def init_optimizer_criterion(model, opt):
     # mask the BOS <s> and PAD <pad> when computing loss
-    # weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
-    # weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
-    # weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
-    # criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
-    criterion = torch.nn.CrossEntropyLoss()
+    weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
+    weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
+    weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
+    criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
 
     optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
 
