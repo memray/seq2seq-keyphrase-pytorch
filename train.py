@@ -82,6 +82,18 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
 
         decoder_probs, _, _ = model.forward(src, trg)
 
+        '''
+        # (deprecated, mask both BOS and PAD in criterion) I remove the <BOS> for trg and the last prediction in decoder_logit for calculating loss (make all the words move 1 word left)
+        logit_idx = Variable(
+            torch.LongTensor(range(batch.trg.size(1) - 1))).cuda() if torch.cuda.is_available() else Variable(
+            torch.LongTensor(range(batch.trg.size(1) - 1)))
+        trg_idx = Variable(
+            torch.LongTensor(range(1, batch.trg.size(1)))).cuda() if torch.cuda.is_available() else Variable(
+            torch.LongTensor(range(1, batch.trg.size(1))))
+
+        decoder_probs = decoder_probs.permute(1, 0, -1).index_select(0, logit_idx).permute(1, 0, -1)
+        trg = trg.permute(1, 0).index_select(0, trg_idx).permute(1, 0).contiguous()
+        '''
         # simply average losses of all the predicitons
         # I remove the <SOS> for trg and the last prediction in decoder_logit for calculating loss (make all the words move 1 word left)
         logit_idx = Variable(torch.LongTensor(range(batch.trg.size(1) - 1))).cuda() if torch.cuda.is_available() else Variable(torch.LongTensor(range(batch.trg.size(1) - 1)))
@@ -177,27 +189,15 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 src.cuda()
                 trg.cuda()
 
+            optimizer.zero_grad()
             decoder_probs, _, _ = model.forward(src, trg)
 
-            '''
-            # (deprecated, mask both BOS and PAD in criterion) I remove the <BOS> for trg and the last prediction in decoder_logit for calculating loss (make all the words move 1 word left)
-            logit_idx = Variable(
-                torch.LongTensor(range(batch.trg.size(1) - 1))).cuda() if torch.cuda.is_available() else Variable(
-                torch.LongTensor(range(batch.trg.size(1) - 1)))
-            trg_idx = Variable(
-                torch.LongTensor(range(1, batch.trg.size(1)))).cuda() if torch.cuda.is_available() else Variable(
-                torch.LongTensor(range(1, batch.trg.size(1))))
-
-            decoder_probs = decoder_probs.permute(1, 0, -1).index_select(0, logit_idx).permute(1, 0, -1)
-            trg = trg.permute(1, 0).index_select(0, trg_idx).permute(1, 0).contiguous()
-            '''
             # simply average losses of all the predicitons
             loss = criterion(
                 decoder_probs.contiguous().view(-1, opt.vocab_size),
                 trg.view(-1)
             )
 
-            optimizer.zero_grad()
             loss.backward()
             if opt.max_grad_norm > 0:
                 # print('clip grad (%e -> %f)' % ((sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2), opt.max_grad_norm))
