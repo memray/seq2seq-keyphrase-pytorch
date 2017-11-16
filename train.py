@@ -80,7 +80,8 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             src.cuda()
             trg.cuda()
 
-        decoder_probs, _, _ = model.forward(src, trg, is_train=is_train)
+        # decoder_probs, _, _ = model.forward(src, trg, is_train=is_train)
+        decoder_probs, _, _ = model.forward_(src, trg)
 
         '''
         # (deprecated, mask both BOS and PAD in criterion) I remove the <BOS> for trg and the last prediction in decoder_logit for calculating loss (make all the words move 1 word left)
@@ -190,7 +191,8 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 trg.cuda()
 
             optimizer.zero_grad()
-            decoder_logits, _, _ = model.forward(src, trg, is_train=True)
+            # decoder_logits, _, _ = model.forward(src, trg, is_train=True)
+            decoder_logits, _, _ = model.forward_(src, trg)
 
             # simply average losses of all the predicitons
             # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
@@ -335,7 +337,8 @@ def load_train_valid_data(opt):
     else:
         device = -1
 
-    training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True,  repeat=False, shuffle=True, sort=False, device = device)
+    training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=False, shuffle=False, sort=False, device=device)
+    # training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True,  repeat=False, shuffle=True, sort=False, device = device)
     validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, shuffle=True, sort=True, device = device)
 
     opt.word2id = word2id

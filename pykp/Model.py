@@ -80,15 +80,15 @@ class SoftConcatAttention(nn.Module):
             return energy
 
         elif self.method == 'concat':
-            energy = self.attn(torch.cat((hidden, encoder_output), 1))
-            energy = torch.matmul(energy, self.v.t())
+            energy = self.attn(torch.cat((hidden, encoder_output), 1)) # [hidden=(batch_size, dec_hidden_dim), encoder_output=(batch_size, enc_hidden_dim)] -> (batch_size, dec_hidden_dim)
+            energy = torch.matmul(energy, self.v.t()) # return the energy of the k time step for all srcs in batch (batch_size, dec_hidden_dim) * (dec_hidden_dim, 1) -> (batch_size, 1)
             return energy
 
     def forward(self, hidden, encoder_outputs):
         '''
         Compute the attention and h_tilde
         :param hidden:
-        :param encoder_outputs:
+        :param encoder_outputs: should be (src_len, batch_size, enc_hidden_dim)
         :return:
         '''
 
@@ -103,14 +103,14 @@ class SoftConcatAttention(nn.Module):
         for i in range(encoder_outputs.size(0)):
             attn_energies[i] = self.score(hidden, encoder_outputs[i])
 
-        # Normalize energies to weights in range 0 to 1, resize to batch_size * src_seq_len
+        # Normalize energies to weights in range 0 to 1, transpose to (batch_size * src_seq_len)
         attn = torch.nn.functional.softmax(attn_energies.t())
 
         # get the weighted context, (batch_size, src_layer_number * src_encoder_dim)
         weighted_context = torch.bmm(encoder_outputs.permute(1, 2, 0), attn.unsqueeze(2)).squeeze(2)  # (batch_size, src_hidden_dim * num_directions)
 
-        # get h_tilde by = tanh(W_c[c_t, h_t])
-        # hidden = hidden.squeeze() # (batch_size, trg_hidden_dim)
+        # get h_tilde by = tanh(W_c[c_t, h_t]), both hidden and h_tilde are (batch_size, trg_hidden_dim)
+        # hidden = hidden.squeeze()
         h_tilde = torch.cat((weighted_context, hidden), 1)
         h_tilde = self.tanh(self.linear_out(h_tilde)) # (batch_size, trg_hidden_dim)
 
@@ -139,7 +139,7 @@ class SoftConcatAttention(nn.Module):
 
         return h_tilde, attn
 
-class LSTMAttentionDot(nn.Module):
+class LSTMAttentionConcat(nn.Module):
     """
     A long short-term memory (LSTM) cell with attention.
     Return the hidden output (h_tilde) of each time step, same as the normal LSTM layer. Will get the decoder_logit by softmax in the outer loop
@@ -149,23 +149,23 @@ class LSTMAttentionDot(nn.Module):
 
     def __init__(self, input_size, src_hidden_size, trg_hidden_size):
         """Initialize params."""
-        super(LSTMAttentionDot, self).__init__()
+        super(LSTMAttentionConcat, self).__init__()
         self.input_size = input_size
         self.hidden_size = trg_hidden_size
         self.num_layers = 1
 
         self.attention_layer = SoftConcatAttention(src_hidden_size, trg_hidden_size)
 
-        # (deprecated) for manual LSTM recurrence
-        # self.input_weights = nn.Linear(input_size, 4 * trg_hidden_size)
-        # self.hidden_weights = nn.Linear(trg_hidden_size, 4 * trg_hidden_size)
+        # for manual LSTM recurrence
+        self.input_weights = nn.Linear(input_size, 4 * trg_hidden_size)
+        self.hidden_weights = nn.Linear(trg_hidden_size, 4 * trg_hidden_size)
 
     def forward(self, input, hidden, ctx, ctx_mask=None):
         """
         Propogate input through the network.
             input: embedding of targets (ground-truth), batch must come first (batch_size, seq_len, hidden_size * num_directions)
             hidden = (h0, c0): hidden (converted from the end hidden state of encoder) and cell (end cell state of encoder) vectors, (seq_len, batch_size, hidden_size * num_directions)
-            ctx: context vectors for attention: hidden vectors of encoder for all the time steps(seq_len, batch_size, hidden_size * num_directions)
+            ctx: context vectors for attention: hidden vectors of encoder for all the time steps (seq_len, batch_size, hidden_size * num_directions)
             ctx_mask
         """
         def recurrence(x, last_hidden):
@@ -190,34 +190,22 @@ class LSTMAttentionDot(nn.Module):
             ht = outgate * func.tanh(ct)
 
             # update ht with attention
-            h_tilde, alpha = self.attention_layer(ht, ctx.transpose(0, 1))
+            h_tilde, alpha = self.attention_layer(ht, ctx)
 
             return h_tilde, (ht, ct)
 
         '''
-        if input is not None, means it's training (teacher forcing)
-            otherwise it's predicting (as well later we can add training without teacher forcing)
+        current training is teacher forcing (later we can add training without teacher forcing)
         '''
-        if input:
-            # reshape the targets to be time step first
-            input = input.permute(1, 0, 2)
-            output = []
-            # iterate each time step of target sequences and generate decode outputs
-            for i in range(input.size(0)):
-                # Get the h_tilde for output and new hidden for next time step, x=input[i], last_hidden=hidden
-                h_tilde, hidden = recurrence(input[i], hidden)
-                # compute the output with h_tilde: p_x = Softmax(W_s * h_tilde)
-                output.append(h_tilde)
-        else:
-            # reshape the targets to be time step first
-            output = []
-            # iterate each time step of target sequences and generate decode outputs
-            for i in range(input.size(0)):
-                # Get the h_tilde for output and new hidden for next time step, x=input[i], last_hidden=hidden
-                h_tilde, hidden = recurrence(input[i], hidden)
-                # compute the output with h_tilde: p_x = Softmax(W_s * h_tilde)
-                output.append(h_tilde)
-
+        # reshape the targets to be time step first
+        input = input.permute(1, 0, 2)
+        output = []
+        # iterate each time step of target sequences and generate decode outputs
+        for i in range(input.size(0)):
+            # Get the h_tilde for output and new hidden for next time step, x=input[i], last_hidden=hidden
+            h_tilde, hidden = recurrence(input[i], hidden)
+            # compute the output with h_tilde: p_x = Softmax(W_s * h_tilde)
+            output.append(h_tilde)
 
         # convert output into the right shape
         output = torch.cat(output, 0).view(input.size(0), *output[0].size())
@@ -226,7 +214,6 @@ class LSTMAttentionDot(nn.Module):
 
         # return the outputs of each time step and the hidden vector of last time step
         return output, hidden
-
 
 class Seq2SeqLSTMAttention(nn.Module):
     """Container module with an encoder, deocder, embeddings."""
@@ -289,7 +276,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         self.attention_layer = SoftConcatAttention(self.src_hidden_dim * self.num_directions, trg_hidden_dim)
 
-        self.attention_decoder = LSTMAttentionDot(
+        self.attention_decoder = LSTMAttentionConcat(
             emb_dim,
             self.src_hidden_dim * self.num_directions,
             trg_hidden_dim
@@ -525,7 +512,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         # Return final outputs, hidden states, and attention weights (for visualization)
         return decoder_logits, hiddens, attn_weights
 
-    def forward_(self, input_src, input_trg, trg_mask=None, ctx_mask=None, ):
+    def forward_(self, input_src, input_trg, trg_mask=None, ctx_mask=None):
         """Propogate input through the network."""
         src_emb = self.embedding(input_src)
         trg_emb = self.embedding(input_trg)
@@ -561,7 +548,9 @@ class Seq2SeqLSTMAttention(nn.Module):
         # output, (hidden, cell)
         trg_h, (_, _) = self.attention_decoder(
             trg_emb,
-            (decoder_init_hidden, decoder_init_cell)
+            (decoder_init_hidden, decoder_init_cell),
+            ctx,
+            ctx_mask
         )
 
         # flatten the trg_output, feed into the readout layer, and get the decoder_logit
