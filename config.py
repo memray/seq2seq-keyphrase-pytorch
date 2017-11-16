@@ -194,7 +194,7 @@ def train_opts(parser):
     parser.add_argument('-truncated_decoder', type=int, default=0,
                         help="""Truncated bptt.""")
     # learning rate
-    parser.add_argument('-learning_rate', type=float, default=0.01,
+    parser.add_argument('-learning_rate', type=float, default=0.1,
                         help="""Starting learning rate.
                         Recommended settings: sgd = 1, adagrad = 0.1,
                         adadelta = 1, adam = 0.001""")
