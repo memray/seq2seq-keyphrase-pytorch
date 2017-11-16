@@ -12,4 +12,4 @@
 #module restore
 
 # Run the job
-srun python -m train -data data/kp20k/kp20k.train_valid.pt -vocab data/kp20k/kp20k.vocab.pt -bidirectional -exp_path "exp/kp20k.updated_training_data.bi-directional.%s" -exp "kp20k"
+srun python -m train -data data/kp20k/kp20k.train_valid.pt -vocab data/kp20k/kp20k.vocab.pt -bidirectional -exp_path "exp/kp20k.updated_training_data.bi-directional.%s" -exp "kp20k" -batch_size 192
