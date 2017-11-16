@@ -96,10 +96,10 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
         '''
         # simply average losses of all the predicitons
         # I remove the <SOS> for trg and the last prediction in decoder_logit for calculating loss (make all the words move 1 word left)
-        logit_idx = Variable(torch.LongTensor(range(batch.trg.size(1) - 1))).cuda() if torch.cuda.is_available() else Variable(torch.LongTensor(range(batch.trg.size(1) - 1)))
-        trg_idx   = Variable(torch.LongTensor(range(1, batch.trg.size(1)))).cuda() if torch.cuda.is_available() else Variable(torch.LongTensor(range(1, batch.trg.size(1))))
-        decoder_probs = decoder_probs.permute(1, 0, -1).index_select(0, logit_idx).permute(1, 0, -1)
-        trg           = trg.permute(1, 0).index_select(0, trg_idx).permute(1, 0).contiguous()
+        # logit_idx = Variable(torch.LongTensor(range(batch.trg.size(1) - 1))).cuda() if torch.cuda.is_available() else Variable(torch.LongTensor(range(batch.trg.size(1) - 1)))
+        # trg_idx   = Variable(torch.LongTensor(range(1, batch.trg.size(1)))).cuda() if torch.cuda.is_available() else Variable(torch.LongTensor(range(1, batch.trg.size(1))))
+        # decoder_probs = decoder_probs.permute(1, 0, -1).index_select(0, logit_idx).permute(1, 0, -1)
+        # trg           = trg.permute(1, 0).index_select(0, trg_idx).permute(1, 0).contiguous()
         loss = criterion(
             decoder_probs.contiguous().view(-1, opt.vocab_size),
             trg.view(-1)
@@ -190,7 +190,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 trg.cuda()
 
             optimizer.zero_grad()
-            decoder_probs, _, _ = model.forward(src, trg)
+            decoder_probs, _, _ = model.forward(src, trg, is_train=True)
 
             # simply average losses of all the predicitons
             loss = criterion(
@@ -200,8 +200,9 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
 
             loss.backward()
             if opt.max_grad_norm > 0:
-                # print('clip grad (%e -> %f)' % ((sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2), opt.max_grad_norm))
-                torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
+                pre_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
+                after_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
+                logging.info('clip grad (%e -> %f)' % (pre_norm, after_norm))
             optimizer.step()
 
             train_losses.append(loss.data[0])
@@ -338,10 +339,11 @@ def load_train_valid_data(opt):
 
 def init_optimizer_criterion(model, opt):
     # mask the BOS <s> and PAD <pad> when computing loss
-    weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
-    weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
-    weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
-    criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
+    # weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
+    # weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
+    # weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
+    # criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
+    criterion = torch.nn.CrossEntropyLoss()
 
     optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
 

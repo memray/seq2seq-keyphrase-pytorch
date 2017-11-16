@@ -176,7 +176,7 @@ def train_opts(parser):
                         help="Fix word embeddings on the encoder side.")
 
     # Optimization options
-    parser.add_argument('-batch_size', type=int, default=256,
+    parser.add_argument('-batch_size', type=int, default=32,
                         help='Maximum batch size')
     parser.add_argument('-batch_workers', type=int, default=1,
                         help='Number of workers for generating batches')
@@ -194,7 +194,7 @@ def train_opts(parser):
     parser.add_argument('-truncated_decoder', type=int, default=0,
                         help="""Truncated bptt.""")
     # learning rate
-    parser.add_argument('-learning_rate', type=float, default=0.001,
+    parser.add_argument('-learning_rate', type=float, default=0.01,
                         help="""Starting learning rate.
                         Recommended settings: sgd = 1, adagrad = 0.1,
                         adadelta = 1, adam = 0.001""")

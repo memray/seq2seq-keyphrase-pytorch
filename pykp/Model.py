@@ -340,9 +340,12 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return decoder_init_hidden, decoder_init_cell
 
-    def forward(self, input_src, input_trg, trg_mask=None, ctx_mask=None):
+    def forward(self, input_src, input_trg, trg_mask=None, ctx_mask=None, is_train=True):
+        '''
+        :param is_train: if True, it would apply teacher forcing (which significantly speed up the training at the beginning)
+        '''
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
-        decoder_probs, hiddens, attn_weights = self.decode(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask)
+        decoder_probs, hiddens, attn_weights = self.decode(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, is_train=is_train)
         return decoder_probs, hiddens, attn_weights
 
     def greedy_predict(self, input_src, max_sent_length=10, trg_mask=None, ctx_mask=None):
@@ -453,12 +456,15 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return src_h, (h_t, c_t)
 
-    def decode(self, trg_input, enc_context, enc_hidden, trg_mask, ctx_mask, is_train=False):
+    def decode(self, trg_input, enc_context, enc_hidden, trg_mask, ctx_mask, is_train=True):
         '''
         Initial decoder state h0 (batch_size, trg_hidden_size), converted from h_t of encoder (batch_size, src_hidden_size * num_directions) through a linear layer
             No transformation for cell state c_t. Pass directly to decoder.
             Nov. 11st: update: change to pass c_t as well
             People also do that directly feed the end hidden state of encoder and initialize cell state as zeros
+        :param is_train:  if is_train=True, we apply teacher forcing for training (which significantly speed up the training at the beginning)
+                            otherwise we use model's own predictions as the next input, times of iteration still depend on the length of trg_input (flexiable to one-time prediction, just input a one-word-long tensor initialized with zeros)
+                            (TODO: we could simply add training without teacher forcing later)
         '''
 
         # get target embedding and reshape the targets to be time step first
@@ -476,8 +482,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         enc_context = enc_context.permute(1, 0, 2)
 
         # iterate each time step of target sequences and generate decode outputs
-        # if is_train=True, we apply teacher forcing for training (TODO: we could simply add training without teacher forcing later)
-        #       otherwise we use model's own predictions as the next input, times of iteration still depend on the length of trg_input (flexiable to one-time prediction, just input a one-word-long tensor initialized with zeros)
         trg_emb_i = trg_emb[0].unsqueeze(0)
         for i in range(trg_input.size(1)):
             # (seq_len, batch_size, hidden_size * num_directions)
