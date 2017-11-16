@@ -289,6 +289,12 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         self.attention_layer = SoftConcatAttention(self.src_hidden_dim * self.num_directions, trg_hidden_dim)
 
+        self.attention_decoder = LSTMAttentionDot(
+            emb_dim,
+            self.src_hidden_dim * self.num_directions,
+            trg_hidden_dim
+        )
+
         self.encoder2decoder_hidden = nn.Linear(
             self.src_hidden_dim * self.num_directions,
             trg_hidden_dim
@@ -525,7 +531,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         trg_emb = self.embedding(input_trg)
 
         # initial encoder state, two zero-matrix as h and c at time=0
-        self.h0_encoder, self.c0_encoder = self.get_state(input_src) # (self.encoder.num_layers * self.num_directions, batch_size, self.src_hidden_dim)
+        self.h0_encoder, self.c0_encoder = self.init_encoder_state(input_src) # (self.encoder.num_layers * self.num_directions, batch_size, self.src_hidden_dim)
 
         # src_h (batch_size, seq_len, hidden_size * num_directions): outputs (h_t) of all the time steps
         # src_h_t, src_c_t (num_layers * num_directions, batch, hidden_size): hidden and cell state at last time step
@@ -553,12 +559,11 @@ class Seq2SeqLSTMAttention(nn.Module):
         ctx = src_h.transpose(0, 1)
 
         # output, (hidden, cell)
-        trg_h, (_, _) = self.decoder(
+        trg_h, (_, _) = self.attention_decoder(
             trg_emb,
-            (decoder_init_hidden, decoder_init_cell),
-            ctx,
-            ctx_mask
+            (decoder_init_hidden, decoder_init_cell)
         )
+
         # flatten the trg_output, feed into the readout layer, and get the decoder_logit
         # (batch_size, trg_length, trg_hidden_size) -> (batch_size * trg_length, trg_hidden_size)
         trg_h_reshape = trg_h.contiguous().view(
@@ -574,7 +579,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             trg_h.size()[1],
             decoder_logit.size()[1]
         )
-        return decoder_logit
+        return decoder_logit, None, None
 
     def logit2prob(self, logits):
         """Return probability distribution over words."""

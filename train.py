@@ -80,7 +80,7 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             src.cuda()
             trg.cuda()
 
-        decoder_probs, _, _ = model.forward(src, trg)
+        decoder_probs, _, _ = model.forward(src, trg, is_train=is_train)
 
         '''
         # (deprecated, mask both BOS and PAD in criterion) I remove the <BOS> for trg and the last prediction in decoder_logit for calculating loss (make all the words move 1 word left)
@@ -200,10 +200,10 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             )
 
             loss.backward()
-            if opt.max_grad_norm > 0:
-                pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
-                after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
-                logging.info('clip grad (%e -> %f)' % (pre_norm, after_norm))
+            # if opt.max_grad_norm > 0:
+            #     pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
+            #     after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
+            #     logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
             optimizer.step()
 
             train_losses.append(loss.data[0])
@@ -335,13 +335,12 @@ def load_train_valid_data(opt):
     else:
         device = -1
 
-    training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True,  repeat=False, shuffle=True, sort=True, device = device)
+    training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True,  repeat=False, shuffle=True, sort=False, device = device)
     validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, shuffle=True, sort=True, device = device)
 
     opt.word2id = word2id
     opt.id2word = id2word
     opt.vocab   = vocab
-
 
     logging.info('======================  Dataset  =========================')
     logging.info('#(training data pairs)=%d' % len(training_data_loader.dataset))
@@ -353,13 +352,15 @@ def load_train_valid_data(opt):
 
 def init_optimizer_criterion(model, opt):
     # mask the BOS <s> and PAD <pad> when computing loss
-    # weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
-    # weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
-    # weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
-    # criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
-    criterion = torch.nn.CrossEntropyLoss()
+    weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
+    weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
+    weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
+    criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
+    # criterion = torch.nn.CrossEntropyLoss()
 
     optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
+    # optimizer = torch.optim.Adadelta(model.parameters(), lr=0.1)
+    # optimizer = torch.optim.RMSprop(model.parameters(), lr=0.1)
 
     return optimizer, criterion
 
