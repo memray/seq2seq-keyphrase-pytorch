@@ -16,3 +16,57 @@ The new implementation with old model (Seq2SeqLSTMAttentionOld) and weight mask:
 
 The new implementation with new model (Seq2SeqLSTMAttention) and weight mask, and it cannot predict anything other than </s>:
 11/16/2017 23:59:09 [INFO] utils: Training Epoch=1 -100/415 (24.10%)[......(-w-)~~~~~~~~~~~~~~~~~~~~~~~] - Run-time: 2240s - ETA: 7056s - train_loss: 6.5890
+
+
+Epoch 3 and batch 1000
+
+
+without weight mask:
+11/17/2017 11:48:32 [INFO] utils: Training Epoch=3 -170/415 (40.96%)[...........(-w-)~~~~~~~~~~~~~~~~~~] - Run-time: 2914s - ETA: 4200s - loss: 1.0531
+11/17/2017 11:48:32 [INFO] train: Epoch : 3 Minibatch : 170 Loss : 1.05328
+11/17/2017 11:48:32 [INFO] train: Printing predictions on 2 sampled examples by greedy search
+decode elapsed time: 0.868522
+11/17/2017 11:48:33 [INFO] train: ======================  1  =========================
+11/17/2017 11:48:33 [INFO] train: 		Predicted : <s> differential evolution
+11/17/2017 11:48:33 [INFO] train: 		Real : <s> differential evolution
+11/17/2017 11:48:33 [INFO] train: ======================  2  =========================
+11/17/2017 11:48:33 [INFO] train: 		Predicted : <s> flexible negotiation
+11/17/2017 11:48:33 [INFO] train: 		Real : <s> uncertain disturbance 
+
+with weight mask:
+11/17/2017 11:48:31 [INFO] utils: Training Epoch=3 -170/415 (40.96%)[...........(-w-)~~~~~~~~~~~~~~~~~~] - Run-time: 2914s - ETA: 4200s - loss: 1.3813
+11/17/2017 11:48:31 [INFO] train: Epoch : 3 Minibatch : 170 Loss : 1.38610
+11/17/2017 11:48:31 [INFO] train: Printing predictions on 2 sampled examples by greedy search
+decode elapsed time: 0.868821
+11/17/2017 11:48:32 [INFO] train: ======================  1  =========================
+11/17/2017 11:48:32 [INFO] train: 		Predicted : maximum reuse signature
+11/17/2017 11:48:32 [INFO] train: 		Real : <s> reuse signature
+11/17/2017 11:48:32 [INFO] train: ======================  2  =========================
+11/17/2017 11:48:32 [INFO] train: 		Predicted : maximum chalice activity
+11/17/2017 11:48:32 [INFO] train: 		Real : <s> carcinogenic activity
+
+The new implementation with old model (Seq2SeqLSTMAttentionOld) and weight mask:
+11/17/2017 09:50:51 [INFO] utils: Training Epoch=3 -170/415 (40.96%)[...........(-w-)~~~~~~~~~~~~~~~~~~] - Run-time: 4110s - ETA: 5924s - train_loss: 1.2949
+elapsed time: 0.003360
+11/17/2017 09:50:51 [INFO] train: Epoch : 3 Minibatch : 170 Loss : 1.05354
+11/17/2017 09:50:51 [INFO] train: Printing predictions on 2 sampled examples by greedy search
+11/17/2017 09:50:53 [INFO] train: ======================  1  =========================
+11/17/2017 09:50:53 [INFO] train: 		Pred : e cast (11.1969)
+11/17/2017 09:50:53 [INFO] train: 		Real : <s> improvisation
+11/17/2017 09:50:53 [INFO] train: ======================  2  =========================
+11/17/2017 09:50:53 [INFO] train: 		Pred : e classifiers (8.9525)
+11/17/2017 09:50:53 [INFO] train: 		Real : <s> contract
+11/17/2017 09:50:53 [INFO] train: **************************************************
+
+The new implementation with new model (Seq2SeqLSTMAttention) and weight mask, and it cannot predict anything other than </s>:
+11/17/2017 10:17:09 [INFO] utils: Training Epoch=3 -170/415 (40.96%)[...........(-w-)~~~~~~~~~~~~~~~~~~] - Run-time: 4094s - ETA: 5901s - train_loss: 5.8163
+elapsed time: 0.000375
+11/17/2017 10:17:09 [INFO] train: Epoch : 3 Minibatch : 170 Loss : 4.94585
+11/17/2017 10:17:09 [INFO] train: Printing predictions on 2 sampled examples by greedy search
+11/17/2017 10:17:10 [INFO] train: ======================  1  =========================
+11/17/2017 10:17:10 [INFO] train: 		Pred : </s> </s> (3.2384)
+11/17/2017 10:17:10 [INFO] train: 		Real : <s> java
+11/17/2017 10:17:10 [INFO] train: ======================  2  =========================
+11/17/2017 10:17:10 [INFO] train: 		Pred : </s> </s> </s> (5.4423)
+11/17/2017 10:17:10 [INFO] train: 		Real : <s> computer architecture
+11/17/2017 10:17:10 [INFO] train: **************************************************

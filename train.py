@@ -105,7 +105,7 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             decoder_probs.contiguous().view(-1, opt.vocab_size),
             trg.view(-1)
         )
-        print("--loss calculation ---" % (time.time() - start_time))
+        print("--loss calculation --- %s" % (time.time() - start_time))
 
         start_time = time.time()
         if is_train:
@@ -120,7 +120,7 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
 
         start_time = time.time()
         progbar.update(epoch, i, [('valid_loss', loss.data[0])])
-        print("-progbar.update ---" % (time.time() - start_time))
+        print("-progbar.update --- %s" % (time.time() - start_time))
 
         # Don't run through all the validation data, take 5% of training batches. we skip all the remaining iterations
         if i > int(opt.run_valid_every * 0.05):
