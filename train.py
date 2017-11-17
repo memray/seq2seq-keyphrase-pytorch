@@ -14,8 +14,9 @@ import torchtext
 from torch.autograd import Variable
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-
 import config
+#import configse as config
+
 import utils
 
 import torch

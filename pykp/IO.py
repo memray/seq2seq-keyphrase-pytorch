@@ -74,7 +74,11 @@ def load_json_data(path, name='kp20k', src_fields=['title', 'abstract'], trg_fie
     '''
     src_trgs_pairs = []
     with codecs.open(path, "r", "utf-8") as corpus_file:
+        icount = 0
         for idx, line in enumerate(corpus_file):
+            icount += 1
+            if(icount == 1000):
+                break
             print(line)
             json_ = json.loads(line)
 

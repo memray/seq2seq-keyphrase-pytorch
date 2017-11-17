@@ -24,19 +24,19 @@ def processTags(input):
 
 if __name__ == '__main__':
 
-    data_folder = 'data/stackexchange/raw/'
+    data_folder = '/Users/khushsi/Downloads/raw/'
     train_json_file = 'data/stackexchange/stackexchange_training.json'
     valid_json_file = 'data/stackexchange/stackexchange_validation.json'
     test_json_file = 'data/stackexchange/stackexchange_testing.json'
     post_data_dic = {}
 
     for filename in os.listdir(data_folder):
-        if (filename.startswith("Posts")):
+        if (filename.startswith("Posts_unix")):
             # print(filename)
             tree = ET.parse(data_folder + filename)
             root = tree.getroot()
             post_dict = {}
-            idsuffix = filename.replace("Posts_", "").replace("xml", "")
+            idsuffix = filename.replace("Posts_ai", "").replace("xml", "")
             for post in root.findall("row"):
                 post_dict[post.attrib['Id']] = post.attrib['Body']
             iCount = 0
@@ -66,8 +66,8 @@ if __name__ == '__main__':
     randomlist = list(post_data_dic.keys())
     random.shuffle(randomlist)
 
-    test = int(int((len(randomlist) * (.05)) / 1000) * 1000)
-    # test = 4000
+    # test = int(int((len(randomlist) * (.05)) / 1000) * 1000)
+    test = 100
     print(test)
     jsonwriter = open(test_json_file, 'w')
     for id in range(0, test):
