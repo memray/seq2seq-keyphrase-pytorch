@@ -11,6 +11,7 @@ from __future__ import print_function
 
 import copy
 import heapq
+from queue import PriorityQueue
 
 import torch
 from torch.autograd import Variable
@@ -36,6 +37,7 @@ class Sequence(object):
         """
         self.batch_id   = batch_id
         self.sentence   = sentence
+        self.vocab      = set(sentence) # for filtering duplicates
         self.state      = state
         self.context    = context
         self.logprob    = logprob
@@ -232,7 +234,7 @@ class SequenceGenerator(object):
                 new_states2 = new_states[1].squeeze(0)
                 new_states = [(new_states1[i], new_states2[i]) for i in range(len(partial_sequences))]
 
-            new_partial_sequences = []
+            new_partial_sequences = [] # change to PriorityQueue() later
 
             # For every entry in partial_sequences, find and trim to the most likely beam_size hypotheses
             for partial_id, partial_seq in enumerate(partial_sequences):
@@ -240,9 +242,21 @@ class SequenceGenerator(object):
 
                 # check each new beam and decide to add to hypotheses or completed list
                 for beam_i in range(self.beam_size + 1):
+                    w = words[partial_id][beam_i]
+                    # if w has appeared before, ignore current hypothese
+                    if w in partial_seq.vocab:
+                        continue
+
+                    # score=0 means this is the first word, empty the sentence
+                    if partial_seq.score == 0:
+                        new_sent = copy.copy(partial_seq.sentence)
+                    else:
+                        new_sent = []
+                    new_sent.append(w)
+
                     new_partial_seq = Sequence(
                         batch_id    =   partial_seq.batch_id,
-                        sentence    =   copy.copy(partial_seq.sentence),
+                        sentence    =   new_sent,
                         state       =   None,
                         context     =   partial_seq.context,
                         logprob     =   copy.copy(partial_seq.logprob),
@@ -261,13 +275,6 @@ class SequenceGenerator(object):
                     else:
                         new_partial_seq.attention = None
 
-                    w = words[partial_id][beam_i]
-
-                    # score=0 means this is the first word, empty the sentence
-                    if new_partial_seq.score == 0:
-                        new_partial_seq.sentence = []
-
-                    new_partial_seq.sentence.append(w)
                     new_partial_seq.logprob  = new_partial_seq.logprob - np.log(probs[partial_id][beam_i])
                     new_partial_seq.score    = new_partial_seq.logprob
 

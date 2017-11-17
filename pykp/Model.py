@@ -401,10 +401,10 @@ class Seq2SeqLSTMAttention(nn.Module):
         return max_words_pred
 
     @time_usage
-    def generate(self, input, hidden, enc_context, k = 1, feed_all_timesteps=False, return_attention=False):
+    def generate(self, trg_input, hidden, enc_context, k = 1, feed_all_timesteps=False, return_attention=False):
         '''
         Given the initial input, state and the source contexts, return the top K restuls for each time step
-        :param input: just word indexes of target texts (usually zeros indicating BOS <s>)
+        :param trg_input: just word indexes of target texts (usually zeros indicating BOS <s>)
         :param hidden: hidden states of RNN to start with
         :param enc_context: context encoding vectors
         :param k: Top K to return
@@ -414,14 +414,19 @@ class Seq2SeqLSTMAttention(nn.Module):
         '''
         # assert isinstance(input_list, list) or isinstance(input_list, tuple)
         # assert isinstance(input_list[0], list) or isinstance(input_list[0], tuple)
+        batch_size      = trg_input.size(0)
+        src_len         = enc_context.size(1)
+        trg_len         = trg_input.size(1)
+        context_dim     = enc_context.size(2)
+        trg_hidden_dim  = self.trg_hidden_dim
 
         # input_emb = (batch_size, trg_len, emb_dim)
         if feed_all_timesteps:
-            input_emb = self.embedding(input)
+            input_emb = self.embedding(trg_input)
         else:
             # retain the last input (what if it's <pad>?)
-            input = torch.index_select(input, 1, torch.LongTensor([input.size(1) - 1]))
-            input_emb = self.embedding(input)
+            trg_input = torch.index_select(trg_input, 1, torch.LongTensor([trg_input.size(1) - 1]))
+            input_emb = self.embedding(trg_input)
 
         pred_words = []
         attn_weights = []
@@ -429,23 +434,29 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # reshape them to be length first
         input_emb   = input_emb.permute(1, 0, 2) # (trg_len, batch_size, embed_dim)
-        enc_context = enc_context.permute(1, 0, 2) # (src_len, batch_size, num_direction * enc_hidden_dim)
 
-        for i in range(input.size(1)):
+        # enc_context has to be reshaped before dot attention (batch_size, src_len, context_dim) -> (batch_size, src_len, trg_hidden_dim)
+        enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
+
+        for i in range(trg_input.size(1)):
             # (seq_len, batch_size, hidden_size * num_directions)
             dec_h, hidden = self.decoder(
                 input_emb, hidden
             )
 
             # Get the h_tilde (hidden after attention) and attention weights
-            h_tilde, alpha = self.attention_layer(dec_h, enc_context)
+            h_tilde, alpha = self.attention_layer(dec_h.permute(1, 0, 2), enc_context)
 
             # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
-            decoder_logit = self.decoder2vocab(h_tilde) # (batch_size, vocab_size)
-            decoder_prob  = func.softmax(decoder_logit) # (batch_size, vocab_size)
+            # (batch_size, trg_len, trg_hidden_size) -> (batch_size, trg_len, vocab_size)
+            decoder_logit = self.decoder2vocab(h_tilde.view(-1, trg_hidden_dim))
+            decoder_prob  = func.softmax(decoder_logit).view(batch_size, trg_len, -1) # (batch_size, trg_len, vocab_size)
+
+            # squeeze the trg_len dim
+            decoder_prob = decoder_prob.squeeze(1)
 
             # Get the top word, top_idx and next_index are (batch_size, K)
-            decoder_prob, top_idx = decoder_prob.data.topk(k, dim=1)
+            decoder_prob, top_idx = decoder_prob.data.topk(k, dim=-1)
 
             # append to return lists
             pred_words.append(top_idx) # (batch_size, K)
@@ -458,9 +469,9 @@ class Seq2SeqLSTMAttention(nn.Module):
             input_emb  = self.embedding(next_index).permute(1, 0, -1) # reshape to (1, batch_size, emb_dim)
 
         # convert output into the right shape and make batch first
-        pred_words      = torch.cat(pred_words, 0).view(*input.size(), -1)
-        attn_weights    = torch.cat(attn_weights, 0).view(*input.size(), -1) # (batch_size, trg_seq_len, src_seq_len)
-        decoder_probs   = torch.cat(decoder_probs, 0).view(*input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
+        pred_words      = torch.cat(pred_words, 0).view(*trg_input.size(), -1)
+        attn_weights    = torch.cat(attn_weights, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, src_seq_len)
+        decoder_probs   = torch.cat(decoder_probs, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
 
         # Only return the hidden vectors of the last time step.
         #   tuple of (num_layers * num_directions, batch_size, trg_hidden_dim)=(1, batch_size, trg_hidden_dim)
@@ -543,16 +554,8 @@ class Seq2SeqLSTMAttention(nn.Module):
     @time_usage
     def decode_old(self, trg_input, enc_context, enc_hidden, trg_mask, ctx_mask, is_train=True):
         '''
-        Initial decoder state h0 (batch_size, trg_hidden_size), converted from h_t of encoder (batch_size, src_hidden_size * num_directions) through a linear layer
-            No transformation for cell state c_t. Pass directly to decoder.
-            Nov. 11st: update: change to pass c_t as well
-            People also do that directly feed the end hidden state of encoder and initialize cell state as zeros
-        :param
-                trg_input:         (batch_size, trg_len)
-                context vector:    (batch_size, src_len, hidden_size * num_direction) is outputs of encoder
-                is_train:          if is_train=True, we apply teacher forcing for training
-                otherwise we use model's own predictions as the next input, times of iteration still depend on the length of trg_input (flexiable to one-time prediction, just input a one-word-long tensor initialized with zeros)
-                (TODO: we could simply add training without teacher forcing later)
+        It's erroneous, but the specific error hasn't been found out.
+        something wrong with the processing of decoder_logits? e.g. concatenate in wrong way?
         '''
 
         # get target embedding and reshape the targets to be time step first

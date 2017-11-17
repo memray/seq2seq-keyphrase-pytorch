@@ -204,12 +204,12 @@ def load_model(opt):
         nlayers_trg=opt.dec_layers,
     )
 
-    # if torch.cuda.is_available():
-    #     model.load_state_dict(torch.load(open(opt.model_path, 'rb')))
-    # else:
-    #     model.load_state_dict(torch.load(
-    #         open(opt.model_path, 'rb'), map_location=lambda storage, loc: storage
-    #     ))
+    if torch.cuda.is_available():
+        model.load_state_dict(torch.load(open(opt.model_path, 'rb')))
+    else:
+        model.load_state_dict(torch.load(
+            open(opt.model_path, 'rb'), map_location=lambda storage, loc: storage
+        ))
 
     return model
 
