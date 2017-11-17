@@ -1,0 +1,18 @@
+Criterion setting is as follows, converged much slower:
+    weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
+    weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
+    weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
+    criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
+
+For example, epoch 1 and batch 100:
+without weight mask:
+11/17/2017 00:06:52 [INFO] utils: Training Epoch=1 -100/415 (24.10%)[......(-w-)~~~~~~~~~~~~~~~~~~~~~~~] - Run-time: 2261s - ETA: 7124s - loss: 3.6596
+
+with weight mask:
+11/17/2017 00:07:17 [INFO] utils: Training Epoch=1 -100/415 (24.10%)[......(-w-)~~~~~~~~~~~~~~~~~~~~~~~] - Run-time: 2267s - ETA: 7141s - loss: 5.8698
+
+The new implementation with old model (Seq2SeqLSTMAttentionOld) and weight mask:
+11/16/2017 23:43:12 [INFO] utils: Training Epoch=1 -100/415 (24.10%)[......(-w-)~~~~~~~~~~~~~~~~~~~~~~~] - Run-time: 1678s - ETA: 5287s - train_loss: 5.9162
+
+The new implementation with new model (Seq2SeqLSTMAttention) and weight mask, and it cannot predict anything other than </s>:
+11/16/2017 23:59:09 [INFO] utils: Training Epoch=1 -100/415 (24.10%)[......(-w-)~~~~~~~~~~~~~~~~~~~~~~~] - Run-time: 2240s - ETA: 7056s - train_loss: 6.5890
