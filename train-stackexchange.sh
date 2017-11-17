@@ -12,4 +12,4 @@
 #module restore
 
 # Run the job
-srun python -m train -data data/stackexchange/stackexchange.train_valid.pt -vocab data/stackexchange/stackexchange.vocab.pt -bidirectional -exp_path "exp/stackexchange.updated_training_data.bi-directional.%s" -exp "stackexchange" -batch_size 192
+srun python -m train -data data/stackexchange/stackexchange.train_valid.pt -vocab data/stackexchange/stackexchange.vocab.pt -bidirectional -exp_path "exp/stackexchange.updated_training_data.bi-directional.%s" -exp "stackexchange" -batch_size 256
