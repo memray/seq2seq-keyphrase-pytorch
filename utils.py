@@ -5,6 +5,16 @@ import sys,logging
 import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
+import time
+
+def time_usage(func):
+    def wrapper(*args, **kwargs):
+        beg_ts = time.time()
+        retval = func(*args, **kwargs)
+        end_ts = time.time()
+        print("elapsed time: %f" % (end_ts - beg_ts))
+        return retval
+    return wrapper
 
 DATA_DIR = join(dirname(dirname(__file__)), 'data')
 MODELS_DIR = join(dirname(dirname(__file__)), 'models')
@@ -100,6 +110,7 @@ class Progbar(object):
 
         self.logger = logging.getLogger()
 
+    @time_usage
     def update(self, current_epoch, current, values=[]):
         '''
         @param current: index of current step

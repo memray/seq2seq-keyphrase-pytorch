@@ -25,8 +25,22 @@ from utils import Progbar, plot_learning_curve
 
 import pykp
 from pykp.IO import KeyphraseDataset
-from pykp.Model import Seq2SeqLSTMAttention
+from pykp.Model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionOld
 
+import time
+
+def time_usage(func):
+    # argnames = func.func_code.co_varnames[:func.func_code.co_argcount]
+    fname = func.__name__
+
+    def wrapper(*args, **kwargs):
+        beg_ts = time.time()
+        retval = func(*args, **kwargs)
+        end_ts = time.time()
+        print(fname, "elapsed time: %f" % (end_ts - beg_ts))
+        return retval
+
+    return wrapper
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
@@ -61,6 +75,7 @@ config.init_logging(opt.exp_path + '/output.log')
 logging.info('Parameters:')
 [logging.info('%s    :    %s' % (k, str(v))) for k,v in opt.__dict__.items()]
 
+@time_usage
 def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False):
     progbar = Progbar(title='Validating', target=len(data_loader), batch_size=opt.batch_size,
                       total_examples=len(data_loader.dataset))
@@ -80,42 +95,32 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             src.cuda()
             trg.cuda()
 
-        # decoder_probs, _, _ = model.forward(src, trg, is_train=is_train)
-        decoder_probs, _, _ = model.forward_(src, trg)
+        decoder_probs, _, _ = model.forward(src, trg, is_train=is_train)
+        # decoder_probs, _, _ = model.forward(src, trg)
 
-        '''
-        # (deprecated, mask both BOS and PAD in criterion) I remove the <BOS> for trg and the last prediction in decoder_logit for calculating loss (make all the words move 1 word left)
-        logit_idx = Variable(
-            torch.LongTensor(range(batch.trg.size(1) - 1))).cuda() if torch.cuda.is_available() else Variable(
-            torch.LongTensor(range(batch.trg.size(1) - 1)))
-        trg_idx = Variable(
-            torch.LongTensor(range(1, batch.trg.size(1)))).cuda() if torch.cuda.is_available() else Variable(
-            torch.LongTensor(range(1, batch.trg.size(1))))
-
-        decoder_probs = decoder_probs.permute(1, 0, -1).index_select(0, logit_idx).permute(1, 0, -1)
-        trg = trg.permute(1, 0).index_select(0, trg_idx).permute(1, 0).contiguous()
-        '''
         # simply average losses of all the predicitons
-        # I remove the <SOS> for trg and the last prediction in decoder_logit for calculating loss (make all the words move 1 word left)
-        # logit_idx = Variable(torch.LongTensor(range(batch.trg.size(1) - 1))).cuda() if torch.cuda.is_available() else Variable(torch.LongTensor(range(batch.trg.size(1) - 1)))
-        # trg_idx   = Variable(torch.LongTensor(range(1, batch.trg.size(1)))).cuda() if torch.cuda.is_available() else Variable(torch.LongTensor(range(1, batch.trg.size(1))))
-        # decoder_probs = decoder_probs.permute(1, 0, -1).index_select(0, logit_idx).permute(1, 0, -1)
-        # trg           = trg.permute(1, 0).index_select(0, trg_idx).permute(1, 0).contiguous()
+        start_time = time.time()
+
         loss = criterion(
             decoder_probs.contiguous().view(-1, opt.vocab_size),
             trg.view(-1)
         )
+        print("--loss calculation ---" % (time.time() - start_time))
 
+        start_time = time.time()
         if is_train:
             optimizer.zero_grad()
             loss.backward()
             if opt.max_grad_norm > 0:
                 torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
             optimizer.step()
+        print("--backward function - %s seconds ---" % (time.time() - start_time))
 
         losses.append(loss.data[0])
 
+        start_time = time.time()
         progbar.update(epoch, i, [('valid_loss', loss.data[0])])
+        print("-progbar.update ---" % (time.time() - start_time))
 
         # Don't run through all the validation data, take 5% of training batches. we skip all the remaining iterations
         if i > int(opt.run_valid_every * 0.05):
@@ -153,7 +158,7 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
     return losses
 
 
-def train_model(model, optimizer, criterion, training_data_loader, validation_data_loader, opt):
+def  train_model(model, optimizer, criterion, training_data_loader, validation_data_loader, opt):
     logging.info('======================  Checking GPU Availability  =========================')
     if torch.cuda.is_available():
         logging.info('Running on GPU!')
@@ -185,27 +190,34 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             total_batch += 1
             src = batch.src
             trg = batch.trg
-
+            print("src size - ",src.size())
+            print("target size - ",trg.size())
             if torch.cuda.is_available():
                 src.cuda()
                 trg.cuda()
 
             optimizer.zero_grad()
-            # decoder_logits, _, _ = model.forward(src, trg, is_train=True)
-            decoder_logits, _, _ = model.forward_(src, trg)
+            decoder_logits, _, _ = model.forward(src, trg, is_train=True)
+            # decoder_logits, _, _ = model.forward(src, trg)
 
             # simply average losses of all the predicitons
             # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
+            start_time = time.time()
             loss = criterion(
                 decoder_logits.contiguous().view(-1, opt.vocab_size),
                 trg.view(-1)
             )
+            print("--loss calculation- %s seconds ---" % (time.time() - start_time))
 
+            start_time = time.time()
             loss.backward()
+            print("--backward- %s seconds ---" % (time.time() - start_time))
+
             # if opt.max_grad_norm > 0:
             #     pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
             #     after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
             #     logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
+
             optimizer.step()
 
             train_losses.append(loss.data[0])
@@ -337,9 +349,9 @@ def load_train_valid_data(opt):
     else:
         device = -1
 
-    training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=False, shuffle=False, sort=False, device=device)
+    training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=False, shuffle=False, sort=True, device=device)
     # training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True,  repeat=False, shuffle=True, sort=False, device = device)
-    validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, shuffle=True, sort=True, device = device)
+    validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, shuffle=False, sort=True, device = device)
 
     opt.word2id = word2id
     opt.id2word = id2word
@@ -368,6 +380,7 @@ def init_optimizer_criterion(model, opt):
     return optimizer, criterion
 
 def init_model(word2id, config):
+    # model = Seq2SeqLSTMAttentionOld(
     model = Seq2SeqLSTMAttention(
         emb_dim=config.word_vec_size,
         vocab_size=config.vocab_size,

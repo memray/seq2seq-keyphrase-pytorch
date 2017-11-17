@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as func
 from torch.autograd import Variable
 import numpy as np
-
+import time
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
@@ -91,12 +91,16 @@ class SoftConcatAttention(nn.Module):
         input: batch x hidden_dim
         context: batch x source_len x hidden_dim
         """
+        start_time = time.time()
         target = self.linear_in(hidden).unsqueeze(2)  # batch x hidden_dim x 1
+        print("--- %s seconds ---" % (time.time() - start_time))
 
         # Get attention, size=(batch_size, source_len, 1) -> (batch_size, source_len)
         attn = torch.bmm(context, target).squeeze(2)  # batch x source_len
         attn = self.softmax(attn)
         attn3 = attn.view(attn.size(0), 1, attn.size(1))  # batch_size x 1 x source_len
+
+        print("--- %s seconds ---" % (time.time() - start_time))
 
         # Get the weighted context vector
         weighted_context = torch.bmm(attn3, context).squeeze(1)  # batch_size x hidden_dim
@@ -104,6 +108,8 @@ class SoftConcatAttention(nn.Module):
         # Update h by tanh(torch.cat(weighted_context, input))
         h_tilde = torch.cat((weighted_context, hidden), 1) # batch_size * (src_hidden_dim + trg_hidden_dim)
         h_tilde = self.tanh(self.linear_out(h_tilde)) # batch_size * trg_hidden_dim
+
+        print("--- %s seconds ---" % (time.time() - start_time))
 
         return h_tilde, attn
 
@@ -131,7 +137,7 @@ class SoftConcatAttention(nn.Module):
 
         return h_tilde, attn
 
-class LSTMAttentionDot(nn.Module):
+class LSTMAttentionConcat(nn.Module):
     """
     A long short-term memory (LSTM) cell with attention.
     Return the hidden output (h_tilde) of each time step, same as the normal LSTM layer. Will get the decoder_logit by softmax in the outer loop
@@ -141,7 +147,7 @@ class LSTMAttentionDot(nn.Module):
 
     def __init__(self, input_size, src_hidden_size, trg_hidden_size):
         """Initialize params."""
-        super(LSTMAttentionDot, self).__init__()
+        super(LSTMAttentionConcat, self).__init__()
         self.input_size = input_size
         self.hidden_size = trg_hidden_size
         self.num_layers = 1
@@ -269,7 +275,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             dropout         = self.dropout
         )
 
-        self.decoder = LSTMAttentionDot(
+        self.decoder = LSTMAttentionConcat(
             emb_dim,
             self.src_hidden_dim * self.num_directions,
             trg_hidden_dim
@@ -326,6 +332,8 @@ class Seq2SeqLSTMAttention(nn.Module):
 
     def forward_(self, input_src, input_trg, trg_mask=None, ctx_mask=None, ):
         """Propogate input through the network."""
+        start_time = time.time()
+
         src_emb = self.embedding(input_src)
         trg_emb = self.embedding(input_trg)
 
@@ -339,12 +347,16 @@ class Seq2SeqLSTMAttention(nn.Module):
         )
 
         # concatenate to (batch_size, hidden_size * num_directions)
+        print(" bidirectional --- %s seconds ---" % (time.time() - start_time))
+        start_time = time.time()
         if self.bidirectional:
             h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
             c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
         else:
             h_t = src_h_t[-1]
             c_t = src_c_t[-1]
+        print(" bidirectional --- %s seconds ---" % (time.time() - start_time))
+
         '''
         Initial decoder state h0 (batch_size, trg_hidden_size), converted from h_t of encoder (batch_size, src_hidden_size * num_directions) through a linear layer
             No transformation for cell state c_t. Pass directly to decoder.
@@ -364,6 +376,8 @@ class Seq2SeqLSTMAttention(nn.Module):
             ctx,
             ctx_mask
         )
+        print(" bidirectional --- %s seconds ---" % (time.time() - start_time))
+
         # flatten the trg_output, feed into the readout layer, and get the decoder_logit
         # (batch_size, trg_length, trg_hidden_size) -> (batch_size * trg_length, trg_hidden_size)
         trg_h_reshape = trg_h.contiguous().view(
@@ -379,6 +393,8 @@ class Seq2SeqLSTMAttention(nn.Module):
             trg_h.size()[1],
             decoder_logit.size()[1]
         )
+        print(" bidirectional --- %s seconds ---" % (time.time() - start_time))
+
         return decoder_logit
 
     def logit2prob(self, logits):
