@@ -176,7 +176,7 @@ def train_opts(parser):
                         help="Fix word embeddings on the encoder side.")
 
     # Optimization options
-    parser.add_argument('-batch_size', type=int, default=256,
+    parser.add_argument('-batch_size', type=int, default=128,
                         help='Maximum batch size')
     parser.add_argument('-batch_workers', type=int, default=1,
                         help='Number of workers for generating batches')
@@ -221,7 +221,7 @@ def train_opts(parser):
 
     timemark = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
 
-    parser.add_argument('-report_every', type=int, default=1,
+    parser.add_argument('-report_every', type=int, default=100,
                         help="Print stats at this interval.")
 
     parser.add_argument('-exp_path', type=str, default="exp/stackexchange.%s" % timemark,

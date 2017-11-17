@@ -256,4 +256,5 @@ def plot_learning_curve(train_scores, test_scores, title, curve1_name='curve1_na
     if save_path:
         plt.savefig(save_path, bbox_inches='tight')
 
+    plt.close()
     return plt

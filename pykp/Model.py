@@ -68,16 +68,18 @@ class Attention(nn.Module):
             energy = self.other.dot(energy)
             return energy
 
-class SoftConcatAttention(nn.Module):
+class SoftDotAttention(nn.Module):
     def __init__(self, enc_dim, trg_dim):
-        super(SoftConcatAttention, self).__init__()
+        super(SoftDotAttention, self).__init__()
         self.linear_in  = nn.Linear(trg_dim, trg_dim, bias=False)
         self.linear_ctx = nn.Linear(enc_dim, trg_dim)
 
         self.attn = nn.Linear(enc_dim + trg_dim, trg_dim)
         self.v = nn.Parameter(torch.FloatTensor(1, trg_dim))
         self.softmax = nn.Softmax()
-        self.linear_out = nn.Linear(enc_dim + trg_dim, trg_dim, bias=False)
+
+        # input size is trg_dim * 2 as it's Dot Attention
+        self.linear_out = nn.Linear(trg_dim * 2, trg_dim, bias=False)
         self.tanh = nn.Tanh()
         self.mask = None
         self.method = 'concat'
@@ -102,7 +104,7 @@ class SoftConcatAttention(nn.Module):
         '''
         Compute the attention and h_tilde
         :param hidden: (batch_size, trg_len, trg_hidden_dim)
-        :param encoder_outputs: (batch_size, src_len, enc_hidden_dim)
+        :param encoder_outputs: (batch_size, src_len, trg_hidden_dim) as this is dot attention, you have to convert enc_dim to trg_dim first
         :return: return h_tilde (batch_size, trg_len, trg_hidden_dim), attn (batch_size, trg_len, src_len)
         '''
         """
@@ -179,7 +181,7 @@ class SoftConcatAttention(nn.Module):
 
         return h_tilde, attn
 
-class LSTMAttentionConcatDecoder(nn.Module):
+class LSTMAttentionDotDecoder(nn.Module):
     """
     A long short-term memory (LSTM) cell with attention.
     Return the hidden output (h_tilde) of each time step, same as the normal LSTM layer. Will get the decoder_logit by softmax in the outer loop
@@ -189,12 +191,12 @@ class LSTMAttentionConcatDecoder(nn.Module):
 
     def __init__(self, input_size, src_hidden_size, trg_hidden_size):
         """Initialize params."""
-        super(LSTMAttentionConcatDecoder, self).__init__()
+        super(LSTMAttentionDotDecoder, self).__init__()
         self.input_size = input_size
         self.hidden_size = trg_hidden_size
         self.num_layers = 1
 
-        self.attention_layer = SoftConcatAttention(src_hidden_size, trg_hidden_size)
+        self.attention_layer = SoftDotAttention(src_hidden_size, trg_hidden_size)
 
         # for manual LSTM recurrence
         self.input_weights = nn.Linear(input_size, 4 * trg_hidden_size)
@@ -319,7 +321,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             dropout         = self.dropout
         )
 
-        self.attention_layer = SoftConcatAttention(self.src_hidden_dim * self.num_directions, trg_hidden_dim)
+        self.attention_layer = SoftDotAttention(self.src_hidden_dim * self.num_directions, trg_hidden_dim)
 
         self.encoder2decoder_hidden = nn.Linear(
             self.src_hidden_dim * self.num_directions,
@@ -338,9 +340,9 @@ class Seq2SeqLSTMAttention(nn.Module):
     def init_weights(self):
         """Initialize weights."""
         initrange = 0.1
-        # self.embedding.weight.data.uniform_(-initrange, initrange)
+        self.embedding.weight.data.uniform_(-initrange, initrange)
         # fill with fixed numbers for debugging
-        self.embedding.weight.data.fill_(0.01)
+        # self.embedding.weight.data.fill_(0.01)
         self.encoder2decoder_hidden.bias.data.fill_(0)
         self.encoder2decoder_cell.bias.data.fill_(0)
         self.decoder2vocab.bias.data.fill_(0)
@@ -513,12 +515,15 @@ class Seq2SeqLSTMAttention(nn.Module):
         context_dim     = enc_context.size(2)
         trg_hidden_dim  = self.trg_hidden_dim
 
-        # get target embedding and reshape the targets to be time step first
+        # initialize target embedding and reshape the targets to be time step first
         trg_emb = self.embedding(trg_input) # (batch_size, trg_len, embed_dim)
         trg_emb  = trg_emb.permute(1, 0, 2) # (trg_len, batch_size, embed_dim)
 
         # prepare the init hidden vector, (batch_size, dec_hidden_dim) -> 2 * (1, batch_size, dec_hidden_dim)
         init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
+
+        # enc_context has to be reshaped before dot attention (batch_size, src_len, context_dim) -> (batch_size, src_len, trg_hidden_dim)
+        enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
 
         # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
         dec_hiddens, _ = self.decoder(
@@ -653,7 +658,7 @@ class Seq2SeqLSTMAttentionOld(nn.Module):
             dropout         = self.dropout
         )
 
-        self.attention_decoder = LSTMAttentionConcatDecoder(
+        self.attention_decoder = LSTMAttentionDotDecoder(
             emb_dim,
             self.src_hidden_dim * self.num_directions,
             trg_hidden_dim
