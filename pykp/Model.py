@@ -233,7 +233,7 @@ class LSTMAttentionConcatDecoder(nn.Module):
             ht = outgate * func.tanh(ct)
 
             # update ht with attention
-            h_tilde, alpha = self.attention_layer(ht, ctx)
+            h_tilde, alpha = self.attention_layer(ht.unsqueeze(1), ctx.permute(1, 0, 2))
 
             return h_tilde, (ht, ct)
 
@@ -320,12 +320,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         )
 
         self.attention_layer = SoftConcatAttention(self.src_hidden_dim * self.num_directions, trg_hidden_dim)
-
-        self.attention_decoder = LSTMAttentionConcatDecoder(
-            emb_dim,
-            self.src_hidden_dim * self.num_directions,
-            trg_hidden_dim
-        )
 
         self.encoder2decoder_hidden = nn.Linear(
             self.src_hidden_dim * self.num_directions,
@@ -560,88 +554,6 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # Return final outputs, hidden states, and attention weights (for visualization)
         return decoder_logits, hiddens, attn_weights
-
-    @time_usage
-    def forward_(self, input_src, input_trg, trg_mask=None, ctx_mask=None):
-        """Propogate input through the network."""
-        # start_time = time.time()
-
-        src_emb = self.embedding(input_src)
-        trg_emb = self.embedding(input_trg)
-        # print("--embedding initialization- %s seconds ---" % (time.time() - start_time))
-
-        # initial encoder state, two zero-matrix as h and c at time=0
-        self.h0_encoder, self.c0_encoder = self.init_encoder_state(input_src) # (self.encoder.num_layers * self.num_directions, batch_size, self.src_hidden_dim)
-        # print("--- encoder initialization finish  %s seconds ---" % (time.time() - start_time))
-
-        # src_h (batch_size, seq_len, hidden_size * num_directions): outputs (h_t) of all the time steps
-        # src_h_t, src_c_t (num_layers * num_directions, batch, hidden_size): hidden and cell state at last time step
-        src_h, (src_h_t, src_c_t) = self.encoder(
-            src_emb, (self.h0_encoder, self.c0_encoder)
-        )
-        # print("---encoder set  %s seconds ---" % (time.time() - start_time))
-
-        # concatenate to (batch_size, hidden_size * num_directions)
-        if self.bidirectional:
-            h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
-            c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
-        else:
-            h_t = src_h_t[-1]
-            c_t = src_c_t[-1]
-        # print("--- bidirectional concatenation %s seconds ---" % (time.time() - start_time))
-
-        '''
-        Initial decoder state h0 (batch_size, trg_hidden_size), converted from h_t of encoder (batch_size, src_hidden_size * num_directions) through a linear layer
-            No transformation for cell state c_t. Pass directly to decoder.
-            Nov. 11st: update: change to pass c_t as well
-            People also do that directly feed the end hidden state of encoder and initialize cell state as zeros
-        '''
-        decoder_init_hidden = nn.Tanh()(self.encoder2decoder_hidden(h_t))
-        decoder_init_cell   = nn.Tanh()(self.encoder2decoder_cell(c_t))
-        # print("--- %s seconds ---" % (time.time() - start_time))
-
-        # context vector ctx0 = outputs of encoder(seq_len, batch_size, hidden_size * num_directions)
-        ctx = src_h.transpose(0, 1)
-
-        # output, (hidden, cell)
-        trg_h, (_, _) = self.attention_decoder(
-            trg_emb,
-            (decoder_init_hidden, decoder_init_cell),
-            ctx,
-            ctx_mask
-        )
-        # print("--- %s seconds ---" % (time.time() - start_time))
-
-        # flatten the trg_output, feed into the readout layer, and get the decoder_logit
-        # (batch_size, trg_length, trg_hidden_size) -> (batch_size * trg_length, trg_hidden_size)
-        trg_h_reshape = trg_h.contiguous().view(
-            trg_h.size()[0] * trg_h.size()[1],
-            trg_h.size()[2]
-        )
-        # print("--- %s seconds ---" % (time.time() - start_time))
-
-        # (batch_size * trg_length, vocab_size)
-        decoder_logit = self.decoder2vocab(trg_h_reshape)
-        # (batch_size * trg_length, vocab_size) -> (batch_size, trg_length, vocab_size)
-        decoder_logit = decoder_logit.view(
-            trg_h.size()[0],
-            trg_h.size()[1],
-            decoder_logit.size()[1]
-        )
-        # print("--- %s seconds ---" % (time.time() - start_time))
-
-        return decoder_logit, None, None
-
-    @time_usage
-    def logit2prob(self, logits):
-        """Return probability distribution over words."""
-        logits_reshape = logits.view(-1, self.vocab_size)
-        word_probs = func.softmax(logits_reshape)
-        word_probs = word_probs.view(
-            logits.size()[0], logits.size()[1], logits.size()[2]
-        )
-        return word_probs
-
 
 class Seq2SeqLSTMAttentionOld(nn.Module):
     """

@@ -68,7 +68,8 @@ def tally_parameters(model):
         printer = logging.getLogger().info
 
     n_params = sum([p.nelement() for p in model.parameters()])
-    printer('* number of parameters: %d' % n_params)
+    printer('Model name: %s' % type(model).__name__)
+    printer('number of parameters: %d' % n_params)
     enc = 0
     dec = 0
     for name, param in model.named_parameters():

@@ -221,7 +221,7 @@ def train_opts(parser):
 
     timemark = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
 
-    parser.add_argument('-report_every', type=int, default=50,
+    parser.add_argument('-report_every', type=int, default=1,
                         help="Print stats at this interval.")
 
     parser.add_argument('-exp_path', type=str, default="exp/stackexchange.%s" % timemark,
