@@ -68,16 +68,18 @@ class Attention(nn.Module):
             energy = self.other.dot(energy)
             return energy
 
-class SoftConcatAttention(nn.Module):
+class SoftDotAttention(nn.Module):
     def __init__(self, enc_dim, trg_dim):
-        super(SoftConcatAttention, self).__init__()
+        super(SoftDotAttention, self).__init__()
         self.linear_in  = nn.Linear(trg_dim, trg_dim, bias=False)
         self.linear_ctx = nn.Linear(enc_dim, trg_dim)
 
         self.attn = nn.Linear(enc_dim + trg_dim, trg_dim)
         self.v = nn.Parameter(torch.FloatTensor(1, trg_dim))
         self.softmax = nn.Softmax()
-        self.linear_out = nn.Linear(enc_dim + trg_dim, trg_dim, bias=False)
+
+        # input size is trg_dim * 2 as it's Dot Attention
+        self.linear_out = nn.Linear(trg_dim * 2, trg_dim, bias=False)
         self.tanh = nn.Tanh()
         self.mask = None
         self.method = 'concat'
@@ -102,14 +104,9 @@ class SoftConcatAttention(nn.Module):
         '''
         Compute the attention and h_tilde
         :param hidden: (batch_size, trg_len, trg_hidden_dim)
-        :param encoder_outputs: (batch_size, src_len, enc_hidden_dim)
-        :return:
+        :param encoder_outputs: (batch_size, src_len, trg_hidden_dim) as this is dot attention, you have to convert enc_dim to trg_dim first
+        :return: return h_tilde (batch_size, trg_len, trg_hidden_dim), attn (batch_size, trg_len, src_len)
         '''
-
-        # Calculate energies for each encoder output
-        # hidden = hidden.squeeze(0) # (batch_size, trg_hidden_dim)
-
-        # permute to batch first (batch_size, src_len, src_hidden_dim)
         """
         # Create variable to store attention energies
         attn_energies = Variable(torch.zeros(encoder_outputs.size(0), encoder_outputs.size(1))) # src_seq_len * batch_size
@@ -124,26 +121,31 @@ class SoftConcatAttention(nn.Module):
         # get the weighted context, (batch_size, src_layer_number * src_encoder_dim)
         weighted_context = torch.bmm(encoder_outputs.permute(1, 2, 0), attn.unsqueeze(2)).squeeze(2)  # (batch_size, src_hidden_dim * num_directions)
         """
-        batch_size = hidden.size(0)
+        batch_size      = hidden.size(0)
+        src_len         = encoder_outputs.size(1)
+        trg_len         = hidden.size(1)
+        context_dim     = encoder_outputs.size(2)
+        trg_hidden_dim  = hidden.size(2)
+
         # hidden (batch_size, trg_len, trg_hidden_dim) * encoder_outputs (batch, src_len, src_hidden_dim).transpose(1, 2) -> (batch, trg_len, src_len)
         attn_energies = torch.bmm(hidden, encoder_outputs.transpose(1, 2))
+
         # Normalize energies to weights in range 0 to 1, (batch_size, src_len)
         # attn = torch.nn.functional.softmax(attn_energies.view(-1, encoder_outputs.size(1))) # correct attention, normalize after reshaping
-        attn = torch.nn.functional.softmax(attn_energies).view(-1, encoder_outputs.size(1)) # wrong attention, normalize before reshaping, but it's working
-        #  (batch_size, src_len) ->  (batch_size, 1, src_len)
-        attn = attn.unsqueeze(1)
+        #  (batch_size, trg_len, src_len)
+        attn = torch.nn.functional.softmax(attn_energies.view(-1, src_len)).view(batch_size, trg_len, src_len) # wrong attention, normalize before reshaping, but it's working
 
-        # get the weighted context, attn (batch_size, trg_len, trg_hidden_dim) * encoder_outputs (batch_size, src_len, src_hidden_dim) = (batch_size, 1, src_hidden_dim)
-        weighted_context = torch.bmm(attn, encoder_outputs).squeeze(2)
+        # reweighting context, attn (batch_size, trg_len, src_len) * encoder_outputs (batch_size, src_len, src_hidden_dim) = (batch_size, trg_len, src_hidden_dim)
+        weighted_context = torch.bmm(attn, encoder_outputs)
 
         # get h_tilde by = tanh(W_c[c_t, h_t]), both hidden and h_tilde are (batch_size, trg_hidden_dim)
         # (batch_size, trg_len=1, src_hidden_dim + trg_hidden_dim)
         h_tilde = torch.cat((weighted_context, hidden), 2)
-        # (batch_size, src_hidden_dim + trg_hidden_dim) -> (batch_size, trg_hidden_dim)
-        h_tilde = self.tanh(self.linear_out(h_tilde.view(batch_size, -1)))
+        # (batch_size * trg_len, src_hidden_dim + trg_hidden_dim) -> (batch_size * trg_len, trg_hidden_dim)
+        h_tilde = self.tanh(self.linear_out(h_tilde.view(-1, context_dim + trg_hidden_dim)))
 
-        # return h_tilde (batch_size, trg_hidden_dim), attn (batch_size, src_len)
-        return h_tilde, attn.view(batch_size, -1)
+        # return h_tilde (batch_size, trg_len, trg_hidden_dim), attn (batch_size, trg_len, src_len)
+        return h_tilde.view(batch_size, trg_len, trg_hidden_dim), attn.view(batch_size, trg_len, src_len)
 
     @time_usage
     def forward_(self, hidden, context):
@@ -179,7 +181,7 @@ class SoftConcatAttention(nn.Module):
 
         return h_tilde, attn
 
-class LSTMAttentionConcatDecoder(nn.Module):
+class LSTMAttentionDotDecoder(nn.Module):
     """
     A long short-term memory (LSTM) cell with attention.
     Return the hidden output (h_tilde) of each time step, same as the normal LSTM layer. Will get the decoder_logit by softmax in the outer loop
@@ -189,12 +191,12 @@ class LSTMAttentionConcatDecoder(nn.Module):
 
     def __init__(self, input_size, src_hidden_size, trg_hidden_size):
         """Initialize params."""
-        super(LSTMAttentionConcatDecoder, self).__init__()
+        super(LSTMAttentionDotDecoder, self).__init__()
         self.input_size = input_size
         self.hidden_size = trg_hidden_size
         self.num_layers = 1
 
-        self.attention_layer = SoftConcatAttention(src_hidden_size, trg_hidden_size)
+        self.attention_layer = SoftDotAttention(src_hidden_size, trg_hidden_size)
 
         # for manual LSTM recurrence
         self.input_weights = nn.Linear(input_size, 4 * trg_hidden_size)
@@ -242,23 +244,23 @@ class LSTMAttentionConcatDecoder(nn.Module):
         '''
         # reshape the targets to be time step first
         input = input.permute(1, 0, 2)
-        output = []
+        h_tildes = []
         # iterate each time step of target sequences and generate decode outputs
         for i in range(input.size(0)):
             # Get the h_tilde for output and new hidden for next time step, x=input[i], last_hidden=hidden
             h_tilde, hidden = recurrence(input[i], hidden)
             # compute the output with h_tilde: p_x = Softmax(W_s * h_tilde)
-            output.append(h_tilde)
+            h_tildes.append(h_tilde)
         # print("---iterate tar seq %s seconds ---" % (time.time() - start_time))
 
         # convert output into the right shape
-        output = torch.cat(output, 0).view(input.size(0), *output[0].size())
+        h_tildes = torch.cat(h_tildes, 0).view(input.size(0), *h_tildes[0].size())
         # make batch first
-        output = output.transpose(0, 1)
+        h_tildes = h_tildes.transpose(0, 1)
         # print("--make batch- %s seconds ---" % (time.time() - start_time))
 
         # return the outputs of each time step and the hidden vector of last time step
-        return output, hidden
+        return h_tildes, hidden
 
 class Seq2SeqLSTMAttention(nn.Module):
     """Container module with an encoder, deocder, embeddings."""
@@ -319,7 +321,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             dropout         = self.dropout
         )
 
-        self.attention_layer = SoftConcatAttention(self.src_hidden_dim * self.num_directions, trg_hidden_dim)
+        self.attention_layer = SoftDotAttention(self.src_hidden_dim * self.num_directions, trg_hidden_dim)
 
         self.encoder2decoder_hidden = nn.Linear(
             self.src_hidden_dim * self.num_directions,
@@ -339,6 +341,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         """Initialize weights."""
         initrange = 0.1
         self.embedding.weight.data.uniform_(-initrange, initrange)
+        # fill with fixed numbers for debugging
+        # self.embedding.weight.data.fill_(0.01)
         self.encoder2decoder_hidden.bias.data.fill_(0)
         self.encoder2decoder_cell.bias.data.fill_(0)
         self.decoder2vocab.bias.data.fill_(0)
@@ -397,10 +401,10 @@ class Seq2SeqLSTMAttention(nn.Module):
         return max_words_pred
 
     @time_usage
-    def generate(self, input, hidden, enc_context, k = 1, feed_all_timesteps=False, return_attention=False):
+    def generate(self, trg_input, hidden, enc_context, k = 1, feed_all_timesteps=False, return_attention=False):
         '''
         Given the initial input, state and the source contexts, return the top K restuls for each time step
-        :param input: just word indexes of target texts (usually zeros indicating BOS <s>)
+        :param trg_input: just word indexes of target texts (usually zeros indicating BOS <s>)
         :param hidden: hidden states of RNN to start with
         :param enc_context: context encoding vectors
         :param k: Top K to return
@@ -410,14 +414,19 @@ class Seq2SeqLSTMAttention(nn.Module):
         '''
         # assert isinstance(input_list, list) or isinstance(input_list, tuple)
         # assert isinstance(input_list[0], list) or isinstance(input_list[0], tuple)
+        batch_size      = trg_input.size(0)
+        src_len         = enc_context.size(1)
+        trg_len         = trg_input.size(1)
+        context_dim     = enc_context.size(2)
+        trg_hidden_dim  = self.trg_hidden_dim
 
         # input_emb = (batch_size, trg_len, emb_dim)
         if feed_all_timesteps:
-            input_emb = self.embedding(input)
+            input_emb = self.embedding(trg_input)
         else:
             # retain the last input (what if it's <pad>?)
-            input = torch.index_select(input, 1, torch.LongTensor([input.size(1) - 1]))
-            input_emb = self.embedding(input)
+            trg_input = torch.index_select(trg_input, 1, torch.LongTensor([trg_input.size(1) - 1]))
+            input_emb = self.embedding(trg_input)
 
         pred_words = []
         attn_weights = []
@@ -425,23 +434,29 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # reshape them to be length first
         input_emb   = input_emb.permute(1, 0, 2) # (trg_len, batch_size, embed_dim)
-        enc_context = enc_context.permute(1, 0, 2) # (src_len, batch_size, num_direction * enc_hidden_dim)
 
-        for i in range(input.size(1)):
+        # enc_context has to be reshaped before dot attention (batch_size, src_len, context_dim) -> (batch_size, src_len, trg_hidden_dim)
+        enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
+
+        for i in range(trg_input.size(1)):
             # (seq_len, batch_size, hidden_size * num_directions)
             dec_h, hidden = self.decoder(
                 input_emb, hidden
             )
 
             # Get the h_tilde (hidden after attention) and attention weights
-            h_tilde, alpha = self.attention_layer(dec_h, enc_context)
+            h_tilde, alpha = self.attention_layer(dec_h.permute(1, 0, 2), enc_context)
 
             # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
-            decoder_logit = self.decoder2vocab(h_tilde) # (batch_size, vocab_size)
-            decoder_prob  = func.softmax(decoder_logit) # (batch_size, vocab_size)
+            # (batch_size, trg_len, trg_hidden_size) -> (batch_size, trg_len, vocab_size)
+            decoder_logit = self.decoder2vocab(h_tilde.view(-1, trg_hidden_dim))
+            decoder_prob  = func.softmax(decoder_logit).view(batch_size, trg_len, -1) # (batch_size, trg_len, vocab_size)
+
+            # squeeze the trg_len dim
+            decoder_prob = decoder_prob.squeeze(1)
 
             # Get the top word, top_idx and next_index are (batch_size, K)
-            decoder_prob, top_idx = decoder_prob.data.topk(k, dim=1)
+            decoder_prob, top_idx = decoder_prob.data.topk(k, dim=-1)
 
             # append to return lists
             pred_words.append(top_idx) # (batch_size, K)
@@ -454,9 +469,9 @@ class Seq2SeqLSTMAttention(nn.Module):
             input_emb  = self.embedding(next_index).permute(1, 0, -1) # reshape to (1, batch_size, emb_dim)
 
         # convert output into the right shape and make batch first
-        pred_words      = torch.cat(pred_words, 0).view(*input.size(), -1)
-        attn_weights    = torch.cat(attn_weights, 0).view(*input.size(), -1) # (batch_size, trg_seq_len, src_seq_len)
-        decoder_probs   = torch.cat(decoder_probs, 0).view(*input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
+        pred_words      = torch.cat(pred_words, 0).view(*trg_input.size(), -1)
+        attn_weights    = torch.cat(attn_weights, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, src_seq_len)
+        decoder_probs   = torch.cat(decoder_probs, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
 
         # Only return the hidden vectors of the last time step.
         #   tuple of (num_layers * num_directions, batch_size, trg_hidden_dim)=(1, batch_size, trg_hidden_dim)
@@ -505,6 +520,43 @@ class Seq2SeqLSTMAttention(nn.Module):
                 otherwise we use model's own predictions as the next input, times of iteration still depend on the length of trg_input (flexiable to one-time prediction, just input a one-word-long tensor initialized with zeros)
                 (TODO: we could simply add training without teacher forcing later)
         '''
+        batch_size      = trg_input.size(0)
+        src_len         = enc_context.size(1)
+        trg_len         = trg_input.size(1)
+        context_dim     = enc_context.size(2)
+        trg_hidden_dim  = self.trg_hidden_dim
+
+        # initialize target embedding and reshape the targets to be time step first
+        trg_emb = self.embedding(trg_input) # (batch_size, trg_len, embed_dim)
+        trg_emb  = trg_emb.permute(1, 0, 2) # (trg_len, batch_size, embed_dim)
+
+        # prepare the init hidden vector, (batch_size, dec_hidden_dim) -> 2 * (1, batch_size, dec_hidden_dim)
+        init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
+
+        # enc_context has to be reshaped before dot attention (batch_size, src_len, context_dim) -> (batch_size, src_len, trg_hidden_dim)
+        enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
+
+        # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
+        dec_hiddens, _ = self.decoder(
+            trg_emb, init_hidden
+        )
+
+        # Get the h_tilde (hidden after attention) and attention weights, inputs/outputs must be batch first
+        h_tilde, attn_weights = self.attention_layer(dec_hiddens.permute(1, 0, 2), enc_context)
+
+        # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
+        # (batch_size, trg_len, trg_hidden_size) -> (batch_size, trg_len, vocab_size)
+        decoder_logits = self.decoder2vocab(h_tilde.view(-1, trg_hidden_dim)).view(batch_size, trg_len, -1)
+
+        # Return final outputs, hidden states, and attention weights (for visualization)
+        return decoder_logits, dec_hiddens, attn_weights
+
+    @time_usage
+    def decode_old(self, trg_input, enc_context, enc_hidden, trg_mask, ctx_mask, is_train=True):
+        '''
+        It's erroneous, but the specific error hasn't been found out.
+        something wrong with the processing of decoder_logits? e.g. concatenate in wrong way?
+        '''
 
         # get target embedding and reshape the targets to be time step first
         trg_emb = self.embedding(trg_input) # (batch_size, trg_len, embed_dim)
@@ -530,7 +582,8 @@ class Seq2SeqLSTMAttention(nn.Module):
             h_tilde, alpha = self.attention_layer(dec_h.permute(1, 0, 2), enc_context)
 
             # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
-            decoder_logit = self.decoder2vocab(h_tilde) # (batch_size, vocab_size)
+            # (batch_size, trg_hidden_size) -> (batch_size, vocab_size)
+            decoder_logit = self.decoder2vocab(h_tilde)
             # decoder_prob  = func.softmax(decoder_logit) # (batch_size, vocab_size)
 
             hiddens.append(hidden)
@@ -540,6 +593,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
             # prepare the next input
             if is_train and i < trg_input.size(1) - 1:
+                print('teacher forcing')
                 trg_emb_i = trg_emb[i + 1].unsqueeze(0)
             else:
                 top_v, top_idx = decoder_logit.data.topk(1, dim = 1)
@@ -607,7 +661,7 @@ class Seq2SeqLSTMAttentionOld(nn.Module):
             dropout         = self.dropout
         )
 
-        self.attention_decoder = LSTMAttentionConcatDecoder(
+        self.attention_decoder = LSTMAttentionDotDecoder(
             emb_dim,
             self.src_hidden_dim * self.num_directions,
             trg_hidden_dim
@@ -630,7 +684,10 @@ class Seq2SeqLSTMAttentionOld(nn.Module):
     def init_weights(self):
         """Initialize weights."""
         initrange = 0.1
-        self.embedding.weight.data.uniform_(-initrange, initrange)
+        # self.embedding.weight.data.uniform_(-initrange, initrange)
+        # fill with fixed numbers for debugging
+        self.embedding.weight.data.fill_(0.01)
+
         self.encoder2decoder_hidden.bias.data.fill_(0)
         self.encoder2decoder_cell.bias.data.fill_(0)
         self.decoder2vocab.bias.data.fill_(0)
@@ -731,7 +788,7 @@ class Seq2SeqLSTMAttentionOld(nn.Module):
         ctx = src_h.transpose(0, 1)
 
         # output, (hidden, cell)
-        trg_h, (_, _) = self.attention_decoder(
+        h_tildes, (_, _) = self.attention_decoder(
             trg_emb,
             (decoder_init_hidden, decoder_init_cell),
             ctx,
@@ -741,18 +798,18 @@ class Seq2SeqLSTMAttentionOld(nn.Module):
 
         # flatten the trg_output, feed into the readout layer, and get the decoder_logit
         # (batch_size, trg_length, trg_hidden_size) -> (batch_size * trg_length, trg_hidden_size)
-        trg_h_reshape = trg_h.contiguous().view(
-            trg_h.size()[0] * trg_h.size()[1],
-            trg_h.size()[2]
+        h_tildes = h_tildes.contiguous().view(
+            h_tildes.size()[0] * h_tildes.size()[1],
+            h_tildes.size()[2]
         )
         # print("--- %s seconds ---" % (time.time() - start_time))
 
         # (batch_size * trg_length, vocab_size)
-        decoder_logit = self.decoder2vocab(trg_h_reshape)
+        decoder_logit = self.decoder2vocab(h_tildes)
         # (batch_size * trg_length, vocab_size) -> (batch_size, trg_length, vocab_size)
         decoder_logit = decoder_logit.view(
-            trg_h.size()[0],
-            trg_h.size()[1],
+            trg_emb.size()[0],
+            trg_emb.size()[1],
             decoder_logit.size()[1]
         )
         # print("--- %s seconds ---" % (time.time() - start_time))

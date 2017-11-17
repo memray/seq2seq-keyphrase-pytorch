@@ -49,6 +49,11 @@ config.init_logging(opt.exp_path + '/output.log')
 logging.info('Parameters:')
 [logging.info('%s    :    %s' % (k, str(v))) for k,v in opt.__dict__.items()]
 
+
+def evaluate(pred_seqs, true_seqs, top_k):
+    pass
+
+
 def predict_beam_search(model, data_loader, test_examples, opt):
     model.eval()
 
@@ -81,14 +86,16 @@ def predict_beam_search(model, data_loader, test_examples, opt):
 
         logging.info('======================  %d  =========================' % (i + 1))
         for pred_seq, true_seq in zip(pred_seqs, test_examples):
-            sentence_real = true_seq['trg_str']
-            sentence_pred = [([opt.id2word[x] for x in seq.sentence], seq.score) for seq in pred_seq[:5]]
-            logging.info('\t\tReal : %s \n' % (sentence_real))
+            true_seqs = true_seq['trg_str']
+            pred_seqs = [([opt.id2word[x] for x in seq.sentence], seq.score) for seq in pred_seq[:5]]
+            logging.info('\t\tReal : %s \n' % (true_seqs))
 
             logging.info('\t\tTop 5 predicted sequences: ')
 
-            for words, score in sentence_pred:
+            for words, score in pred_seqs:
                 logging.info('\t\t[%.4f]\t%s' % (score, ' '.join(words)))
+
+            precision, recall, f_score = evaluate(pred_seqs, true_seqs, k=5)
 
 def predict_greedy(model, data_loader, test_examples, opt):
     model.eval()
@@ -204,12 +211,12 @@ def load_model(opt):
         nlayers_trg=opt.dec_layers,
     )
 
-    # if torch.cuda.is_available():
-    #     model.load_state_dict(torch.load(open(opt.model_path, 'rb')))
-    # else:
-    #     model.load_state_dict(torch.load(
-    #         open(opt.model_path, 'rb'), map_location=lambda storage, loc: storage
-    #     ))
+    if torch.cuda.is_available():
+        model.load_state_dict(torch.load(open(opt.model_path, 'rb')))
+    else:
+        model.load_state_dict(torch.load(
+            open(opt.model_path, 'rb'), map_location=lambda storage, loc: storage
+        ))
 
     return model
 

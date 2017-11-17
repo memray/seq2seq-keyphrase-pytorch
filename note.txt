@@ -70,3 +70,9 @@ elapsed time: 0.000375
 11/17/2017 10:17:10 [INFO] train: 		Pred : </s> </s> </s> (5.4423)
 11/17/2017 10:17:10 [INFO] train: 		Real : <s> computer architecture
 11/17/2017 10:17:10 [INFO] train: **************************************************
+
+
+Message:
+1. my implementation of Seq2SeqLSTMAttention is problematic, need debugging
+2. mask loss is effective. mask off BOS_WORD is necessary. mask PAD_WORD would be slower, but I think in the very end PAD_WORD would contribute zero.
+3. dropout doesn't affect much.
