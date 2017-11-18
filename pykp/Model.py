@@ -609,6 +609,12 @@ class Seq2SeqLSTMAttention(nn.Module):
         # Return final outputs, hidden states, and attention weights (for visualization)
         return decoder_logits, hiddens, attn_weights
 
+class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
+
+    def __init__(self):
+        super(Seq2SeqLSTMAttentionCopy, self).__init__()
+
+
 class Seq2SeqLSTMAttentionOld(nn.Module):
     """
     Container module with an encoder, deocder, embeddings.

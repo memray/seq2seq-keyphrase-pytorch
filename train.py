@@ -26,7 +26,7 @@ from utils import Progbar, plot_learning_curve
 
 import pykp
 from pykp.IO import KeyphraseDataset
-from pykp.Model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionOld
+from pykp.Model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionOld, Seq2SeqLSTMAttentionCopy
 
 import time
 
@@ -348,9 +348,9 @@ def load_train_valid_data(opt):
     else:
         device = -1
 
-    training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=False, shuffle=False, sort=True, device=device)
+    training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=True, shuffle=True, sort=False, device=device)
     # training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True,  repeat=False, shuffle=True, sort=False, device = device)
-    validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, shuffle=False, sort=True, device = device)
+    validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, shuffle=True, sort=False, device = device)
 
     opt.word2id = word2id
     opt.id2word = id2word
@@ -378,23 +378,31 @@ def init_optimizer_criterion(model, opt):
 
     return optimizer, criterion
 
-def init_model(word2id, config):
+def init_model(word2id, opt):
     # model = Seq2SeqLSTMAttentionOld(
     model = Seq2SeqLSTMAttention(
-        emb_dim=config.word_vec_size,
-        vocab_size=config.vocab_size,
-        src_hidden_dim=config.rnn_size,
-        trg_hidden_dim=config.rnn_size,
-        ctx_hidden_dim=config.rnn_size,
+        emb_dim=opt.word_vec_size,
+        vocab_size=opt.vocab_size,
+        src_hidden_dim=opt.rnn_size,
+        trg_hidden_dim=opt.rnn_size,
+        ctx_hidden_dim=opt.rnn_size,
         attention_mode='dot',
-        batch_size=config.batch_size,
-        bidirectional=config.bidirectional,
+        batch_size=opt.batch_size,
+        bidirectional=opt.bidirectional,
         pad_token_src = word2id[pykp.IO.PAD_WORD],
         pad_token_trg = word2id[pykp.IO.PAD_WORD],
-        nlayers_src=config.enc_layers,
-        nlayers_trg=config.dec_layers,
-        dropout=config.dropout,
+        nlayers_src=opt.enc_layers,
+        nlayers_trg=opt.dec_layers,
+        dropout=opt.dropout,
     )
+
+    if opt.train_from:
+        if torch.cuda.is_available():
+            model.load_state_dict(torch.load(open(opt.train_from, 'rb')))
+        else:
+            model.load_state_dict(torch.load(
+                open(opt.train_from, 'rb'), map_location=lambda storage, loc: storage
+            ))
 
     logging.info('======================  Model Parameters  =========================')
     utils.tally_parameters(model)

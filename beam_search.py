@@ -315,7 +315,7 @@ class SequenceGenerator(object):
         # [complete_sequences[s.batch_id] for s in partial_sequences]
         for batch_i in range(batch_size):
             if len(complete_sequences[batch_i]) == 0:
-                complete_sequences[batch_i] = [s for s in partial_sequences if s.batch_id == batch_i]
+                complete_sequences[batch_i] = [s for s in partial_sequences.extract() if s.batch_id == batch_i]
             complete_sequences[batch_i] = sorted(complete_sequences[batch_i], key=lambda x:x.score)
 
         return complete_sequences

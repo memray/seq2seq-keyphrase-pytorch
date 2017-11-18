@@ -88,6 +88,7 @@ def predict_beam_search(model, data_loader, test_examples, opt):
         progbar.update(None, i, [])
 
         logging.info('======================  %d  =========================' % (i + 1))
+        print(src.data.numpy())
         print_out = '\nSource text: \n %s\n' % (' '.join(example['src_str']))
         true_seqs = example['trg_str']
         pred_seqs = [([opt.id2word[x] for x in seq.sentence], seq.score) for seq in pred_seqs[0][:5]]

@@ -9,6 +9,7 @@ import json
 import re
 from collections import Counter
 from collections import defaultdict
+import numpy as np
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -18,7 +19,7 @@ import torch
 
 PAD_WORD = '<pad>'
 UNK_WORD = '<unk>'
-UNK = 3
+UNK_ID = 3
 BOS_WORD = '<s>'
 EOS_WORD = '</s>'
 DIGIT = '<digit>'
@@ -74,12 +75,10 @@ def load_json_data(path, name='kp20k', src_fields=['title', 'abstract'], trg_fie
     '''
     src_trgs_pairs = []
     with codecs.open(path, "r", "utf-8") as corpus_file:
-        icount = 0
         for idx, line in enumerate(corpus_file):
-            icount += 1
-            if(icount == 1000):
-                break
-            print(line)
+            # if(idx == 1000):
+            #     break
+            # print(line)
             json_ = json.loads(line)
 
             trg_strs = []
@@ -256,50 +255,122 @@ def build_one2many_dataset(src_trgs_pairs, word2id, id2word, opt):
 
 def build_one2one_dataset(src_trgs_pairs, word2id, id2word, opt):
     examples = []
+    oov_target = 0
 
     for idx, (source, targets) in enumerate(src_trgs_pairs):
-        src_all = [word2id[w] if w in word2id else word2id['<unk>'] for w in source]
-        src = [word2id[w] if w in word2id and word2id[w] < opt.vocab_size else word2id['<unk>'] for w in source]
+        # if w is not seen in training data vocab (word2id, size could be larger than opt.vocab_size), replace with <unk>
+        src_all = [word2id[w] if w in word2id else word2id[UNK_WORD] for w in source]
+        # if w's id is larger than opt.vocab_size, replace with <unk>
+        src = [word2id[w] if w in word2id and word2id[w] < opt.vocab_size else word2id[UNK_WORD] for w in source]
 
-        # create a local vocab for the current source text
-        src_vocab = torchtext.vocab.Vocab(Counter(source))
-        # mapping source tokens to indices in the dynamic dict
-        src_map = [src_vocab.stoi[w] for w in source]
+        # create a local vocab for the current source text. If there're V words in the vocab of this string, len(itos)=V+2 (including <unk> and <pad>), len(stoi)=V+1 (including <pad>)
+        src_oov_map, oov_dict = extend_vocab_OOV(source, word2id, opt.vocab_size)
 
         for target in targets:
             example = {}
 
-            example['src_all'] = src_all
-            example['src']     = src
-            example['trg_all'] = [word2id[w] if w in word2id else word2id['<unk>'] for w in target]
-            example['trg'] = [word2id[w] if w in word2id and word2id[w] < opt.vocab_size else word2id['<unk>'] for w in target]
+            example['src_all']   = src_all
+            example['src']       = src
+            example['trg_all']   = [word2id[w] if w in word2id else word2id[UNK_WORD] for w in target]
+            example['trg']       = [word2id[w] if w in word2id and word2id[w] < opt.vocab_size else word2id[UNK_WORD] for w in target]
 
-            example["src_map"] = src_map
-            mask = [src_vocab.stoi[w] for w in target]
-            example["alignment"] = mask
+            example['trg_input'] = [word2id[BOS_WORD]] + example['trg'] + [word2id[EOS_WORD]] # target input, requires BOS at the beginning
+            example['trg_loss']  = example['trg'] + [word2id[EOS_WORD]] # target for loss computation, ignore BOS
 
+            example['src_oov_map'] = src_oov_map
+            example['oov_dict']  = oov_dict
+
+            trg_copy = []
+            for w in target:
+                if w in word2id and word2id[w] < opt.vocab_size:
+                    trg_copy.append(word2id[w])
+                elif w in oov_dict:
+                    trg_copy.append(oov_dict[w])
+                else:
+                    trg_copy.append(word2id[UNK_WORD])
+
+            example['trg_copy'] = trg_copy
+            example['trg_copy_input'] = [word2id[BOS_WORD]] + example['trg_copy'] + [word2id[EOS_WORD]] # target input, requires BOS at the beginning
+            example['trg_copy_loss']  = example['trg_copy'] + [word2id[EOS_WORD]] # target for loss computation, ignore BOS
+
+            example['copy_martix'] = copy_martix(source, target)
             C = [0 if w not in source else source.index(w) + opt.vocab_size for w in target]
-            example["copy_mask"] = C
+            example["copy_index"] = C
 
             examples.append(example)
             # A = [word2idx[w] if w in word2idx else word2idx['<unk>'] for w in source]
             # B = [[word2idx[w] if w in word2idx else word2idx['<unk>'] for w in p] for p in target]
             # C = [[0 if w not in source else source.index(w) + Lmax for w in p] for p in target]
 
+            if any([w >= opt.vocab_size for w in trg_copy]):
+                oov_target += 1
+
             if idx % 2000 == 0:
                 print('-------------------- %s: %d ---------------------------' % (inspect.getframeinfo(inspect.currentframe()).function, idx))
-                print('source    [len=%d]:\n\t\t %s' % (len(source), source))
-                print('target    [len=%d]:\n\t\t %s' % (len(target), target))
-                print('src_all   [len=%d]:\n\t\t %s' % (len(example['src_all']), example['src_all']))
-                print('trg_all   [len=%d]:\n\t\t %s' % (len(example['trg_all']), example['trg_all']))
-                print('src       [len=%d]:\n\t\t %s' % (len(example['src']), example['src']))
-                print('trg       [len=%d]:\n\t\t %s' % (len(example['trg']), example['trg']))
+                print('source    \n\t\t[len=%d]: %s' % (len(source), source))
+                print('target    \n\t\t[len=%d]: %s' % (len(target), target))
+                print('src_all   \n\t\t[len=%d]: %s' % (len(example['src_all']), example['src_all']))
+                print('trg_all   \n\t\t[len=%d]: %s' % (len(example['trg_all']), example['trg_all']))
+                print('src       \n\t\t[len=%d]: %s' % (len(example['src']), example['src']))
+                print('trg       \n\t\t[len=%d]: %s' % (len(example['trg']), example['trg']))
+                print('trg_input \n\t\t[len=%d]: %s' % (len(example['trg_input']), example['trg_input']))
+                print('trg_loss  \n\t\t[len=%d]: %s' % (len(example['trg_loss']), example['trg_loss']))
 
-                print('src_map   [len=%d]:\n\t\t %s' % (len(src_map), src_map))
-                print('alignment [len=%d]:\n\t\t %s' % (len(mask), mask))
-                print('copy_mask [len=%d]:\n\t\t %s' % (len(example["copy_mask"]), example["copy_mask"]))
+                print('src_oov_map      \n\t\t[len=%d]: %s' % (len(src_oov_map), src_oov_map))
+
+                print('oov_dict         \n\t\t[len=%d]: %s' % (len(oov_dict), oov_dict))
+                if len(oov_dict) > 0:
+                    print('Find OOV in source')
+
+                print('trg_copy         \n\t\t[len=%d]: %s' % (len(trg_copy), trg_copy))
+                print('trg_copy_input   \n\t\t[len=%d]: %s' % (len(example["trg_copy_input"]), example["trg_copy_input"]))
+                print('trg_copy_loss    \n\t\t[len=%d]: %s' % (len(example["trg_copy_loss"]), example["trg_copy_loss"]))
+
+                if any([w >= opt.vocab_size for w in trg_copy]):
+                    print('Find OOV in target')
+
+                print('copy_martix      \n\t\t[len=%d]: %s' % (len(example["copy_martix"]), example["copy_martix"]))
+                # print('copy_index  \n\t\t[len=%d]: %s' % (len(example["copy_index"]), example["copy_index"]))
+            pass
+
+    print('Find #(oov_target)/#(all) = %d/%d' % (oov_target, len(examples)))
 
     return examples
+
+def extend_vocab_OOV(source_words, word2id, vocab_size):
+    """
+    Map source words to their ids, including OOV words. Also return a list of OOVs in the article.
+    Args:
+    article_words: list of words (strings)
+    vocab: Vocabulary object
+    Returns:
+    ids: A list of word ids (integers); OOVs are represented by their temporary article OOV number. If the vocabulary size is 50k and the article has 3 OOVs, then these temporary OOV numbers will be 50000, 50001, 50002.
+    oovs:
+    A list of the OOV words in the article (strings), in the order corresponding to their temporary article OOV numbers."""
+    source_ids = []
+    oovs = {}
+    for w in source_words:
+        if w in word2id and word2id[w] < vocab_size: # a OOV can be either outside the vocab or id>=vocab_size
+            source_ids.append(word2id[w])
+        else:
+            # e.g. 50000 for the first article OOV, 50001 for the second...
+            word_id = oovs.get(w, len(oovs) + vocab_size)
+            oovs[w] = word_id
+            source_ids.append(word_id)
+    return source_ids, oovs
+
+def copy_martix(source, target):
+    '''
+    For reproduce Gu's method
+    return the copy matrix, size = [nb_sample, max_len_source, max_len_target]
+    cc_matrix[i][j]=1 if i-th word in target matches the i-th word in source
+    '''
+    cc = np.zeros((len(target), len(source)), dtype='float32')
+    for i in range(len(target)): # go over each word in target (all target have same length after padding)
+        for j in range(len(source)): # go over each word in source
+            if source[j] == target[i]: # if word match, set cc[k][j][i] = 1. Don't count non-word(source[k, i]=0)
+                cc[i][j] = 1.
+    return cc
 
 def build_vocab(tokenized_src_trgs_pairs, opt):
 

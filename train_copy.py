@@ -25,8 +25,22 @@ from utils import Progbar, plot_learning_curve
 
 import pykp
 from pykp.IO import KeyphraseDataset
-from pykp.Model import Seq2SeqLSTMAttention
+from pykp.Model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionOld, Seq2SeqLSTMAttentionCopy
 
+import time
+
+def time_usage(func):
+    # argnames = func.func_code.co_varnames[:func.func_code.co_argcount]
+    fname = func.__name__
+
+    def wrapper(*args, **kwargs):
+        beg_ts = time.time()
+        retval = func(*args, **kwargs)
+        end_ts = time.time()
+        print(fname, "elapsed time: %f" % (end_ts - beg_ts))
+        return retval
+
+    return wrapper
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
@@ -61,6 +75,7 @@ config.init_logging(opt.exp_path + '/output.log')
 logging.info('Parameters:')
 [logging.info('%s    :    %s' % (k, str(v))) for k,v in opt.__dict__.items()]
 
+@time_usage
 def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False):
     progbar = Progbar(title='Validating', target=len(data_loader), batch_size=opt.batch_size,
                       total_examples=len(data_loader.dataset))
@@ -80,29 +95,65 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             src.cuda()
             trg.cuda()
 
-        # decoder_probs, _, _ = model.forward(src, trg, is_train=is_train)
-        decoder_probs, _, _ = model.forward_(src, trg)
+        decoder_probs, _, _ = model.forward(src, trg)
 
         # simply average losses of all the predicitons
+        start_time = time.time()
+
         loss = criterion(
             decoder_probs.contiguous().view(-1, opt.vocab_size),
             trg.view(-1)
         )
+        print("--loss calculation --- %s" % (time.time() - start_time))
 
+        start_time = time.time()
         if is_train:
             optimizer.zero_grad()
             loss.backward()
             if opt.max_grad_norm > 0:
                 torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
             optimizer.step()
+        print("--backward function - %s seconds ---" % (time.time() - start_time))
 
         losses.append(loss.data[0])
 
+        start_time = time.time()
         progbar.update(epoch, i, [('valid_loss', loss.data[0])])
+        print("-progbar.update --- %s" % (time.time() - start_time))
 
         # Don't run through all the validation data, take 5% of training batches. we skip all the remaining iterations
         if i > int(opt.run_valid_every * 0.05):
             break
+        '''
+        if i > 1 and i % opt.report_every == 0:
+            logging.info('Epoch : %d Minibatch : %d Loss : %.5f' % (epoch, i, np.mean(losses)))
+            sampled_size = 2
+            logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
+
+            if torch.cuda.is_available():
+                max_words_pred = decoder_probs.data.cpu().numpy().argmax(axis=-1)
+                trg = trg.data.cpu().numpy()
+            else:
+                max_words_pred    = decoder_probs.data.numpy().argmax(axis=-1)
+                trg = trg.data.numpy()
+
+            sampled_trg_idx = np.random.random_integers(low=0, high=len(trg)-1, size=sampled_size)
+            max_words_pred  = [max_words_pred[i] for i in sampled_trg_idx]
+            trg         = [trg[i] for i in sampled_trg_idx]
+
+            for i, (sentence_pred, sentence_real) in enumerate(zip(max_words_pred, trg)):
+                sentence_pred = [opt.id2word[x] for x in sentence_pred]
+                sentence_real = [opt.id2word[x] for x in sentence_real]
+
+                if '</s>' in sentence_real:
+                    index = sentence_real.index('</s>')
+                    sentence_real = sentence_real[:index]
+                    sentence_pred = sentence_pred[:index]
+
+                logging.info('======================  %d  =========================' % (i+1))
+                logging.info('\t\tPredicted : %s ' % (' '.join(sentence_pred)))
+                logging.info('\t\tReal : %s ' % (' '.join(sentence_real)))
+        '''
     return losses
 
 
@@ -138,27 +189,33 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             total_batch += 1
             src = batch.src
             trg = batch.trg
-
+            print("src size - ",src.size())
+            print("target size - ",trg.size())
             if torch.cuda.is_available():
                 src.cuda()
                 trg.cuda()
 
             optimizer.zero_grad()
-            # decoder_logits, _, _ = model.forward(src, trg, is_train=True)
-            decoder_logits, _, _ = model.forward_(src, trg)
+            decoder_logits, _, _ = model.forward(src, trg)
 
             # simply average losses of all the predicitons
             # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
+            start_time = time.time()
             loss = criterion(
                 decoder_logits.contiguous().view(-1, opt.vocab_size),
                 trg.view(-1)
             )
+            print("--loss calculation- %s seconds ---" % (time.time() - start_time))
 
+            start_time = time.time()
             loss.backward()
+            print("--backward- %s seconds ---" % (time.time() - start_time))
+
             # if opt.max_grad_norm > 0:
             #     pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
             #     after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
             #     logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
+
             optimizer.step()
 
             train_losses.append(loss.data[0])
@@ -264,35 +321,16 @@ def load_train_valid_data(opt):
     id2word = data_dict['id2word']
     vocab = data_dict['vocab']
 
-    # training_data_loader = DataLoader(dataset=list(zip(train_src, train_trg)), num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
-    # validation_data_loader = DataLoader(dataset=list(zip(valid_src, valid_trg)), num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
-
-    src_field = torchtext.data.Field(
-        use_vocab = False,
-        init_token=word2id[pykp.IO.BOS_WORD],
-        eos_token=word2id[pykp.IO.EOS_WORD],
-        pad_token=word2id[pykp.IO.PAD_WORD],
-        batch_first = True
-    )
-    trg_field = torchtext.data.Field(
-        use_vocab = False,
-        init_token=word2id[pykp.IO.BOS_WORD],
-        eos_token=word2id[pykp.IO.EOS_WORD],
-        pad_token=word2id[pykp.IO.PAD_WORD],
-        batch_first=True
-    )
-
-    train = KeyphraseDataset(list(zip(train_src, train_trg)), [('src', src_field), ('trg', trg_field)])
-    valid = KeyphraseDataset(list(zip(valid_src, valid_trg)), [('src', src_field), ('trg', trg_field)])
-
     if torch.cuda.is_available():
         device = opt.gpuid
     else:
         device = -1
 
-    training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=False, shuffle=False, sort=False, device=device)
-    # training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True,  repeat=False, shuffle=True, sort=False, device = device)
-    validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, shuffle=True, sort=True, device = device)
+    training_data_loader = DataLoader(dataset=list(zip(train_src, train_trg)), num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
+    validation_data_loader = DataLoader(dataset=list(zip(valid_src, valid_trg)), num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
+
+    # training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=False, shuffle=False, sort=True, device=device)
+    # validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, shuffle=False, sort=True, device = device)
 
     opt.word2id = word2id
     opt.id2word = id2word
@@ -308,11 +346,11 @@ def load_train_valid_data(opt):
 
 def init_optimizer_criterion(model, opt):
     # mask the BOS <s> and PAD <pad> when computing loss
-    weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
-    weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
-    weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
-    criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
-    # criterion = torch.nn.CrossEntropyLoss()
+    # weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
+    # weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
+    # weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
+    # criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
+    criterion = torch.nn.CrossEntropyLoss()
 
     optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
     # optimizer = torch.optim.Adadelta(model.parameters(), lr=0.1)
@@ -321,7 +359,24 @@ def init_optimizer_criterion(model, opt):
     return optimizer, criterion
 
 def init_model(word2id, config):
-    model = Seq2SeqLSTMAttention(
+    # model = Seq2SeqLSTMAttentionOld(
+    # model = Seq2SeqLSTMAttention(
+    #     emb_dim=config.word_vec_size,
+    #     vocab_size=config.vocab_size,
+    #     src_hidden_dim=config.rnn_size,
+    #     trg_hidden_dim=config.rnn_size,
+    #     ctx_hidden_dim=config.rnn_size,
+    #     attention_mode='dot',
+    #     batch_size=config.batch_size,
+    #     bidirectional=config.bidirectional,
+    #     pad_token_src = word2id[pykp.IO.PAD_WORD],
+    #     pad_token_trg = word2id[pykp.IO.PAD_WORD],
+    #     nlayers_src=config.enc_layers,
+    #     nlayers_trg=config.dec_layers,
+    #     dropout=config.dropout,
+    # )
+
+    model = Seq2SeqLSTMAttentionCopy(
         emb_dim=config.word_vec_size,
         vocab_size=config.vocab_size,
         src_hidden_dim=config.rnn_size,

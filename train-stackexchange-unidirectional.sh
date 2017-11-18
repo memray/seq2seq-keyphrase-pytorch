@@ -12,4 +12,5 @@
 #module restore
 
 # Run the job
-srun python -m train -data data/stackexchange/stackexchange.train_valid.pt -vocab data/stackexchange/stackexchange.vocab.pt -exp_path "exp/stackexchange.uni-directional.no-loss-mask.%s" -exp "stackexchange" -batch_size 256
+#srun python -m train -data data/stackexchange/stackexchange.train_valid.pt -vocab data/stackexchange/stackexchange.vocab.pt -exp_path "exp/stackexchange.uni-directional.no-loss-mask.%s" -exp "stackexchange" -batch_size 256
+srun python -m train -data data/stackexchange/stackexchange.train_valid.pt -vocab data/stackexchange/stackexchange.vocab.pt -exp_path "exp/stackexchange.uni-directional.no-loss-mask.20171117-214930/" -exp "stackexchange" -batch_size 256 -train_from "exp/stackexchange.uni-directional.no-loss-mask.20171117-214930/stackexchange.epoch=19.batch=276.total_batch=42000.model"

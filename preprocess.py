@@ -82,10 +82,10 @@ def main():
     dump to disk
     '''
     print("Dumping dict to disk: %s" % opt.save_data + '.vocab.pt')
-    torch.save([word2id, id2word, vocab],
-               open(opt.save_data + '.vocab.pt', 'wb'))
+    # torch.save([word2id, id2word, vocab],
+    #            open(opt.save_data + '.vocab.pt', 'wb'))
     print("Dumping train/valid to disk: %s" % (opt.save_data + '.train_valid.pt'))
-    torch.save(data_dict, open(opt.save_data + '.train_valid.pt', 'wb'))
+    # torch.save(data_dict, open(opt.save_data + '.train_valid.pt', 'wb'))
 
     print('Vocab size = %d' % len(vocab))
     print('Training data size = %d' % len(tokenized_train_pairs))
