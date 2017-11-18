@@ -50,9 +50,6 @@ def evaluate(targets,predictions, do_stem=True,topn=5):
     predicted_number = np.asarray([0] * len(predictions), dtype='int32')
     metric_dict = {'target_number':target_number,'prediction_number':predicted_number,'correct_number':correctly_matched}
 
-    print(targets)
-    print(predictions)
-    print('*' * 100)
 
     # convert target index into string
     if do_stem:
