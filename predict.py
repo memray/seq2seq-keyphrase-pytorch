@@ -2,7 +2,7 @@
 import os
 import sys
 import argparse
-
+from evaluate import evaluate
 import logging
 import numpy as np
 import torchtext
@@ -50,10 +50,6 @@ logging.info('Parameters:')
 [logging.info('%s    :    %s' % (k, str(v))) for k,v in opt.__dict__.items()]
 
 
-def evaluate(pred_seqs, true_seqs, top_k):
-    pass
-
-
 def predict_beam_search(model, data_loader, test_examples, opt):
     model.eval()
 
@@ -76,6 +72,9 @@ def predict_beam_search(model, data_loader, test_examples, opt):
     '''
     Note here each batch only contains one data example, thus decoder_probs is flattened
     '''
+    prediction_all = []
+    target_all = []
+
     for i, (batch, example) in enumerate(zip(data_loader, test_examples)):
         src = batch.src
 
@@ -94,12 +93,15 @@ def predict_beam_search(model, data_loader, test_examples, opt):
 
         print_out += 'Top 5 predicted sequences: \n'
 
+        target_all.append(true_seqs)
+        prediction_all.append([x for (x,y) in pred_seqs])
+
         for words, score in pred_seqs:
             print_out += '\t\t[%.4f]\t%s\n' % (score, ' '.join(words))
 
         logging.info(print_out)
-
-            # precision, recall, f_score = evaluate(pred_seqs, true_seqs, k=5)
+    precision, recall, f_score = evaluate(targets=target_all, predictions=prediction_all, topn=5)
+    print("precision %.4f , recall %.4f, fscore %.4f " %(precision, recall, f_score))
 
 def predict_greedy(model, data_loader, test_examples, opt):
     model.eval()
@@ -224,23 +226,12 @@ def load_model(opt):
 
     return model
 
-# List of List of Output
-def metric(truelabels, predictions):
-    f1scores = 0
-
-
-
-
-    return f1scores
-
 def main():
     try:
         test_data_loader, test_examples, word2id, id2word, vocab = load_test_data(opt)
         model = load_model(opt)
         predict_beam_search(model, test_data_loader, test_examples, opt)
         # predict_greedy(model, test_data_loader, test_examples, opt)
-
-
     except Exception as e:
         logging.exception("message")
 
