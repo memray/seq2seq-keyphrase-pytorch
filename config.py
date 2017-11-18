@@ -180,7 +180,7 @@ def train_opts(parser):
                         help='Maximum batch size')
     parser.add_argument('-batch_workers', type=int, default=1,
                         help='Number of workers for generating batches')
-    parser.add_argument('-epochs', type=int, default=20,
+    parser.add_argument('-epochs', type=int, default=100,
                         help='Number of training epochs')
     parser.add_argument('-optim', default='adam',
                         choices=['sgd', 'adagrad', 'adadelta', 'adam'],
