@@ -76,3 +76,12 @@ Message:
 1. my implementation of Seq2SeqLSTMAttention is problematic, need debugging
 2. mask loss is effective. mask off BOS_WORD is necessary. mask PAD_WORD would be slower, but I think in the very end PAD_WORD would contribute zero.
 3. dropout doesn't affect much.
+4. How should I deal with the loss mask? if I mask the BOS_WORD, it would predict the first word nonsense like this:
+         ======================  1  =========================
+                       Pred : 2dlpp program analysis (3.8992)
+                       Real : <s> program analysis
+         ======================  2  =========================
+                       Pred : 2dlpp consumer behavior (3.7791)
+                       Real : <s> consumer behavior
+    Maybe the best way is remove the first word in targets when computing loss
+

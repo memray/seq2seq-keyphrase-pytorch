@@ -38,7 +38,7 @@ class Attention(nn.Module):
         elif self.method == 'concat':
             self.attn = nn.Linear(self.hidden_size * 2, hidden_size)
             self.other = nn.Parameter(torch.FloatTensor(1, hidden_size))
-    @time_usage
+    # @time_usage
     def forward(self, hidden, encoder_outputs):
         seq_len = len(encoder_outputs)
 
@@ -99,7 +99,7 @@ class SoftDotAttention(nn.Module):
             energy = torch.matmul(energy, self.v.t()) # return the energy of the k time step for all srcs in batch (batch_size, dec_hidden_dim) * (dec_hidden_dim, 1) -> (batch_size, 1)
             return energy
 
-    @time_usage
+    # @time_usage
     def forward(self, hidden, encoder_outputs):
         '''
         Compute the attention and h_tilde
@@ -147,7 +147,7 @@ class SoftDotAttention(nn.Module):
         # return h_tilde (batch_size, trg_len, trg_hidden_dim), attn (batch_size, trg_len, src_len)
         return h_tilde.view(batch_size, trg_len, trg_hidden_dim), attn.view(batch_size, trg_len, src_len)
 
-    @time_usage
+    # @time_usage
     def forward_(self, hidden, context):
         print("forward funtion")
         """
@@ -202,7 +202,7 @@ class LSTMAttentionDotDecoder(nn.Module):
         self.input_weights = nn.Linear(input_size, 4 * trg_hidden_size)
         self.hidden_weights = nn.Linear(trg_hidden_size, 4 * trg_hidden_size)
 
-    @time_usage
+    # @time_usage
     def forward(self, input, hidden, ctx, ctx_mask=None):
         """
         Propogate input through the network.
@@ -376,7 +376,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return decoder_init_hidden, decoder_init_cell
 
-    @time_usage
+    # @time_usage
     def forward(self, input_src, input_trg, trg_mask=None, ctx_mask=None, is_train=True):
         '''
         :param is_train: if True, it would apply teacher forcing (which significantly speed up the training at the beginning)
@@ -385,7 +385,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         decoder_probs, hiddens, attn_weights = self.decode(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, is_train=is_train)
         return decoder_probs, hiddens, attn_weights
 
-    @time_usage
+    # @time_usage
     def greedy_predict(self, input_src, max_sent_length=10, trg_mask=None, ctx_mask=None):
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
         trg = Variable(torch.from_numpy(np.zeros((input_src.size(0), max_sent_length), dtype='int64')))
@@ -400,7 +400,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return max_words_pred
 
-    @time_usage
+    # @time_usage
     def generate(self, trg_input, hidden, enc_context, k = 1, feed_all_timesteps=False, return_attention=False):
         '''
         Given the initial input, state and the source contexts, return the top K restuls for each time step
@@ -482,7 +482,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         else:
             return pred_words, decoder_probs, hidden
 
-    @time_usage
+    # @time_usage
     def encode(self, input_src):
         """Propogate input through the network."""
         src_emb = self.embedding(input_src)
@@ -506,7 +506,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return src_h, (h_t, c_t)
 
-    @time_usage
+    # @time_usage
     def decode(self, trg_input, enc_context, enc_hidden, trg_mask, ctx_mask, is_train=True):
         '''
         Initial decoder state h0 (batch_size, trg_hidden_size), converted from h_t of encoder (batch_size, src_hidden_size * num_directions) through a linear layer
@@ -551,7 +551,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         # Return final outputs, hidden states, and attention weights (for visualization)
         return decoder_logits, dec_hiddens, attn_weights
 
-    @time_usage
+    # @time_usage
     def decode_old(self, trg_input, enc_context, enc_hidden, trg_mask, ctx_mask, is_train=True):
         '''
         It's erroneous, but the specific error hasn't been found out.
@@ -745,7 +745,7 @@ class Seq2SeqLSTMAttentionOld(nn.Module):
 
         return src_h, (h_t, c_t)
 
-    @time_usage
+    # @time_usage
     def forward(self, input_src, input_trg, trg_mask=None, ctx_mask=None):
         """Propogate input through the network."""
         # start_time = time.time()
