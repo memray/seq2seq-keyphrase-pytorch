@@ -95,7 +95,7 @@ def predict_beam_search(model, data_loader, test_examples, opt):
         print_out += 'Real : \n\t\t%s \n' % (true_seqs)
 
         print_out += 'Top 5 predicted sequences: \n'
-
+        print(pred_seqs)
         target_all.append(true_seqs)
         prediction_all.append([x for (x,y) in pred_seqs])
 
@@ -104,6 +104,7 @@ def predict_beam_search(model, data_loader, test_examples, opt):
 
         logging.info(print_out)
         precision, recall, f_score = evaluate(targets=target_all, predictions=prediction_all, topn=5)
+        print(" individual precision %.4f ,  recall %.4f,  fscore %.4f" %(precision,recall,f_score))
         score_dict['precision'].append(precision)
         score_dict['recall'].append(recall)
         score_dict['f1score'].append(f_score)
@@ -160,6 +161,8 @@ def load_test_data(opt):
     else:
         logging.info("Loading test json data from '%s'" % opt.test_data)
         src_trgs_pairs = pykp.IO.load_json_data(opt.test_data, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
+        # src_trgs_pairs = pykp.IO.load_json_data(opt.test_data, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
+
 
         print("Processing testing data...")
         tokenized_test_pairs = pykp.IO.tokenize_filter_data(
