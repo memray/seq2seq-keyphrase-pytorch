@@ -2,7 +2,7 @@
 import os
 import sys
 import argparse
-from evaluate import evaluate
+from evaluate import evaluate,macro_averaged_score
 import logging
 import numpy as np
 import torchtext
@@ -75,6 +75,8 @@ def predict_beam_search(model, data_loader, test_examples, opt):
     prediction_all = []
     target_all = []
 
+    score_dict = {'precision':[],'recall':[],'f1score':[]}
+
     for i, (batch, example) in enumerate(zip(data_loader, test_examples)):
         src = batch.src
 
@@ -100,8 +102,15 @@ def predict_beam_search(model, data_loader, test_examples, opt):
             print_out += '\t\t[%.4f]\t%s\n' % (score, ' '.join(words))
 
         logging.info(print_out)
+        precision, recall, f_score = evaluate(targets=target_all, predictions=prediction_all, topn=5)
+        score_dict['precision'].append(precision)
+        score_dict['recall'].append(recall)
+        score_dict['f1score'].append(f_score)
+
+    precision, recall, f_score = macro_averaged_score(precisionlist=score_dict['precision'],recalllist=score_dict['recall'])
+    print("macro precision %.4f , macro recall %.4f, macro fscore %.4f " % (precision, recall, f_score))
     precision, recall, f_score = evaluate(targets=target_all, predictions=prediction_all, topn=5)
-    print("precision %.4f , recall %.4f, fscore %.4f " %(precision, recall, f_score))
+    print("micro precision %.4f , micro recall %.4f, micro fscore %.4f " %(precision, recall, f_score))
 
 def predict_greedy(model, data_loader, test_examples, opt):
     model.eval()

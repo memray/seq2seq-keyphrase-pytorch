@@ -19,6 +19,14 @@ def multiwordstem(word_list ):
 
 import config
 
+def macro_averaged_score(precisionlist,recalllist):
+    precision = np.average(precisionlist)
+    recall = np.average(recalllist)
+    f_score= 0
+    if(precision or recall):
+        f_score = round((2 * (precision * recall)) / (precision + recall),2)
+    return precision,recall,f_score
+
 def evaluate(targets,predictions, do_stem=True,topn=5):
     '''
     '''
