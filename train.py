@@ -365,10 +365,11 @@ def load_train_valid_data(opt):
 
 def init_optimizer_criterion(model, opt):
     # mask the BOS <s> and PAD <pad> when computing loss
-    weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
-    weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
-    weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
-    criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
+    # weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
+    # weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
+    # weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
+    # criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
+    criterion = torch.nn.CrossEntropyLoss()
 
     optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
     # optimizer = torch.optim.Adadelta(model.parameters(), lr=0.1)

@@ -87,15 +87,17 @@ def predict_beam_search(model, data_loader, test_examples, opt):
         progbar.update(None, i, [])
 
         logging.info('======================  %d  =========================' % (i + 1))
-        for pred_seq, true_seq in zip(pred_seqs, test_examples):
-            true_seqs = true_seq['trg_str']
-            pred_seqs = [([opt.id2word[x] for x in seq.sentence], seq.score) for seq in pred_seq[:5]]
-            logging.info('\t\tReal : %s \n' % (true_seqs))
+        print_out = '\nSource text: \n %s\n' % (' '.join(example['src_str']))
+        true_seqs = example['trg_str']
+        pred_seqs = [([opt.id2word[x] for x in seq.sentence], seq.score) for seq in pred_seqs[0][:5]]
+        print_out += 'Real : \n\t\t%s \n' % (true_seqs)
 
-            logging.info('\t\tTop 5 predicted sequences: ')
+        print_out += 'Top 5 predicted sequences: \n'
 
-            for words, score in pred_seqs:
-                logging.info('\t\t[%.4f]\t%s' % (score, ' '.join(words)))
+        for words, score in pred_seqs:
+            print_out += '\t\t[%.4f]\t%s\n' % (score, ' '.join(words))
+
+        logging.info(print_out)
 
             # precision, recall, f_score = evaluate(pred_seqs, true_seqs, k=5)
 
