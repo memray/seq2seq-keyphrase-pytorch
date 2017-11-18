@@ -94,7 +94,7 @@ def predict_beam_search(model, data_loader, test_examples, opt):
         print_out += 'Real : \n\t\t%s \n' % (true_seqs)
 
         print_out += 'Top 5 predicted sequences: \n'
-
+        print(pred_seqs)
         target_all.append(true_seqs)
         prediction_all.append([x for (x,y) in pred_seqs])
 
@@ -103,6 +103,7 @@ def predict_beam_search(model, data_loader, test_examples, opt):
 
         logging.info(print_out)
         precision, recall, f_score = evaluate(targets=target_all, predictions=prediction_all, topn=5)
+        print(" individual precision %.4f ,  recall %.4f,  fscore %.4f" %(precision,recall,f_score))
         score_dict['precision'].append(precision)
         score_dict['recall'].append(recall)
         score_dict['f1score'].append(f_score)
