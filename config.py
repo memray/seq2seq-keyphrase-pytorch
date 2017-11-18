@@ -245,10 +245,6 @@ def predict_opts(parser):
     parser.add_argument('-output', default='pred.txt',
                         help="""Path to output the predictions (each line will
                         be the decoded sequence""")
-    parser.add_argument('-beam_size',  type=int, default=6,
-                        help='Beam size')
-    parser.add_argument('-max_sent_length', type=int, default=5,
-                        help='Maximum sentence length.')
     parser.add_argument('-replace_unk', action="store_true",
                         help="""Replace the generated UNK tokens with the
                         source token that had highest attention weight. If
@@ -278,3 +274,11 @@ def predict_opts(parser):
                         help='Maximum batch size')
     parser.add_argument('-batch_workers', type=int, default=1,
                         help='Number of workers for generating batches')
+
+    # beam search setting
+    parser.add_argument('-beam_size',  type=int, default=10,
+                        help='Beam size')
+    parser.add_argument('-max_sent_length', type=int, default=6,
+                        help='Maximum sentence length.')
+    parser.add_argument('-heap_size', type=int, default=1024,
+                        help='Maximum size of search queue.')

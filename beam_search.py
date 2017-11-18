@@ -65,12 +65,16 @@ class Sequence(object):
         return self.score == other.score
 
 
-class TopN(object):
+class TopN_heap(object):
     """Maintains the top n elements of an incrementally provided set."""
 
     def __init__(self, n):
         self._n = n
         self._data = []
+
+    def __len__(self):
+        assert self._data is not None
+        return len(self._data)
 
     def size(self):
         assert self._data is not None
@@ -97,7 +101,6 @@ class TopN(object):
         """
         assert self._data is not None
         data = self._data
-        self._data = None
         if sort:
             data.sort(reverse=True)
         return data
@@ -117,7 +120,9 @@ class SequenceGenerator(object):
                  max_sequence_length=50,
                  return_attention=True,
                  length_normalization_factor=0.0,
-                 length_normalization_const=5.):
+                 length_normalization_const=5.,
+                 heap_size = 100,
+                 ):
         """Initializes the generator.
 
         Args:
@@ -139,6 +144,7 @@ class SequenceGenerator(object):
         self.length_normalization_factor = length_normalization_factor
         self.length_normalization_const = length_normalization_const
         self.return_attention = return_attention
+        self.heap_size = heap_size
 
     def sequence_to_batch(self, sequences):
         '''
@@ -190,7 +196,7 @@ class SequenceGenerator(object):
         elif isinstance(dec_hidden, list):
             initial_state = dec_hidden
 
-        partial_sequences = []
+        partial_sequences = TopN_heap(self.heap_size)
         complete_sequences = [[] for _ in range(batch_size)]
         # partial_sequences = [TopN(self.beam_size) for _ in range(batch_size)]
         # complete_sequences = [TopN(self.beam_size) for _ in range(batch_size)]
@@ -204,7 +210,7 @@ class SequenceGenerator(object):
                     logprob   = 0,
                     score     = 0,
                     attention = [])
-            partial_sequences.append(seq)
+            partial_sequences.push(seq)
 
         '''
         Run beam search.
@@ -215,7 +221,7 @@ class SequenceGenerator(object):
                 break
 
             # convert sequences into new batches to feed model
-            inputs, states, contexts = self.sequence_to_batch(partial_sequences)
+            inputs, states, contexts = self.sequence_to_batch(partial_sequences.extract())
             words, probs, new_states, attn_weights = self.model.generate(
                 inputs, states, contexts,
                 k=self.beam_size+1,
@@ -234,10 +240,10 @@ class SequenceGenerator(object):
                 new_states2 = new_states[1].squeeze(0)
                 new_states = [(new_states1[i], new_states2[i]) for i in range(len(partial_sequences))]
 
-            new_partial_sequences = [] # change to PriorityQueue() later
+            new_partial_sequences = TopN_heap(self.heap_size)
 
             # For every entry in partial_sequences, find and trim to the most likely beam_size hypotheses
-            for partial_id, partial_seq in enumerate(partial_sequences):
+            for partial_id, partial_seq in enumerate(partial_sequences.extract()):
                 num_new_hyp = 0
 
                 # check each new beam and decide to add to hypotheses or completed list
@@ -248,7 +254,7 @@ class SequenceGenerator(object):
                         continue
 
                     # score=0 means this is the first word, empty the sentence
-                    if partial_seq.score == 0:
+                    if partial_seq.score != 0:
                         new_sent = copy.copy(partial_seq.sentence)
                     else:
                         new_sent = []
@@ -265,7 +271,7 @@ class SequenceGenerator(object):
                     )
 
                     # we have generated self.beam_size new hypotheses, stop generating
-                    if num_new_hyp == self.beam_size:
+                    if num_new_hyp >= self.beam_size:
                         break
 
                     # state and attention of this partial_seq are shared by its descendant beams
@@ -286,7 +292,7 @@ class SequenceGenerator(object):
                             new_partial_seq.score /= length_penalty ** self.length_normalization_factor
                         complete_sequences[new_partial_seq.batch_id].append(new_partial_seq)
                     else:
-                        new_partial_sequences.append(new_partial_seq)
+                        new_partial_sequences.push(new_partial_seq)
                         num_new_hyp += 1
 
                 # print('Finished no.%d partial sequence' % partial_id)
@@ -304,6 +310,9 @@ class SequenceGenerator(object):
         # But never output a mixture of complete and partial sequences because a
         # partial sequence could have a higher score than all the complete
         # sequences.
+
+        # append all the partial_sequences to complete
+        # [complete_sequences[s.batch_id] for s in partial_sequences]
         for batch_i in range(batch_size):
             if len(complete_sequences[batch_i]) == 0:
                 complete_sequences[batch_i] = [s for s in partial_sequences if s.batch_id == batch_i]

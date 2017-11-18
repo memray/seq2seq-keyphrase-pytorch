@@ -67,9 +67,11 @@ def predict_beam_search(model, data_loader, test_examples, opt):
     progbar = Progbar(title='Testing', target=len(data_loader), batch_size=opt.batch_size,
                       total_examples=len(data_loader.dataset))
     generator = SequenceGenerator(model,
-                 eos_id=opt.word2id[pykp.IO.EOS_WORD],
-                 beam_size=opt.beam_size,
-                 max_sequence_length=opt.max_sent_length)
+                     eos_id=opt.word2id[pykp.IO.EOS_WORD],
+                     beam_size=opt.beam_size,
+                     max_sequence_length=opt.max_sent_length,
+                     heap_size = opt.heap_size
+                )
 
     '''
     Note here each batch only contains one data example, thus decoder_probs is flattened
@@ -95,7 +97,7 @@ def predict_beam_search(model, data_loader, test_examples, opt):
             for words, score in pred_seqs:
                 logging.info('\t\t[%.4f]\t%s' % (score, ' '.join(words)))
 
-            precision, recall, f_score = evaluate(pred_seqs, true_seqs, k=5)
+            # precision, recall, f_score = evaluate(pred_seqs, true_seqs, k=5)
 
 def predict_greedy(model, data_loader, test_examples, opt):
     model.eval()
