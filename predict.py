@@ -160,6 +160,8 @@ def load_test_data(opt):
     else:
         logging.info("Loading test json data from '%s'" % opt.test_data)
         src_trgs_pairs = pykp.IO.load_json_data(opt.test_data, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
+        # src_trgs_pairs = pykp.IO.load_json_data(opt.test_data, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
+
 
         print("Processing testing data...")
         tokenized_test_pairs = pykp.IO.tokenize_filter_data(
