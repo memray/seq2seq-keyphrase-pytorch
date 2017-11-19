@@ -124,8 +124,8 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
         print("-progbar.update --- %s" % (time.time() - start_time))
 
         # Don't run through all the validation data, take 5%/10% of training batches. we skip all the remaining iterations
-        if i > int(opt.run_valid_every * 0.1):
-            break
+        # if i > int(opt.run_valid_every * 0.1):
+        #     break
         '''
         if i > 1 and i % opt.report_every == 0:
             logging.info('Epoch : %d Minibatch : %d Loss : %.5f' % (epoch, i, np.mean(losses)))
