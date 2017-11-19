@@ -35,9 +35,57 @@ torchtext.vocab.Vocab.__getstate__ = __getstate__
 torchtext.vocab.Vocab.__setstate__ = __setstate__
 
 
-class KeyphraseDataset(torchtext.data.Dataset):
-    """Defines a dataset for machine translation."""
+class KeyphraseDatasetCopy(torch.utils.data.Dataset):
+    def __init__(self, examples):
+        # keys of matter. `src_oov_map` is for mapping pointed word to dict, `oov_dict` is for determining the dim of predicted logit: dim=vocab_size+max_oov_dict_in_batch
+        keys = ['src', 'trg_copy', 'trg_copy_input', 'trg_copy_loss', 'src_oov_map', 'oov_dict']
+        filtered_examples = []
 
+        for e in examples:
+            filtered_example = {}
+            for k in keys:
+                filtered_example[k] = e[k]
+            if 'oov_dict' in filtered_example:
+                filtered_example['oov_dict'] = filtered_example['oov_dict'].items()
+            filtered_examples.append(filtered_example)
+
+        self.examples = filtered_examples
+
+    def __getitem__(self, index):
+        return self.examples[index]
+
+    def __len__(self):
+        return len(self.examples)
+    #
+    # def collate_fn(self, batch):
+    #     "Puts each data field into a tensor with outer dimension batch size"
+    #     if torch.is_tensor(batch[0]):
+    #         out = None
+    #         return torch.stack(batch, 0, out=out)
+    #     elif type(batch[0]).__module__ == 'numpy':
+    #         elem = batch[0]
+    #         if type(elem).__name__ == 'ndarray':
+    #             return torch.stack([torch.from_numpy(b) for b in batch], 0)
+    #         if elem.shape == ():  # scalars
+    #             py_type = float if elem.dtype.name.startswith('float') else int
+    #             return numpy_type_map[elem.dtype.name](list(map(py_type, batch)))
+    #     elif isinstance(batch[0], int):
+    #         return torch.LongTensor(batch)
+    #     elif isinstance(batch[0], float):
+    #         return torch.DoubleTensor(batch)
+    #     elif isinstance(batch[0], string_classes):
+    #         return batch
+    #     elif isinstance(batch[0], collections.Mapping):
+    #         return {key: default_collate([d[key] for d in batch]) for key in batch[0]}
+    #     elif isinstance(batch[0], collections.Sequence):
+    #         transposed = zip(*batch)
+    #         return [default_collate(samples) for samples in transposed]
+    #
+    #     raise TypeError(("batch must contain tensors, numbers, dicts or lists; found {}"
+    #                      .format(type(batch[0]))))
+
+
+class KeyphraseDataset(torchtext.data.Dataset):
     @staticmethod
     def sort_key(ex):
         return torchtext.data.interleave_keys(len(ex.src), len(ex.trg))
@@ -76,8 +124,8 @@ def load_json_data(path, name='kp20k', src_fields=['title', 'abstract'], trg_fie
     src_trgs_pairs = []
     with codecs.open(path, "r", "utf-8") as corpus_file:
         for idx, line in enumerate(corpus_file):
-            # if(idx == 1000):
-            #     break
+            if(idx == 20000):
+                break
             # print(line)
             json_ = json.loads(line)
 

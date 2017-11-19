@@ -96,14 +96,14 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             src.cuda()
             trg.cuda()
 
-        decoder_probs, _, _ = model.forward(src, trg)
+        decoder_logits, _, _ = model.forward(src, trg)
 
         # simply average losses of all the predicitons
         start_time = time.time()
 
         loss = criterion(
-            decoder_probs.contiguous().view(-1, opt.vocab_size),
-            trg.view(-1)
+            decoder_logits.contiguous().view(-1, opt.vocab_size)[:-1],
+            trg.view(-1)[1:]
         )
         print("--loss calculation --- %s" % (time.time() - start_time))
 
@@ -186,10 +186,13 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
         model.train()
 
         for batch_i, batch in enumerate(training_data_loader):
-            batch_i += 1
+            batch_i += 1 # for the aesthetics of printing
             total_batch += 1
             src = batch.src
             trg = batch.trg
+            logging.info('======================  %d  =========================' % (batch_i))
+            print('\nSource text: \n %s\n' % (' '.join([opt.id2word[wi] for wi in src.data.numpy()[0]])))
+
             print("src size - ",src.size())
             print("target size - ",trg.size())
             if torch.cuda.is_available():
@@ -199,12 +202,12 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             optimizer.zero_grad()
             decoder_logits, _, _ = model.forward(src, trg)
 
-            # simply average losses of all the predicitons
-            # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
             start_time = time.time()
+
+            # move the trg 1 word left to let predictions and real goal match
             loss = criterion(
-                decoder_logits.contiguous().view(-1, opt.vocab_size),
-                trg.view(-1)
+                decoder_logits.contiguous().view(-1, opt.vocab_size)[:-1],
+                trg.view(-1)[1:]
             )
             print("--loss calculation- %s seconds ---" % (time.time() - start_time))
 
@@ -224,6 +227,9 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             progbar.update(epoch, batch_i, [('train_loss', loss.data[0])])
 
             if batch_i > 1 and batch_i % opt.report_every == 0:
+                logging.info('======================  %d  =========================' % (i + 1))
+                logging.info('\nSource text: \n %s\n' % (' '.join([opt.id2word[wi] for wi in src.data.numpy()[0]])))
+
                 logging.info('Epoch : %d Minibatch : %d Loss : %.5f' % (epoch, batch_i, np.mean(loss.data[0])))
                 # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
                 # logging.info('grad norm = %e' % (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2))
@@ -251,10 +257,10 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                     sentence_pred = [opt.id2word[x] for x in pred_wi]
                     sentence_real = [opt.id2word[x] for x in real_wi]
 
-                    if '</s>' in sentence_real:
-                        index = sentence_real.index('</s>')
-                        sentence_real = sentence_real[:index]
-                        sentence_pred = sentence_pred[:index]
+                    # if '</s>' in sentence_real:
+                        # index = sentence_real.index('</s>')
+                        # sentence_real = sentence_real[:index]
+                        # sentence_pred = sentence_pred[:index]
 
                     logging.info('======================  %d  =========================' % (i + 1))
                     logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob))
@@ -274,11 +280,6 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                                     curve1_name='Training Error', curve2_name='Validation Error',
                                     save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_curve.png' % (epoch, batch_i, total_batch))
 
-                # Save the checkpoint
-                torch.save(
-                    model.state_dict(),
-                    open(os.path.join(opt.exp_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
-                )
                 '''
                 determine if early stop training
                 '''
@@ -296,8 +297,15 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                     logging.info('Update best loss (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
                         best_loss, valid_loss, rate_of_change * 100))
                 else:
-                    logging.info('Best loss is not updated for %d times (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
+                    logging.info('best loss is not updated for %d times (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
                         stop_increasing, best_loss, valid_loss, rate_of_change * 100))
+
+                # Save the checkpoint
+                logging.info('Saving checkpoint to: %s' % os.path.join(opt.exp_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'))
+                torch.save(
+                    model.state_dict(),
+                    open(os.path.join(opt.exp_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
+                )
 
                 best_loss = min(valid_loss, best_loss)
                 if stop_increasing >= opt.early_stop_tolerance:
@@ -318,9 +326,7 @@ def load_train_valid_data(opt):
     valid_src = np.asarray([d['src'] for d in data_dict['valid']])
     valid_trg = np.asarray([d['trg'] for d in data_dict['valid']])
 
-    word2id = data_dict['word2id']
-    id2word = data_dict['id2word']
-    vocab = data_dict['vocab']
+    word2id, id2word, vocab  = torch.load(opt.vocab, 'wb')
 
     # training_data_loader = DataLoader(dataset=list(zip(train_src, train_trg)), num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
     # validation_data_loader = DataLoader(dataset=list(zip(valid_src, valid_trg)), num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
@@ -348,8 +354,8 @@ def load_train_valid_data(opt):
     else:
         device = -1
 
-    training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=True, shuffle=True, sort=False, device=device)
-    # training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True,  repeat=False, shuffle=True, sort=False, device = device)
+    # training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=True, shuffle=True, sort=False, device=device)
+    training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, repeat=False, sort=True, device = device)
     validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, shuffle=True, sort=False, device = device)
 
     opt.word2id = word2id
@@ -396,15 +402,15 @@ def init_model(word2id, opt):
         dropout=opt.dropout,
     )
 
+    logging.info('======================  Model Parameters  =========================')
     if opt.train_from:
+        logging.info("loading previous checkpoint from %s" % opt.train_from)
         if torch.cuda.is_available():
             model.load_state_dict(torch.load(open(opt.train_from, 'rb')))
         else:
             model.load_state_dict(torch.load(
                 open(opt.train_from, 'rb'), map_location=lambda storage, loc: storage
             ))
-
-    logging.info('======================  Model Parameters  =========================')
     utils.tally_parameters(model)
 
     return model

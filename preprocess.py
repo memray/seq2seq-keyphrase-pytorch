@@ -45,8 +45,8 @@ def main():
     # load keyphrase data from file, each data example is a pair of (src_str, [kp_1, kp_2 ... kp_m])
 
     print("Loading training data...")
-    # src_trgs_pairs = pykp.IO.load_json_data(opt.train_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
-    src_trgs_pairs = pykp.IO.load_json_data(opt.train_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
+    src_trgs_pairs = pykp.IO.load_json_data(opt.train_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
+    # src_trgs_pairs = pykp.IO.load_json_data(opt.train_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
     print("Processing training data...")
     tokenized_train_pairs = pykp.IO.tokenize_filter_data(
@@ -64,8 +64,8 @@ def main():
     Load and process validation data
     '''
     print("Loading validation data...")
-    # src_trgs_pairs = pykp.IO.load_json_data(opt.valid_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
-    src_trgs_pairs = pykp.IO.load_json_data(opt.valid_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
+    src_trgs_pairs = pykp.IO.load_json_data(opt.valid_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
+    # src_trgs_pairs = pykp.IO.load_json_data(opt.valid_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
     print("Processing validation data...")
     tokenized_valid_pairs = pykp.IO.tokenize_filter_data(
@@ -82,10 +82,10 @@ def main():
     dump to disk
     '''
     print("Dumping dict to disk: %s" % opt.save_data + '.vocab.pt')
-    # torch.save([word2id, id2word, vocab],
-    #            open(opt.save_data + '.vocab.pt', 'wb'))
+    torch.save([word2id, id2word, vocab],
+               open(opt.save_data + '.vocab.pt', 'wb'))
     print("Dumping train/valid to disk: %s" % (opt.save_data + '.train_valid.pt'))
-    # torch.save(data_dict, open(opt.save_data + '.train_valid.pt', 'wb'))
+    torch.save(data_dict, open(opt.save_data + '.train_valid.pt', 'wb'))
 
     print('Vocab size = %d' % len(vocab))
     print('Training data size = %d' % len(tokenized_train_pairs))

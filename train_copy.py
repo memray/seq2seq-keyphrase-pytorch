@@ -24,7 +24,7 @@ from torch import cuda
 from utils import Progbar, plot_learning_curve
 
 import pykp
-from pykp.IO import KeyphraseDataset
+from pykp.IO import KeyphraseDatasetCopy
 from pykp.Model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionOld, Seq2SeqLSTMAttentionCopy
 
 import time
@@ -101,8 +101,8 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
         start_time = time.time()
 
         loss = criterion(
-            decoder_probs.contiguous().view(-1, opt.vocab_size),
-            trg.view(-1)
+            decoder_logits.contiguous().view(-1, opt.vocab_size)[:-1],
+            trg.view(-1)[1:]
         )
         print("--loss calculation --- %s" % (time.time() - start_time))
 
@@ -202,8 +202,8 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
             start_time = time.time()
             loss = criterion(
-                decoder_logits.contiguous().view(-1, opt.vocab_size),
-                trg.view(-1)
+                decoder_logits.contiguous().view(-1, opt.vocab_size)[:-1],
+                trg.view(-1)[1:]
             )
             print("--loss calculation- %s seconds ---" % (time.time() - start_time))
 
@@ -273,11 +273,6 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                                     curve1_name='Training Error', curve2_name='Validation Error',
                                     save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_curve.png' % (epoch, batch_i, total_batch))
 
-                # Save the checkpoint
-                torch.save(
-                    model.state_dict(),
-                    open(os.path.join(opt.exp_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
-                )
                 '''
                 determine if early stop training
                 '''
@@ -295,8 +290,15 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                     logging.info('Update best loss (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
                         best_loss, valid_loss, rate_of_change * 100))
                 else:
-                    logging.info('Best loss is not updated for %d times (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
+                    logging.info('best loss is not updated for %d times (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
                         stop_increasing, best_loss, valid_loss, rate_of_change * 100))
+
+                # Save the checkpoint
+                logging.info('Saving checkpoint to: %s' % os.path.join(opt.exp_path, '%s.valid_loss=%f.epoch=%d.batch=%d.total_batch=%d' % (valid_loss, opt.exp, epoch, batch_i, total_batch) + '.model'))
+                torch.save(
+                    model.state_dict(),
+                    open(os.path.join(opt.exp_path, '%s.valid_loss=%f.epoch=%d.batch=%d.total_batch=%d' % (valid_loss, opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
+                )
 
                 best_loss = min(valid_loss, best_loss)
                 if stop_increasing >= opt.early_stop_tolerance:
@@ -312,22 +314,14 @@ def load_train_valid_data(opt):
     logging.info("Loading train/valid from disk: %s" % (opt.data))
     data_dict = torch.load(opt.data, 'wb')
 
-    train_src = np.asarray([d['src'] for d in data_dict['train']])
-    train_trg = np.asarray([d['trg'] for d in data_dict['train']])
-    valid_src = np.asarray([d['src'] for d in data_dict['valid']])
-    valid_trg = np.asarray([d['trg'] for d in data_dict['valid']])
-
     word2id = data_dict['word2id']
     id2word = data_dict['id2word']
     vocab = data_dict['vocab']
 
-    if torch.cuda.is_available():
-        device = opt.gpuid
-    else:
-        device = -1
-
-    training_data_loader = DataLoader(dataset=list(zip(train_src, train_trg)), num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
-    validation_data_loader = DataLoader(dataset=list(zip(valid_src, valid_trg)), num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
+    train_dataset = KeyphraseDatasetCopy(data_dict['train'])
+    valid_dataset = KeyphraseDatasetCopy(data_dict['valid'])
+    training_data_loader = DataLoader(dataset=train_dataset, num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
+    validation_data_loader = DataLoader(dataset=valid_dataset, num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
 
     # training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=False, shuffle=False, sort=True, device=device)
     # validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, shuffle=False, sort=True, device = device)
@@ -389,7 +383,7 @@ def init_model(word2id, config):
         pad_token_trg = word2id[pykp.IO.PAD_WORD],
         nlayers_src=config.enc_layers,
         nlayers_trg=config.dec_layers,
-        dropout=config.dropout,
+        dropout=config.dropout
     )
 
     logging.info('======================  Model Parameters  =========================')

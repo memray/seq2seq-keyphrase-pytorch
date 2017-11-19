@@ -178,7 +178,7 @@ def train_opts(parser):
     # Optimization options
     parser.add_argument('-batch_size', type=int, default=256,
                         help='Maximum batch size')
-    parser.add_argument('-batch_workers', type=int, default=1,
+    parser.add_argument('-batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')
     parser.add_argument('-epochs', type=int, default=100,
                         help='Number of training epochs')
@@ -221,7 +221,7 @@ def train_opts(parser):
 
     timemark = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
 
-    parser.add_argument('-report_every', type=int, default=100,
+    parser.add_argument('-report_every', type=int, default=10,
                         help="Print stats at this interval.")
 
     parser.add_argument('-exp_path', type=str, default="exp/stackexchange.%s" % timemark,
@@ -278,7 +278,7 @@ def predict_opts(parser):
     # beam search setting
     parser.add_argument('-beam_size',  type=int, default=10,
                         help='Beam size')
-    parser.add_argument('-max_sent_length', type=int, default=6,
+    parser.add_argument('-max_sent_length', type=int, default=10,
                         help='Maximum sentence length.')
     parser.add_argument('-heap_size', type=int, default=1024,
                         help='Maximum size of search queue.')

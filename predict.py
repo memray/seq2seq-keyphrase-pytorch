@@ -11,6 +11,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 import config
+import utils
 
 import torch
 import torch.nn as nn
@@ -79,17 +80,21 @@ def predict_beam_search(model, data_loader, test_examples, opt):
 
     for i, (batch, example) in enumerate(zip(data_loader, test_examples)):
         src = batch.src
+        trg = batch.trg
 
         if torch.cuda.is_available():
             src.cuda()
+
+        logging.info('======================  %d  =========================' % (i + 1))
+        print('\nSource text: \n %s\n' % (' '.join([opt.id2word[wi] for wi in src.data.numpy()[0]])))
+        print("src size - ",src.size())
+        print("target size - ",trg.size())
 
         pred_seqs = generator.beam_search(src, opt.word2id)
 
         progbar.update(None, i, [])
 
-        logging.info('======================  %d  =========================' % (i + 1))
-        print(src.data.numpy())
-        print_out = '\nSource text: \n %s\n' % (' '.join(example['src_str']))
+        print_out = ''
         true_seqs = example['trg_str']
         pred_seqs = [([opt.id2word[x] for x in seq.sentence], seq.score) for seq in pred_seqs[0][:5]]
         print_out += 'Real : \n\t\t%s \n' % (true_seqs)
@@ -134,10 +139,16 @@ def predict_greedy(model, data_loader, test_examples, opt):
     for i, (batch, example) in enumerate(zip(data_loader, test_examples)):
         src = batch.src
 
+        logging.info('======================  %d  =========================' % (i + 1))
+        logging.info('\nSource text: \n %s\n' % (' '.join([opt.id2word[wi] for wi in src.data.numpy()[0]])))
+
         if torch.cuda.is_available():
             src.cuda()
 
-        max_words_pred = model.greedy_predict(src, opt.max_sent_length)
+        # trg = Variable(torch.from_numpy(np.zeros((src.size(0), opt.max_sent_length), dtype='int64')))
+        trg = Variable(torch.LongTensor([[opt.word2id[pykp.IO.BOS_WORD]] * opt.max_sent_length]))
+
+        max_words_pred = model.greedy_predict(src, trg)
         progbar.update(None, i, [])
 
         sentence_pred = [opt.id2word[x] for x in max_words_pred]
@@ -147,7 +158,6 @@ def predict_greedy(model, data_loader, test_examples, opt):
             index = sentence_real.index('</s>')
             sentence_pred = sentence_pred[:index]
 
-        logging.info('======================  %d  =========================' % (i + 1))
         logging.info('\t\tPredicted : %s ' % (' '.join(sentence_pred)))
         logging.info('\t\tReal : %s ' % (sentence_real))
 
@@ -177,6 +187,7 @@ def load_test_data(opt):
         print("Dumping test data to disk: %s" % (opt.save_data))
         torch.save(test_examples, open(opt.save_data, 'wb'))
 
+    test_examples = test_examples['train']
     # actually we only care about the source lines during prediction
     test_src = np.asarray([d['src'] for d in test_examples])
     test_trg = np.asarray([[] for d in test_examples])
@@ -230,12 +241,15 @@ def load_model(opt):
         nlayers_trg=opt.dec_layers,
     )
 
+    logging.info('======================  Model Parameters  =========================')
+    logging.info("loading previous checkpoint from %s" % opt.model_path)
     if torch.cuda.is_available():
         model.load_state_dict(torch.load(open(opt.model_path, 'rb')))
     else:
         model.load_state_dict(torch.load(
             open(opt.model_path, 'rb'), map_location=lambda storage, loc: storage
         ))
+    utils.tally_parameters(model)
 
     return model
 
@@ -243,8 +257,8 @@ def main():
     try:
         test_data_loader, test_examples, word2id, id2word, vocab = load_test_data(opt)
         model = load_model(opt)
-        predict_beam_search(model, test_data_loader, test_examples, opt)
-        # predict_greedy(model, test_data_loader, test_examples, opt)
+        # predict_beam_search(model, test_data_loader, test_examples, opt)
+        predict_greedy(model, test_data_loader, test_examples, opt)
     except Exception as e:
         logging.exception("message")
 

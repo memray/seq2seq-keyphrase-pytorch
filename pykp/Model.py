@@ -386,21 +386,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         return decoder_probs, hiddens, attn_weights
 
     # @time_usage
-    def greedy_predict(self, input_src, max_sent_length=10, trg_mask=None, ctx_mask=None):
-        src_h, (src_h_t, src_c_t) = self.encode(input_src)
-        trg = Variable(torch.from_numpy(np.zeros((input_src.size(0), max_sent_length), dtype='int64')))
-        if torch.cuda.is_available():
-            trg = trg.cuda()
-        decoder_probs, hiddens, attn_weights = self.decode(trg_input=trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, is_train=False)
-
-        if torch.cuda.is_available():
-            max_words_pred    = decoder_probs.data.cpu().numpy().argmax(axis=-1).flatten()
-        else:
-            max_words_pred    = decoder_probs.data.numpy().argmax(axis=-1).flatten()
-
-        return max_words_pred
-
-    # @time_usage
     def generate(self, trg_input, hidden, enc_context, k = 1, feed_all_timesteps=False, return_attention=False):
         '''
         Given the initial input, state and the source contexts, return the top K restuls for each time step
@@ -464,7 +449,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             attn_weights.append(alpha) # (batch_size, src_len)
 
             # prepare for the next iteration
-            top_1_idx  = torch.index_select(top_idx, dim=1, index=torch.LongTensor([0]))
+            top_1_idx  = torch.index_select(top_idx, dim=-1, index=torch.LongTensor([0]))
             next_index = Variable(top_1_idx).cuda() if torch.cuda.is_available() else Variable(top_1_idx)
             input_emb  = self.embedding(next_index).permute(1, 0, -1) # reshape to (1, batch_size, emb_dim)
 
@@ -537,10 +522,9 @@ class Seq2SeqLSTMAttention(nn.Module):
         enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
 
         # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
-        dec_hiddens, _ = self.decoder(
+        dec_hiddens, hidden = self.decoder(
             trg_emb, init_hidden
         )
-
         # Get the h_tilde (hidden after attention) and attention weights, inputs/outputs must be batch first
         h_tilde, attn_weights = self.attention_layer(dec_hiddens.permute(1, 0, 2), enc_context)
 
@@ -552,11 +536,30 @@ class Seq2SeqLSTMAttention(nn.Module):
         return decoder_logits, dec_hiddens, attn_weights
 
     # @time_usage
+    def greedy_predict(self, input_src, input_trg, trg_mask=None, ctx_mask=None):
+        src_h, (src_h_t, src_c_t) = self.encode(input_src)
+        if torch.cuda.is_available():
+            input_trg = input_trg.cuda()
+        decoder_probs, hiddens, attn_weights = self.decode_old(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, is_train=False)
+
+        if torch.cuda.is_available():
+            max_words_pred    = decoder_probs.data.cpu().numpy().argmax(axis=-1).flatten()
+        else:
+            max_words_pred    = decoder_probs.data.numpy().argmax(axis=-1).flatten()
+
+        return max_words_pred
+
+    # @time_usage
     def decode_old(self, trg_input, enc_context, enc_hidden, trg_mask, ctx_mask, is_train=True):
         '''
         It's erroneous, but the specific error hasn't been found out.
         something wrong with the processing of decoder_logits? e.g. concatenate in wrong way?
         '''
+        batch_size      = trg_input.size(0)
+        src_len         = enc_context.size(1)
+        trg_len         = trg_input.size(1)
+        context_dim     = enc_context.size(2)
+        trg_hidden_dim  = self.trg_hidden_dim
 
         # get target embedding and reshape the targets to be time step first
         trg_emb = self.embedding(trg_input) # (batch_size, trg_len, embed_dim)
@@ -564,6 +567,9 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # prepare the init hidden vector, (batch_size, dec_hidden_dim) -> 2 * (1, batch_size, dec_hidden_dim)
         hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
+
+        # enc_context has to be reshaped before dot attention (batch_size, src_len, context_dim) -> (batch_size, src_len, trg_hidden_dim)
+        enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
 
         hiddens = []
         attn_weights = []
@@ -596,7 +602,8 @@ class Seq2SeqLSTMAttention(nn.Module):
                 print('teacher forcing')
                 trg_emb_i = trg_emb[i + 1].unsqueeze(0)
             else:
-                top_v, top_idx = decoder_logit.data.topk(1, dim = 1)
+                top_v, top_idx = decoder_logit.data.topk(1, dim = -1)
+                top_idx = top_idx.squeeze(0)
                 # top_idx and next_index are (batch_size, 1)
                 next_index = Variable(top_idx).cuda() if torch.cuda.is_available() else Variable(top_idx)
                 trg_emb_i  = self.embedding(next_index).permute(1, 0, -1) # reshape to (1, batch_size, emb_dim)
@@ -611,8 +618,36 @@ class Seq2SeqLSTMAttention(nn.Module):
 
 class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
 
-    def __init__(self):
-        super(Seq2SeqLSTMAttentionCopy, self).__init__()
+    def __init__(self,
+            emb_dim,
+            vocab_size,
+            src_hidden_dim,
+            trg_hidden_dim,
+            ctx_hidden_dim,
+            attention_mode,
+            batch_size,
+            pad_token_src,
+            pad_token_trg,
+            bidirectional=True,
+            nlayers_src=2,
+            nlayers_trg=2,
+            dropout=0.,
+        ):
+        super(Seq2SeqLSTMAttentionCopy, self).__init__(
+            emb_dim,
+            vocab_size,
+            src_hidden_dim,
+            trg_hidden_dim,
+            ctx_hidden_dim,
+            attention_mode,
+            batch_size,
+            pad_token_src,
+            pad_token_trg,
+            bidirectional=True,
+            nlayers_src=2,
+            nlayers_trg=2,
+            dropout=0.,
+        )
 
 
 class Seq2SeqLSTMAttentionOld(nn.Module):
