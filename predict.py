@@ -257,8 +257,8 @@ def main():
     try:
         test_data_loader, test_examples, word2id, id2word, vocab = load_test_data(opt)
         model = load_model(opt)
-        # predict_beam_search(model, test_data_loader, test_examples, opt)
-        predict_greedy(model, test_data_loader, test_examples, opt)
+        predict_beam_search(model, test_data_loader, test_examples, opt)
+        # predict_greedy(model, test_data_loader, test_examples, opt)
     except Exception as e:
         logging.exception("message")
 

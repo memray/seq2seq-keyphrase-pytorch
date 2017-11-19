@@ -270,7 +270,7 @@ def predict_opts(parser):
                         reproducibility.""")
 
     # batch setting
-    parser.add_argument('-batch_size', type=int, default=1,
+    parser.add_argument('-batch_size', type=int, default=12,
                         help='Maximum batch size')
     parser.add_argument('-batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')

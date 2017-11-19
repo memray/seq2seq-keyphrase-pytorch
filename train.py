@@ -191,7 +191,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             src = batch.src
             trg = batch.trg
             logging.info('======================  %d  =========================' % (batch_i))
-            print('\nSource text: \n %s\n' % (' '.join([opt.id2word[wi] for wi in src.data.numpy()[0]])))
+            # print('\nSource text: \n %s\n' % (' '.join([opt.id2word[wi] for wi in src.data.numpy()[0]])))
 
             print("src size - ",src.size())
             print("target size - ",trg.size())
