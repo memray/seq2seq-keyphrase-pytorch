@@ -57,11 +57,12 @@ opt = parser.parse_args()
 if opt.seed > 0:
     torch.manual_seed(opt.seed)
 
+print(opt.gpuid)
 if torch.cuda.is_available() and not opt.gpuid:
     opt.gpuid = 0
 
-if opt.gpuid:
-    cuda.set_device(0)
+# if opt.gpuid:
+#     cuda.set_device(0)
 
 # fill time into the name
 if opt.exp_path.find('%s') > 0:
@@ -161,9 +162,11 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
 def train_model(model, optimizer, criterion, training_data_loader, validation_data_loader, opt):
     logging.info('======================  Checking GPU Availability  =========================')
     if torch.cuda.is_available():
-        logging.info('Running on GPU!')
+        if isinstance(opt.gpuid, int):
+            opt.gpuid = [opt.gpuid]
+        logging.info('Running on GPU! devices=%s' % str(opt.gpuid))
         model = model.cuda()
-        model = nn.DataParallel(model,devices=[0,1,2,3])
+        model = nn.DataParallel(model, device_ids=opt.gpuid)
         criterion.cuda()
     else:
         logging.info('Running on CPU!')
@@ -191,11 +194,9 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             total_batch += 1
             src = batch.src
             trg = batch.trg
-            logging.info('======================  %d  =========================' % (batch_i))
-            # print('\nSource text: \n %s\n' % (' '.join([opt.id2word[wi] for wi in src.data.numpy()[0]])))
 
-            print("src size - ",src.size())
-            print("target size - ",trg.size())
+            # print("src size - ",src.size())
+            # print("target size - ",trg.size())
             if torch.cuda.is_available():
                 src.cuda()
                 trg.cuda()
@@ -228,8 +229,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             progbar.update(epoch, batch_i, [('train_loss', loss.data[0])])
 
             if batch_i > 1 and batch_i % opt.report_every == 0:
-                logging.info('======================  %d  =========================' % (i + 1))
-                logging.info('\nSource text: \n %s\n' % (' '.join([opt.id2word[wi] for wi in src.data.numpy()[0]])))
+                logging.info('======================  %d  =========================' % (batch_i))
 
                 logging.info('Epoch : %d Minibatch : %d Loss : %.5f' % (epoch, batch_i, np.mean(loss.data[0])))
                 # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
@@ -240,30 +240,35 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 # softmax logits to get probabilities (batch_size, trg_len, vocab_size)
                 decoder_probs = torch.nn.functional.softmax(decoder_logits.view(trg.size(0) * trg.size(1), -1)).view(*trg.size(), -1)
                 if torch.cuda.is_available():
+                    src = src.data.cpu().numpy()
                     decoder_probs = decoder_probs.data.cpu().numpy()
                     max_words_pred = decoder_probs.argmax(axis=-1)
                     trg = trg.data.cpu().numpy()
                 else:
+                    src = src.data.numpy()
                     decoder_probs = decoder_probs.data.numpy()
                     max_words_pred = decoder_probs.argmax(axis=-1)
                     trg = trg.data.numpy()
 
                 sampled_trg_idx = np.random.random_integers(low=0, high=len(trg) - 1, size=sampled_size)
+                src             = src[sampled_trg_idx]
                 max_words_pred  = [max_words_pred[i] for i in sampled_trg_idx]
                 decoder_probs   = decoder_probs[sampled_trg_idx]
-                trg = [trg[i] for i in sampled_trg_idx]
+                trg = [trg[i][1:] for i in sampled_trg_idx] # the real target has removed the starting <BOS>
 
-                for i, (pred_wi, real_wi) in enumerate(zip(max_words_pred, trg)):
+                for i, (src_wi, pred_wi, real_wi) in enumerate(zip(src, max_words_pred, trg)):
                     nll_prob = -np.sum(np.log2([decoder_probs[i][l][pred_wi[l]] for l in range(len(real_wi))]))
-                    sentence_pred = [opt.id2word[x] for x in pred_wi]
-                    sentence_real = [opt.id2word[x] for x in real_wi]
+                    sentence_source = [opt.id2word[x] for x in src_wi]
+                    sentence_pred   = [opt.id2word[x] for x in pred_wi]
+                    sentence_real   = [opt.id2word[x] for x in real_wi]
 
                     # if '</s>' in sentence_real:
                         # index = sentence_real.index('</s>')
                         # sentence_real = sentence_real[:index]
                         # sentence_pred = sentence_pred[:index]
 
-                    logging.info('======================  %d  =========================' % (i + 1))
+                    logging.info('==================================================')
+                    logging.info('Source: %s '          % (' '.join(sentence_source)))
                     logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob))
                     logging.info('\t\tReal : %s ' % (' '.join(sentence_real)))
 
@@ -356,8 +361,12 @@ def load_train_valid_data(opt):
         device = -1
 
     # training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=True, shuffle=True, sort=False, device=device)
-    training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, repeat=False, sort=True, device = device)
-    validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, shuffle=True, sort=False, device = device)
+    if torch.cuda.is_available():
+        training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, shuffle=True, repeat=False, sort=True, device = None)
+        validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, shuffle=True, repeat=False, sort=False, device = None)
+    else:
+        training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, shuffle=True, repeat=False, sort=True, device = -1)
+        validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, shuffle=True, repeat=False, sort=False, device = -1)
 
     opt.word2id = word2id
     opt.id2word = id2word
