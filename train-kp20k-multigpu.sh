@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --cluster=gpu
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:4
 #SBATCH --partition=titanx
 #SBATCH --job-name=tdr_dag
 #SBATCH --output=tdr_dag.out
@@ -12,4 +12,4 @@
 #module restore
 
 # Run the job
-srun python -m train -data data/kp20k/kp20k.train_valid.pt -vocab data/kp20k/kp20k.vocab.pt -exp_path "exp/kp20k.bi-directional.%s" -exp "kp20k" -batch_size 256 -bidirectional
+srun python -m train -data data/kp20k/kp20k.train_valid.pt -vocab data/kp20k/kp20k.vocab.pt -exp_path "exp/kp20k.bi-directional.%s" -exp "kp20k" -batch_size 1024 -bidirectional -gpuid 0 1 2 3
