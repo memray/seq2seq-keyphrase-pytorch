@@ -123,8 +123,8 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
         progbar.update(epoch, i, [('valid_loss', loss.data[0])])
         print("-progbar.update --- %s" % (time.time() - start_time))
 
-        # Don't run through all the validation data, take 5% of training batches. we skip all the remaining iterations
-        if i > int(opt.run_valid_every * 0.05):
+        # Don't run through all the validation data, take 5%/10% of training batches. we skip all the remaining iterations
+        if i > int(opt.run_valid_every * 0.1):
             break
         '''
         if i > 1 and i % opt.report_every == 0:
@@ -300,10 +300,10 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                     stop_increasing = 0
 
                 if is_best_loss:
-                    logging.info('Update best loss (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
+                    logging.info('Validation: update best loss (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
                         best_loss, valid_loss, rate_of_change * 100))
                 else:
-                    logging.info('best loss is not updated for %d times (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
+                    logging.info('Validation: best loss is not updated for %d times (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
                         stop_increasing, best_loss, valid_loss, rate_of_change * 100))
 
                 # Save the checkpoint
@@ -363,10 +363,10 @@ def load_train_valid_data(opt):
     # training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=True, shuffle=True, sort=False, device=device)
     if torch.cuda.is_available():
         training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, shuffle=True, repeat=False, sort=True, device = None)
-        validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, shuffle=True, repeat=False, sort=False, device = None)
+        validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, shuffle=False, repeat=False, sort=False, device = None)
     else:
         training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, shuffle=True, repeat=False, sort=True, device = -1)
-        validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, shuffle=True, repeat=False, sort=False, device = -1)
+        validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, shuffle=False, repeat=False, sort=False, device = -1)
 
     opt.word2id = word2id
     opt.id2word = id2word
