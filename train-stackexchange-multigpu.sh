@@ -12,4 +12,4 @@
 #module restore
 
 # Run the job
-srun python -m train -data data/kp20k/kp20k.train_valid.pt -vocab data/kp20k/kp20k.vocab.pt -exp_path "exp/kp20k.bi-directional.%s" -exp "kp20k" -batch_size 1024 -bidirectional -gpuid 0 1
+srun python -m train -data data/stackexchange/stackexchange.train_valid.pt -vocab data/stackexchange/stackexchange.vocab.pt -exp_path "exp/stackexchange.bi-directional.%s" -exp "stackexchange" -batch_size 1024 -bidirectional -gpuid 0 1
