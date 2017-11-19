@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/usr/lib64/python2.7/runpy.py", line 162, in _run_module_as_main
+srun: error: gpu-stage01: task 0: Exited with exit code 1
+    "__main__", fname, loader, pkg_name)
+  File "/usr/lib64/python2.7/runpy.py", line 72, in _run_code
+    exec code in run_globals
+  File "/ihome/pbrusilosky/rum20/seq2seq-keyphrase-pytorch/predict.py", line 5, in <module>
+    from evaluate import evaluate,macro_averaged_score
+  File "evaluate.py", line 5, in <module>
+    import scipy
+ImportError: No module named scipy
