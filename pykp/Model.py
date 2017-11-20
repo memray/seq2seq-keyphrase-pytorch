@@ -531,9 +531,10 @@ class Seq2SeqLSTMAttention(nn.Module):
         # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
         # (batch_size, trg_len, trg_hidden_size) -> (batch_size, trg_len, vocab_size)
         decoder_logits = self.decoder2vocab(h_tilde.view(-1, trg_hidden_dim)).view(batch_size, trg_len, -1)
+        decoder_probs  = torch.nn.functional.softmax(decoder_logits, dim = 2)
 
         # Return final outputs, hidden states, and attention weights (for visualization)
-        return decoder_logits, dec_hiddens, attn_weights
+        return decoder_probs, dec_hiddens, attn_weights
 
     # @time_usage
     def greedy_predict(self, input_src, input_trg, trg_mask=None, ctx_mask=None):
@@ -573,8 +574,8 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         hiddens = []
         attn_weights = []
-        # decoder_probs = []
         decoder_logits = []
+        decoder_probs = []
 
         # iterate each time step of target sequences and generate decode outputs (1, batch_size, embed_dim)
         trg_emb_i = trg_emb[0].unsqueeze(0)
@@ -590,12 +591,12 @@ class Seq2SeqLSTMAttention(nn.Module):
             # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
             # (batch_size, trg_hidden_size) -> (batch_size, vocab_size)
             decoder_logit = self.decoder2vocab(h_tilde)
-            # decoder_prob  = func.softmax(decoder_logit) # (batch_size, vocab_size)
+            decoder_prob  = func.softmax(decoder_logit) # (batch_size, vocab_size)
 
             hiddens.append(hidden)
             attn_weights.append(alpha)
             decoder_logits.append(decoder_logit)
-            # decoder_probs.append(decoder_prob)
+            decoder_probs.append(decoder_prob)
 
             # prepare the next input
             if is_train and i < trg_input.size(1) - 1:
@@ -611,10 +612,10 @@ class Seq2SeqLSTMAttention(nn.Module):
         # convert output into the right shape and make batch first
         attn_weights    = torch.cat(attn_weights, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, src_seq_len)
         decoder_logits  = torch.cat(decoder_logits, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
-        # decoder_probs   = torch.cat(decoder_probs, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
+        decoder_probs   = torch.cat(decoder_probs, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
 
         # Return final outputs, hidden states, and attention weights (for visualization)
-        return decoder_logits, hiddens, attn_weights
+        return decoder_probs, hiddens, attn_weights
 
 class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
 

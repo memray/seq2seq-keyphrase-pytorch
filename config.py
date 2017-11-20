@@ -189,10 +189,13 @@ def train_opts(parser):
                         help="""If the norm of the gradient vector exceeds this,
                         renormalize it to have the norm equal to
                         max_grad_norm""")
-    parser.add_argument('-dropout', type=float, default=0.5,
-                        help="Dropout probability; applied in LSTM stacks.")
     parser.add_argument('-truncated_decoder', type=int, default=0,
                         help="""Truncated bptt.""")
+    parser.add_argument('-dropout', type=float, default=0.5,
+                        help="Dropout probability; applied in LSTM stacks.")
+    parser.add_argument('-teacher_forcing_ratio', type=float, default=0,
+                        help="The ratio to apply teaching forcing ratio (default 0)")
+
     # learning rate
     parser.add_argument('-learning_rate', type=float, default=0.001,
                         help="""Starting learning rate.

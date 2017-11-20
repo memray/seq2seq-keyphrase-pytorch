@@ -62,6 +62,7 @@ class KeyphraseDatasetCopy(torch.utils.data.Dataset):
         max_trg_len = max([len(b['trg_copy_input']) for b in batch])
         max_oov_num = max([b['oov_number'] for b in batch])
 
+
     #     "Puts each data field into a tensor with outer dimension batch size"
     #     if torch.is_tensor(batch[0]):
     #         out = None
