@@ -97,14 +97,14 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             src.cuda()
             trg.cuda()
 
-        decoder_logits, _, _ = model.forward(src, trg)
+        decoder_probs, _, _ = model.forward(src, trg)
 
         # simply average losses of all the predicitons
         start_time = time.time()
 
         loss = criterion(
-            decoder_logits.contiguous().view(-1, opt.vocab_size)[:-1],
-            trg.view(-1)[1:]
+            decoder_probs[:, :-1, :].contiguous().view(-1, opt.vocab_size),
+            trg[:, 1:].contiguous().view(-1)
         )
         print("--loss calculation --- %s" % (time.time() - start_time))
 
@@ -124,8 +124,8 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
         print("-progbar.update --- %s" % (time.time() - start_time))
 
         # Don't run through all the validation data, take 5%/10% of training batches. we skip all the remaining iterations
-        # if i > int(opt.run_valid_every * 0.1):
-        #     break
+        if i > int(opt.run_valid_every * 0.1):
+            break
         '''
         if i > 1 and i % opt.report_every == 0:
             logging.info('Epoch : %d Minibatch : %d Loss : %.5f' % (epoch, i, np.mean(losses)))
@@ -208,8 +208,8 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
 
             # move the trg 1 word left to let predictions and real goal match
             loss = criterion(
-                decoder_logits.contiguous().view(-1, opt.vocab_size)[:-1],
-                trg.view(-1)[1:]
+                decoder_logits[:, :-1, :].contiguous().view(-1, opt.vocab_size),
+                trg[:, 1:].contiguous().view(-1)
             )
             print("--loss calculation- %s seconds ---" % (time.time() - start_time))
 
@@ -217,10 +217,10 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             loss.backward()
             print("--backward- %s seconds ---" % (time.time() - start_time))
 
-            # if opt.max_grad_norm > 0:
-            #     pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
-            #     after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
-            #     logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
+            if opt.max_grad_norm > 0:
+                pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
+                after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
+                logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
 
             optimizer.step()
 
@@ -238,26 +238,27 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
                 # softmax logits to get probabilities (batch_size, trg_len, vocab_size)
-                decoder_probs = torch.nn.functional.softmax(decoder_logits.view(trg.size(0) * trg.size(1), -1)).view(*trg.size(), -1)
+                # decoder_probs = torch.nn.functional.softmax(decoder_logits.view(trg.size(0) * trg.size(1), -1)).view(*trg.size(), -1)
+
                 if torch.cuda.is_available():
                     src = src.data.cpu().numpy()
-                    decoder_probs = decoder_probs.data.cpu().numpy()
-                    max_words_pred = decoder_probs.argmax(axis=-1)
+                    decoder_logits = decoder_logits.data.cpu().numpy()
+                    max_words_pred = decoder_logits.argmax(axis=-1)
                     trg = trg.data.cpu().numpy()
                 else:
                     src = src.data.numpy()
-                    decoder_probs = decoder_probs.data.numpy()
-                    max_words_pred = decoder_probs.argmax(axis=-1)
+                    decoder_logits = decoder_logits.data.numpy()
+                    max_words_pred = decoder_logits.argmax(axis=-1)
                     trg = trg.data.numpy()
 
                 sampled_trg_idx = np.random.random_integers(low=0, high=len(trg) - 1, size=sampled_size)
                 src             = src[sampled_trg_idx]
                 max_words_pred  = [max_words_pred[i] for i in sampled_trg_idx]
-                decoder_probs   = decoder_probs[sampled_trg_idx]
+                decoder_logits   = decoder_logits[sampled_trg_idx]
                 trg = [trg[i][1:] for i in sampled_trg_idx] # the real target has removed the starting <BOS>
 
                 for i, (src_wi, pred_wi, real_wi) in enumerate(zip(src, max_words_pred, trg)):
-                    nll_prob = -np.sum(np.log2([decoder_probs[i][l][pred_wi[l]] for l in range(len(real_wi))]))
+                    nll_prob = -np.sum(np.log2([decoder_logits[i][l][pred_wi[l]] for l in range(len(real_wi))]))
                     sentence_source = [opt.id2word[x] for x in src_wi]
                     sentence_pred   = [opt.id2word[x] for x in pred_wi]
                     sentence_real   = [opt.id2word[x] for x in real_wi]
@@ -308,16 +309,16 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
 
                 # Save the checkpoint
                 logging.info('Saving checkpoint to: %s' % os.path.join(opt.exp_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'))
-                torch.save(
-                    model.state_dict(),
-                    open(os.path.join(opt.exp_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
-                )
+                # torch.save(
+                #     model.state_dict(),
+                #     open(os.path.join(opt.exp_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
+                # )
 
                 best_loss = min(valid_loss, best_loss)
                 if stop_increasing >= opt.early_stop_tolerance:
                     logging.info('Have not increased for %d epoches, early stop training' % stop_increasing)
-                    early_stop_flag = True
-                    break
+                    # early_stop_flag = True
+                    # break
                 logging.info('*' * 50)
 
 

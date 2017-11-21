@@ -382,8 +382,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         :param is_train: if True, it would apply teacher forcing (which significantly speed up the training at the beginning)
         '''
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
-        decoder_probs, hiddens, attn_weights = self.decode(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, is_train=is_train)
-        return decoder_probs, hiddens, attn_weights
+        decoder_logits, hiddens, attn_weights = self.decode(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, is_train=is_train)
+        return decoder_logits, hiddens, attn_weights
 
     # @time_usage
     def generate(self, trg_input, hidden, enc_context, k = 1, feed_all_timesteps=False, return_attention=False):
@@ -531,22 +531,22 @@ class Seq2SeqLSTMAttention(nn.Module):
         # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
         # (batch_size, trg_len, trg_hidden_size) -> (batch_size, trg_len, vocab_size)
         decoder_logits = self.decoder2vocab(h_tilde.view(-1, trg_hidden_dim)).view(batch_size, trg_len, -1)
-        decoder_probs  = torch.nn.functional.softmax(decoder_logits, dim = 2)
+        # decoder_probs  = torch.nn.functional.softmax(decoder_logits.view(-1, decoder_logits.size(2))).view(batch_size, trg_len, -1)
 
         # Return final outputs, hidden states, and attention weights (for visualization)
-        return decoder_probs, dec_hiddens, attn_weights
+        return decoder_logits, dec_hiddens, attn_weights
 
     # @time_usage
     def greedy_predict(self, input_src, input_trg, trg_mask=None, ctx_mask=None):
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
         if torch.cuda.is_available():
             input_trg = input_trg.cuda()
-        decoder_probs, hiddens, attn_weights = self.decode_old(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, is_train=False)
+        decoder_logits, hiddens, attn_weights = self.decode_old(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, is_train=False)
 
         if torch.cuda.is_available():
-            max_words_pred    = decoder_probs.data.cpu().numpy().argmax(axis=-1).flatten()
+            max_words_pred    = decoder_logits.data.cpu().numpy().argmax(axis=-1).flatten()
         else:
-            max_words_pred    = decoder_probs.data.numpy().argmax(axis=-1).flatten()
+            max_words_pred    = decoder_logits.data.numpy().argmax(axis=-1).flatten()
 
         return max_words_pred
 
@@ -575,7 +575,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         hiddens = []
         attn_weights = []
         decoder_logits = []
-        decoder_probs = []
+        # decoder_probs = []
 
         # iterate each time step of target sequences and generate decode outputs (1, batch_size, embed_dim)
         trg_emb_i = trg_emb[0].unsqueeze(0)
@@ -596,7 +596,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             hiddens.append(hidden)
             attn_weights.append(alpha)
             decoder_logits.append(decoder_logit)
-            decoder_probs.append(decoder_prob)
+            # decoder_probs.append(decoder_prob)
 
             # prepare the next input
             if is_train and i < trg_input.size(1) - 1:
@@ -612,10 +612,10 @@ class Seq2SeqLSTMAttention(nn.Module):
         # convert output into the right shape and make batch first
         attn_weights    = torch.cat(attn_weights, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, src_seq_len)
         decoder_logits  = torch.cat(decoder_logits, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
-        decoder_probs   = torch.cat(decoder_probs, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
+        # decoder_probs   = torch.cat(decoder_probs, 0).view(*trg_input.size(), -1) # (batch_size, trg_seq_len, vocab_size)
 
         # Return final outputs, hidden states, and attention weights (for visualization)
-        return decoder_probs, hiddens, attn_weights
+        return decoder_logits, hiddens, attn_weights
 
 class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
 
