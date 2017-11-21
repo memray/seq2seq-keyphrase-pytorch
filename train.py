@@ -364,10 +364,10 @@ def load_train_valid_data(opt):
     # training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=True, shuffle=True, sort=False, device=device)
     if torch.cuda.is_available():
         training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, shuffle=True, repeat=False, sort=True, device = None)
-        validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, shuffle=False, repeat=False, sort=True, device = None)
+        validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, shuffle=False, repeat=False, sort=False, device = None)
     else:
         training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, shuffle=True, repeat=False, sort=True, device = -1)
-        validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, shuffle=False, repeat=False, sort=True, device = -1)
+        validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, shuffle=False, repeat=False, sort=False, device = -1)
 
     opt.word2id = word2id
     opt.id2word = id2word
@@ -383,11 +383,11 @@ def load_train_valid_data(opt):
 
 def init_optimizer_criterion(model, opt):
     # mask the BOS <s> and PAD <pad> when computing loss
-    # weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
-    # weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
-    # weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
-    # criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
-    criterion = torch.nn.CrossEntropyLoss()
+    weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
+    weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
+    weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
+    criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
+    # criterion = torch.nn.CrossEntropyLoss()
 
     optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
     # optimizer = torch.optim.Adadelta(model.parameters(), lr=0.1)

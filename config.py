@@ -176,7 +176,7 @@ def train_opts(parser):
                         help="Fix word embeddings on the encoder side.")
 
     # Optimization options
-    parser.add_argument('-batch_size', type=int, default=64,
+    parser.add_argument('-batch_size', type=int, default=128,
                         help='Maximum batch size')
     parser.add_argument('-batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')
@@ -217,7 +217,7 @@ def train_opts(parser):
     parser.add_argument('-warmup_steps', type=int, default=4000,
                         help="""Number of warmup steps for custom decay.""")
 
-    parser.add_argument('-run_valid_every', type=int, default=100,
+    parser.add_argument('-run_valid_every', type=int, default=1000,
                         help="Run validation test at this interval (every run_valid_every epochs)")
     parser.add_argument('-early_stop_tolerance', type=int, default=5,
                         help="Stop training if it doesn't improve any more for serveral epochs")
