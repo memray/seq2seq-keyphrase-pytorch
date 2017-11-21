@@ -124,8 +124,8 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
         print("-progbar.update --- %s" % (time.time() - start_time))
 
         # Don't run through all the validation data, take 5%/10% of training batches. we skip all the remaining iterations
-        if i > int(opt.run_valid_every * 0.1):
-            break
+        # if i > int(opt.run_valid_every * 0.1):
+        #     break
         '''
         if i > 1 and i % opt.report_every == 0:
             logging.info('Epoch : %d Minibatch : %d Loss : %.5f' % (epoch, i, np.mean(losses)))
@@ -254,7 +254,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 sampled_trg_idx = np.random.random_integers(low=0, high=len(trg) - 1, size=sampled_size)
                 src             = src[sampled_trg_idx]
                 max_words_pred  = [max_words_pred[i] for i in sampled_trg_idx]
-                decoder_logits   = decoder_logits[sampled_trg_idx]
+                decoder_logits  = decoder_logits[sampled_trg_idx]
                 trg = [trg[i][1:] for i in sampled_trg_idx] # the real target has removed the starting <BOS>
 
                 for i, (src_wi, pred_wi, real_wi) in enumerate(zip(src, max_words_pred, trg)):
@@ -309,16 +309,16 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
 
                 # Save the checkpoint
                 logging.info('Saving checkpoint to: %s' % os.path.join(opt.exp_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'))
-                # torch.save(
-                #     model.state_dict(),
-                #     open(os.path.join(opt.exp_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
-                # )
+                torch.save(
+                    model.state_dict(),
+                    open(os.path.join(opt.exp_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
+                )
 
                 best_loss = min(valid_loss, best_loss)
                 if stop_increasing >= opt.early_stop_tolerance:
                     logging.info('Have not increased for %d epoches, early stop training' % stop_increasing)
-                    # early_stop_flag = True
-                    # break
+                    early_stop_flag = True
+                    break
                 logging.info('*' * 50)
 
 
