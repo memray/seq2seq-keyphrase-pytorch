@@ -86,7 +86,6 @@ def predict_beam_search(model, data_loader, test_examples, opt):
             src.cuda()
 
         logging.info('======================  %d  =========================' % (i + 1))
-        print('\nSource text: \n %s\n' % (' '.join([opt.id2word[wi] for wi in src.data.numpy()[0]])))
         print("src size - ",src.size())
         print("target size - ",trg.size())
 
@@ -94,17 +93,18 @@ def predict_beam_search(model, data_loader, test_examples, opt):
 
         progbar.update(None, i, [])
 
+        print('\nSource text: \n %s\n' % (' '.join([opt.id2word[wi] for wi in src.data.numpy()[0]])))
         print_out = ''
         true_seqs = example['trg_str']
-        pred_seqs = [([opt.id2word[x] for x in seq.sentence], seq.score) for seq in pred_seqs[0][:5]]
+        top_seqs = [([opt.id2word[x] for x in seq.sentence], seq.score) for seq in pred_seqs[0][:100]]
         print_out += 'Real : \n\t\t%s \n' % (true_seqs)
 
-        print_out += 'Top 5 predicted sequences: \n'
-        print(pred_seqs)
+        print_out += 'Top predicted sequences (Top 5 / %d): \n' % len(top_seqs)
+        # print(top_seqs)
         target_all.append(true_seqs)
-        prediction_all.append([x for (x,y) in pred_seqs])
+        prediction_all.append([x for (x,y) in top_seqs])
 
-        for words, score in pred_seqs:
+        for words, score in top_seqs:
             print_out += '\t\t[%.4f]\t%s\n' % (score, ' '.join(words))
 
         logging.info(print_out)
@@ -187,7 +187,7 @@ def load_test_data(opt):
         print("Dumping test data to disk: %s" % (opt.save_data))
         torch.save(test_examples, open(opt.save_data, 'wb'))
 
-    test_examples = test_examples['train']
+    # test_examples = test_examples['train']
     # actually we only care about the source lines during prediction
     test_src = np.asarray([d['src'] for d in test_examples])
     test_trg = np.asarray([[] for d in test_examples])
@@ -244,11 +244,15 @@ def load_model(opt):
     logging.info('======================  Model Parameters  =========================')
     logging.info("loading previous checkpoint from %s" % opt.model_path)
     if torch.cuda.is_available():
-        model.load_state_dict(torch.load(open(opt.model_path, 'rb')))
+        state_dict = torch.load(open(opt.model_path, 'rb'))
     else:
-        model.load_state_dict(torch.load(
+        state_dict = torch.load(
             open(opt.model_path, 'rb'), map_location=lambda storage, loc: storage
-        ))
+        )
+    # for compatibility of PyTorch
+    if list(state_dict.keys())[0].find('module') > -1:
+        state_dict = dict([(name[name.find('module')+7:], field) for name,field in state_dict.items()])
+    model.load_state_dict(state_dict)
     utils.tally_parameters(model)
 
     return model

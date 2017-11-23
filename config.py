@@ -193,8 +193,14 @@ def train_opts(parser):
                         help="""Truncated bptt.""")
     parser.add_argument('-dropout', type=float, default=0.5,
                         help="Dropout probability; applied in LSTM stacks.")
+
+    # Teacher Forcing and Scheduled Sampling
     parser.add_argument('-teacher_forcing_ratio', type=float, default=0,
                         help="The ratio to apply teaching forcing ratio (default 0)")
+    parser.add_argument('-scheduled_sampling', action="store_true",
+                        help="Apply scheduled sampling or not")
+    parser.add_argument('-scheduled_sampling_batches', type=int, default=10000,
+                        help="The maximum number of batches to apply scheduled sampling")
 
     # learning rate
     parser.add_argument('-learning_rate', type=float, default=0.001,
@@ -224,18 +230,25 @@ def train_opts(parser):
 
     timemark = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
 
+    parser.add_argument('-timemark', type=str, default=timemark,
+                        help="Save checkpoint at this interval.")
+
+    parser.add_argument('-save_model_every', type=int, default=1000,
+                        help="Save checkpoint at this interval.")
+
     parser.add_argument('-report_every', type=int, default=10,
                         help="Print stats at this interval.")
-
-    parser.add_argument('-exp_path', type=str, default="exp/stackexchange.%s" % timemark,
-                        help="Path of experiment output/log/checkpoint.")
-
     parser.add_argument('-exp', type=str, default="stackexchange",
                         help="Name of the experiment for logging.")
+    parser.add_argument('-exp_path', type=str, default="exp/%s.%s",
+                        help="Path of experiment output/log.")
+    parser.add_argument('-save_path', type=str, default="model/%s.%s",
+                        help="Path of checkpoints.")
+
 
 
 def predict_opts(parser):
-    parser.add_argument('-test_data',   required=True,
+    parser.add_argument('-test_data', required=True,
                         help="""Source sequence to decode (one line per
                         sequence)""")
     parser.add_argument('-save_data', required=True,
@@ -273,15 +286,15 @@ def predict_opts(parser):
                         reproducibility.""")
 
     # batch setting
-    parser.add_argument('-batch_size', type=int, default=12,
+    parser.add_argument('-batch_size', type=int, default=1,
                         help='Maximum batch size')
     parser.add_argument('-batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')
 
     # beam search setting
-    parser.add_argument('-beam_size',  type=int, default=10,
+    parser.add_argument('-beam_size',  type=int, default=6,
                         help='Beam size')
-    parser.add_argument('-max_sent_length', type=int, default=10,
+    parser.add_argument('-max_sent_length', type=int, default=6,
                         help='Maximum sentence length.')
     parser.add_argument('-heap_size', type=int, default=1024,
                         help='Maximum size of search queue.')

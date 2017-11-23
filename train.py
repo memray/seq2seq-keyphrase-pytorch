@@ -18,6 +18,7 @@ import config
 #import configse as config
 
 import utils
+import copy
 
 import torch
 import torch.nn as nn
@@ -66,11 +67,13 @@ if torch.cuda.is_available() and not opt.gpuid:
 
 # fill time into the name
 if opt.exp_path.find('%s') > 0:
-    timemark        = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
-    opt.exp_path    = opt.exp_path % timemark
+    opt.exp_path    = opt.exp_path % (opt.exp, opt.timemark)
+    opt.save_path   = opt.save_path % (opt.exp, opt.timemark)
 
 if not os.path.exists(opt.exp_path):
     os.makedirs(opt.exp_path)
+if not os.path.exists(opt.save_path):
+    os.makedirs(opt.save_path)
 
 config.init_logging(opt.exp_path + '/output.log')
 
@@ -99,11 +102,10 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
 
         decoder_probs, _, _ = model.forward(src, trg)
 
-        # simply average losses of all the predicitons
         start_time = time.time()
 
         loss = criterion(
-            decoder_probs[:, :-1, :].contiguous().view(-1, opt.vocab_size),
+            decoder_probs.contiguous().view(-1, opt.vocab_size),
             trg[:, 1:].contiguous().view(-1)
         )
         print("--loss calculation --- %s" % (time.time() - start_time))
@@ -124,38 +126,9 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
         print("-progbar.update --- %s" % (time.time() - start_time))
 
         # Don't run through all the validation data, take 5%/10% of training batches. we skip all the remaining iterations
-        # if i > int(opt.run_valid_every * 0.1):
-        #     break
-        '''
-        if i > 1 and i % opt.report_every == 0:
-            logging.info('Epoch : %d Minibatch : %d Loss : %.5f' % (epoch, i, np.mean(losses)))
-            sampled_size = 2
-            logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
+        if i > 10: #int(opt.run_valid_every * 0.1):
+            break
 
-            if torch.cuda.is_available():
-                max_words_pred = decoder_probs.data.cpu().numpy().argmax(axis=-1)
-                trg = trg.data.cpu().numpy()
-            else:
-                max_words_pred    = decoder_probs.data.numpy().argmax(axis=-1)
-                trg = trg.data.numpy()
-
-            sampled_trg_idx = np.random.random_integers(low=0, high=len(trg)-1, size=sampled_size)
-            max_words_pred  = [max_words_pred[i] for i in sampled_trg_idx]
-            trg         = [trg[i] for i in sampled_trg_idx]
-
-            for i, (sentence_pred, sentence_real) in enumerate(zip(max_words_pred, trg)):
-                sentence_pred = [opt.id2word[x] for x in sentence_pred]
-                sentence_real = [opt.id2word[x] for x in sentence_real]
-
-                if '</s>' in sentence_real:
-                    index = sentence_real.index('</s>')
-                    sentence_real = sentence_real[:index]
-                    sentence_pred = sentence_pred[:index]
-
-                logging.info('======================  %d  =========================' % (i+1))
-                logging.info('\t\tPredicted : %s ' % (' '.join(sentence_pred)))
-                logging.info('\t\tReal : %s ' % (' '.join(sentence_real)))
-        '''
     return losses
 
 
@@ -206,9 +179,9 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
 
             start_time = time.time()
 
-            # move the trg 1 word left to let predictions and real goal match
+            # remove the 1st word in trg to let predictions and real goal match
             loss = criterion(
-                decoder_logits[:, :-1, :].contiguous().view(-1, opt.vocab_size),
+                decoder_logits.contiguous().view(-1, opt.vocab_size),
                 trg[:, 1:].contiguous().view(-1)
             )
             print("--loss calculation- %s seconds ---" % (time.time() - start_time))
@@ -263,22 +236,25 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                     sentence_pred   = [opt.id2word[x] for x in pred_wi]
                     sentence_real   = [opt.id2word[x] for x in real_wi]
 
-                    # if '</s>' in sentence_real:
-                        # index = sentence_real.index('</s>')
-                        # sentence_real = sentence_real[:index]
-                        # sentence_pred = sentence_pred[:index]
-
                     logging.info('==================================================')
                     logging.info('Source: %s '          % (' '.join(sentence_source)))
                     logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob))
                     logging.info('\t\tReal : %s ' % (' '.join(sentence_real)))
+
+            if total_batch > 1 and total_batch % opt.save_model_every == 0:
+                # Save the checkpoint
+                logging.info('Saving checkpoint to: %s' % os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'))
+                torch.save(
+                    model.state_dict(),
+                    open(os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
+                )
 
             if total_batch > 1 and total_batch % opt.run_valid_every == 0:
                 logging.info('*' * 50)
                 logging.info('Run validation test @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
                 valid_losses = _valid(validation_data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
 
-                train_history_losses.append(train_losses)
+                train_history_losses.append(copy.copy(train_losses))
                 valid_history_losses.append(valid_losses)
                 train_losses = []
 
@@ -306,13 +282,6 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 else:
                     logging.info('Validation: best loss is not updated for %d times (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
                         stop_increasing, best_loss, valid_loss, rate_of_change * 100))
-
-                # Save the checkpoint
-                logging.info('Saving checkpoint to: %s' % os.path.join(opt.exp_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'))
-                torch.save(
-                    model.state_dict(),
-                    open(os.path.join(opt.exp_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
-                )
 
                 best_loss = min(valid_loss, best_loss)
                 if stop_increasing >= opt.early_stop_tolerance:
@@ -411,6 +380,9 @@ def init_model(word2id, opt):
         nlayers_src=opt.enc_layers,
         nlayers_trg=opt.dec_layers,
         dropout=opt.dropout,
+        teacher_forcing_ratio=opt.teacher_forcing_ratio,
+        scheduled_sampling=opt.scheduled_sampling,
+        scheduled_sampling_batches=opt.scheduled_sampling_batches
     )
 
     logging.info('======================  Model Parameters  =========================')
