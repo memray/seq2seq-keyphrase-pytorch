@@ -235,8 +235,8 @@ def plot_learning_curve(train_scores, test_scores, title, curve1_name='curve1_na
     plt.xlabel("Training examples")
     plt.ylabel("Score")
 
-    print(train_scores)
-    print(test_scores)
+    # print(train_scores)
+    # print(test_scores)
     train_scores_mean   = np.mean(train_scores, axis=1)
     train_scores_std    = np.std(train_scores, axis=1)
     test_scores_mean    = np.mean(test_scores, axis=1)

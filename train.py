@@ -100,7 +100,7 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             src.cuda()
             trg.cuda()
 
-        decoder_probs, _, _ = model.forward(src, trg)
+        decoder_probs, _, _ = model.forward(src, trg, must_teacher_forcing=True)
 
         start_time = time.time()
 
@@ -175,7 +175,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 trg.cuda()
 
             optimizer.zero_grad()
-            decoder_logits, _, _ = model.forward(src, trg)
+            decoder_logits, _, _ = model.forward(src, trg, must_teacher_forcing=False)
 
             start_time = time.time()
 

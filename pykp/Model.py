@@ -396,12 +396,12 @@ class Seq2SeqLSTMAttention(nn.Module):
         return decoder_init_hidden, decoder_init_cell
 
     # @time_usage
-    def forward(self, input_src, input_trg, trg_mask=None, ctx_mask=None, is_train=True):
+    def forward(self, input_src, input_trg, trg_mask=None, ctx_mask=None, must_teacher_forcing=True):
         '''
-        :param is_train: if True, it would apply teacher forcing (which significantly speed up the training at the beginning)
+        :param must_teacher_forcing: if True, it would apply teacher forcing (which significantly speed up the training at the beginning)
         '''
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
-        decoder_logits, hiddens, attn_weights = self.decode(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask)
+        decoder_logits, hiddens, attn_weights = self.decode(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, must_teacher_forcing=must_teacher_forcing)
         return decoder_logits, hiddens, attn_weights
 
     # @time_usage
@@ -511,7 +511,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         return src_h, (h_t, c_t)
 
     # @time_usage
-    def decode(self, trg_input, enc_context, enc_hidden, trg_mask, ctx_mask):
+    def decode(self, trg_input, enc_context, enc_hidden, trg_mask, ctx_mask, must_teacher_forcing=False):
         '''
         Initial decoder state h0 (batch_size, trg_hidden_size), converted from h_t of encoder (batch_size, src_hidden_size * num_directions) through a linear layer
             No transformation for cell state c_t. Pass directly to decoder.
@@ -546,7 +546,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         # flip a coin
         coin = random.random()
         print('coin = %f, tf_ratio = %f' % (coin, teacher_forcing_ratio))
-        if coin < teacher_forcing_ratio:
+        if must_teacher_forcing or coin < teacher_forcing_ratio:
             print("Training batches with Teacher Forcing")
             # truncate the last word, as there's no further word after it for decoder to predict
             trg_input = trg_input[:, :-1]
