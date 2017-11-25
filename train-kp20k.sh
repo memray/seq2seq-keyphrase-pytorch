@@ -11,5 +11,6 @@
 # Load modules
 #module restore
 
+EXP_NAME = "rnn.scheduled_sampling"
 # Run the job
-srun python -m train -data data/kp20k/kp20k.train_valid.pt -vocab data/kp20k/kp20k.vocab.pt -exp_path "exp/%s.bi-directional.%s" -save_path "exp/%s.bi-directional.%s" -exp "kp20k" -batch_size 256 -bidirectional -run_valid_every 2000 -scheduled_sampling_batches 20000
+srun python -m train -data data/kp20k/kp20k.train_valid.pt -vocab data/kp20k/kp20k.vocab.pt -exp_path "exp/$EXP_NAME/%s.bi-directional.%s" -save_path "model/$EXP_NAME/%s.bi-directional.%s" -exp "kp20k" -batch_size 256 -bidirectional -run_valid_every 2000 -scheduled_sampling_batches 60000

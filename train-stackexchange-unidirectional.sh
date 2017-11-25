@@ -11,5 +11,6 @@
 # Load modules
 #module restore
 
+EXP_NAME = "rnn.scheduled_sampling"
 # Run the job
-srun python -m train -data data/stackexchange/stackexchange.train_valid.pt -vocab data/stackexchange/stackexchange.vocab.pt -exp_path "exp/%s.uni-directional.%s" -save_path "exp/%s.uni-directional.%s" -exp "stackexchange" -batch_size 512 -run_valid_every 1000 -scheduled_sampling_batches 10000
+srun python -m train -data data/stackexchange/stackexchange.train_valid.pt -vocab data/stackexchange/stackexchange.vocab.pt -exp_path "exp/$EXP_NAME/%s.uni-directional.%s" -save_path "model/$EXP_NAME/%s.uni-directional.%s" -exp "stackexchange" -batch_size 512 -run_valid_every 1000 -scheduled_sampling_batches 30000
