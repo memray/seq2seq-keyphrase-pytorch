@@ -13,4 +13,4 @@
 
 # Run the job
 EXP_NAME = "rnn.scheduled_sampling"
-srun python -m train -data data/stackexchange/stackexchange.train_valid.pt -vocab data/stackexchange/stackexchange.vocab.pt -exp_path "exp/$EXP_NAME/%s.uni-directional.%s" -save_path "model/$EXP_NAME/%s.uni-directional.%s" -exp "stackexchange" -batch_size 512 -run_valid_every 1000 -scheduled_sampling_batches 30000
+srun python -m train -data data/stackexchange/stackexchange.train_valid.pt -vocab data/stackexchange/stackexchange.vocab.pt -exp_path "exp/rnn.scheduled_sampling/%s.uni-directional.%s" -save_path "model/rnn.scheduled_sampling/%s.uni-directional.%s" -exp "stackexchange" -batch_size 512 -run_valid_every 1000 -scheduled_sampling -scheduled_sampling_batches 30000
