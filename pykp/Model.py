@@ -402,8 +402,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         :param must_teacher_forcing: if True, it would apply teacher forcing (which significantly speed up the training at the beginning)
         '''
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
-        decoder_logits, hiddens, attn_weights = self.decode(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, must_teacher_forcing=must_teacher_forcing)
-        return decoder_logits, hiddens, attn_weights
+        decoder_logits, decoder_hiddens, attn_weights = self.decode(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, must_teacher_forcing=must_teacher_forcing)
+        return decoder_logits, decoder_hiddens, attn_weights
 
     # @time_usage
     def generate(self, trg_input, hidden, enc_context, k = 1, feed_all_timesteps=False, return_attention=False):
@@ -562,23 +562,24 @@ class Seq2SeqLSTMAttention(nn.Module):
             trg_emb  = trg_emb.permute(1, 0, 2) # (trg_len, batch_size, embed_dim)
 
             # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
-            dec_outputs, hidden = self.decoder(
+            decoder_outputs, hidden = self.decoder(
                 trg_emb, init_hidden
             )
             # Get the h_tilde (hidden after attention) and attention weights, inputs/outputs must be batch first
-            h_tilde, attn_weights = self.attention_layer(dec_outputs.permute(1, 0, 2), enc_context)
+            h_tildes, attn_weights = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context)
 
             # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
             # (batch_size, trg_len, trg_hidden_size) -> (batch_size, trg_len, vocab_size)
-            decoder_logits = self.decoder2vocab(h_tilde.view(-1, trg_hidden_dim)).view(batch_size, max_length, -1)
+            decoder_logits = self.decoder2vocab(h_tildes.view(-1, trg_hidden_dim)).view(batch_size, max_length, -1)
             # decoder_probs  = torch.nn.functional.softmax(decoder_logits.view(-1, decoder_logits.size(2))).view(batch_size, trg_len, -1)
+            decoder_outputs  = decoder_outputs.permute(1, 0, 2)
 
         else:
             logging.info("Training batches with All Sampling")
             # truncate the last word, as there's no further word after it for decoder to predict (batch_size, 1)
             trg_input = trg_input[:, 0].unsqueeze(1)
             decoder_logits = []
-            dec_outputs    = []
+            decoder_outputs= []
             attn_weights   = []
 
             for di in range(max_length):
@@ -586,12 +587,13 @@ class Seq2SeqLSTMAttention(nn.Module):
                 trg_emb = self.embedding(trg_input) # (batch_size, trg_len, embed_dim)
                 trg_emb  = trg_emb.permute(1, 0, 2) # (trg_len, batch_size, embed_dim)
 
-                dec_output, hidden = self.decoder(
+                # this is trg_len first
+                decoder_output, hidden = self.decoder(
                     trg_emb, init_hidden
                 )
 
-                # Get the h_tilde (hidden after attention) and attention weights
-                h_tilde, alpha = self.attention_layer(dec_output.permute(1, 0, 2), enc_context)
+                # Get the h_tilde (hidden after attention) and attention weights, both inputs and outputs are batch first
+                h_tilde, attn_weight = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context)
 
                 # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
                 # (batch_size, trg_hidden_size) -> (batch_size, vocab_size)
@@ -602,17 +604,18 @@ class Seq2SeqLSTMAttention(nn.Module):
                 # top_idx and next_index are (batch_size, 1)
                 trg_input = top_idx.cuda() if torch.cuda.is_available() else top_idx
 
-                dec_outputs.append(dec_output)
-                attn_weights.append(alpha)
-                decoder_logits.append(decoder_logit)
+                # permute to trg_len first, otherwise the cat operation would mess up things
+                decoder_outputs.append(decoder_output)
+                attn_weights.append(attn_weight.permute(1, 0, 2))
+                decoder_logits.append(decoder_logit.permute(1, 0, 2))
 
             # convert output into the right shape and make batch first
-            decoder_logits = torch.cat(decoder_logits, 0).view(batch_size, max_length, -1)  # (batch_size, trg_seq_len, vocab_size)
-            dec_outputs    = torch.cat(dec_outputs, 0).view(batch_size, max_length, -1)  # (batch_size, trg_seq_len, vocab_size)
-            attn_weights   = torch.cat(attn_weights, 0).view(batch_size, max_length, -1)  # (batch_size, trg_seq_len, src_seq_len)
+            decoder_logits = torch.cat(decoder_logits, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, vocab_size)
+            decoder_outputs= torch.cat(decoder_outputs, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, vocab_size)
+            attn_weights   = torch.cat(attn_weights, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, src_seq_len)
 
         # Return final outputs, hidden states, and attention weights (for visualization)
-        return decoder_logits, dec_outputs, attn_weights
+        return decoder_logits, decoder_outputs, attn_weights
 
     # @time_usage
     def greedy_predict(self, input_src, input_trg, trg_mask=None, ctx_mask=None):

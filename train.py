@@ -241,7 +241,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                     logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob))
                     logging.info('\t\tReal : %s ' % (' '.join(sentence_real)))
 
-            if total_batch > 1 and total_batch % opt.save_model_every == 0:
+            if total_batch > 1 and epoch >= opt.start_checkpoint_at and total_batch % opt.save_model_every == 0:
                 # Save the checkpoint
                 logging.info('Saving checkpoint to: %s' % os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'))
                 torch.save(

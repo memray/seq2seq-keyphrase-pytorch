@@ -154,6 +154,8 @@ def train_opts(parser):
                         reproducibility.""")
 
     # Init options
+    parser.add_argument('-epochs', type=int, default=100,
+                        help='Number of training epochs')
     parser.add_argument('-start_epoch', type=int, default=1,
                         help='The epoch from which to start')
     parser.add_argument('-param_init', type=float, default=0.1,
@@ -183,8 +185,6 @@ def train_opts(parser):
                         help='Maximum batch size')
     parser.add_argument('-batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')
-    parser.add_argument('-epochs', type=int, default=100,
-                        help='Number of training epochs')
     parser.add_argument('-optim', default='adam',
                         choices=['sgd', 'adagrad', 'adadelta', 'adam'],
                         help="""Optimization method.""")
@@ -218,7 +218,7 @@ def train_opts(parser):
     parser.add_argument('-start_decay_at', type=int, default=8,
                         help="""Start decaying every epoch after and including this
                         epoch""")
-    parser.add_argument('-start_checkpoint_at', type=int, default=0,
+    parser.add_argument('-start_checkpoint_at', type=int, default=2,
                         help="""Start checkpointing every epoch after and including
                         this epoch""")
     parser.add_argument('-decay_method', type=str, default="",
@@ -228,7 +228,7 @@ def train_opts(parser):
 
     parser.add_argument('-run_valid_every', type=int, default=2000,
                         help="Run validation test at this interval (every run_valid_every epochs)")
-    parser.add_argument('-early_stop_tolerance', type=int, default=10,
+    parser.add_argument('-early_stop_tolerance', type=int, default=100,
                         help="Stop training if it doesn't improve any more for serveral epochs")
 
     timemark = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
@@ -236,7 +236,7 @@ def train_opts(parser):
     parser.add_argument('-timemark', type=str, default=timemark,
                         help="Save checkpoint at this interval.")
 
-    parser.add_argument('-save_model_every', type=int, default=1000,
+    parser.add_argument('-save_model_every', type=int, default=2000,
                         help="Save checkpoint at this interval.")
 
     parser.add_argument('-report_every', type=int, default=10,

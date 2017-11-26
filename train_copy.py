@@ -187,8 +187,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
         for batch_i, batch in enumerate(training_data_loader):
             batch_i += 1
             total_batch += 1
-            src = batch.src
-            trg = batch.trg
+            src, trg, oov_list = batch
             print("src size - ",src.size())
             print("target size - ",trg.size())
             if torch.cuda.is_available():
