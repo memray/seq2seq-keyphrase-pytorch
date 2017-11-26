@@ -59,7 +59,7 @@ if opt.seed > 0:
 if torch.cuda.is_available() and not opt.gpuid:
     opt.gpuid = 0
 
-if opt.gpuid:
+if torch.cuda.is_available() and opt.gpuid:
     cuda.set_device(0)
 
 # fill time into the name
@@ -318,10 +318,10 @@ def load_train_valid_data(opt):
     id2word = data_dict['id2word']
     vocab = data_dict['vocab']
 
-    train_dataset = KeyphraseDatasetCopy(data_dict['train'])
-    valid_dataset = KeyphraseDatasetCopy(data_dict['valid'])
-    training_data_loader = DataLoader(dataset=train_dataset, num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
-    validation_data_loader = DataLoader(dataset=valid_dataset, num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
+    train_dataset = KeyphraseDatasetCopy(data_dict['train'], pad_id=word2id[pykp.IO.PAD_WORD])
+    valid_dataset = KeyphraseDatasetCopy(data_dict['valid'], pad_id=word2id[pykp.IO.PAD_WORD])
+    training_data_loader = DataLoader(dataset=train_dataset, collate_fn=train_dataset.collate_fn, num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
+    validation_data_loader = DataLoader(dataset=valid_dataset, collate_fn=valid_dataset.collate_fn, num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=False)
 
     # training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=False, shuffle=False, sort=True, device=device)
     # validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, shuffle=False, sort=True, device = device)
@@ -340,11 +340,10 @@ def load_train_valid_data(opt):
 
 def init_optimizer_criterion(model, opt):
     # mask the BOS <s> and PAD <pad> when computing loss
-    # weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
-    # weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
-    # weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
-    # criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
-    criterion = torch.nn.CrossEntropyLoss()
+    weight_mask = torch.ones(opt.vocab_size + opt.max_unk_words).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size + opt.max_unk_words)
+    weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
+    weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
+    criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
 
     optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
     # optimizer = torch.optim.Adadelta(model.parameters(), lr=0.1)
@@ -383,7 +382,10 @@ def init_model(word2id, config):
         pad_token_trg = word2id[pykp.IO.PAD_WORD],
         nlayers_src=config.enc_layers,
         nlayers_trg=config.dec_layers,
-        dropout=config.dropout
+        dropout=opt.dropout,
+        teacher_forcing_ratio=opt.teacher_forcing_ratio,
+        scheduled_sampling=opt.scheduled_sampling,
+        scheduled_sampling_batches=opt.scheduled_sampling_batches
     )
 
     logging.info('======================  Model Parameters  =========================')

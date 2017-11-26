@@ -36,7 +36,7 @@ torchtext.vocab.Vocab.__setstate__ = __setstate__
 
 
 class KeyphraseDatasetCopy(torch.utils.data.Dataset):
-    def __init__(self, examples):
+    def __init__(self, examples, pad_id):
         # keys of matter. `src_oov_map` is for mapping pointed word to dict, `oov_dict` is for determining the dim of predicted logit: dim=vocab_size+max_oov_dict_in_batch
         keys = ['src', 'trg_copy', 'trg_copy_input', 'src_oov_map', 'oov_dict']
         filtered_examples = []
@@ -50,6 +50,7 @@ class KeyphraseDatasetCopy(torch.utils.data.Dataset):
             filtered_examples.append(filtered_example)
 
         self.examples = filtered_examples
+        self.pad_id   = pad_id
 
     def __getitem__(self, index):
         return self.examples[index]
@@ -57,11 +58,21 @@ class KeyphraseDatasetCopy(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.examples)
 
-    def collate_fn(self, batch):
-        max_src_len = max([len(b['src']) for b in batch])
-        max_trg_len = max([len(b['trg_copy_input']) for b in batch])
-        max_oov_num = max([b['oov_number'] for b in batch])
+    def collate_fn(self, batches):
+        '''
+        Puts each data field into a tensor with outer dimension batch size"
+        '''
+        def _pad(data, length):
+            return torch.stack([torch.from_numpy(b) for b in batches], 0)
 
+        max_src_len = max([len(b['src']) for b in batches])
+        max_trg_len = max([len(b['trg_copy_input']) for b in batches])
+        max_oov_num = max([b['oov_number'] for b in batches])
+
+        src = _pad([len(b['src']) for b in batches], max_src_len)
+        trg = _pad([len(b['trg_copy_input']) for b in batches], max_trg_len)
+
+        return src, trg
 
     #     "Puts each data field into a tensor with outer dimension batch size"
     #     if torch.is_tensor(batch[0]):

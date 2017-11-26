@@ -710,6 +710,9 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
             nlayers_src=2,
             nlayers_trg=2,
             dropout=0.,
+            teacher_forcing_ratio=0.,
+            scheduled_sampling=False,
+            scheduled_sampling_batches=2000,
         ):
         super(Seq2SeqLSTMAttentionCopy, self).__init__(
             emb_dim,
@@ -721,10 +724,13 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
             batch_size,
             pad_token_src,
             pad_token_trg,
-            bidirectional=True,
-            nlayers_src=2,
-            nlayers_trg=2,
-            dropout=0.,
+            bidirectional=bidirectional,
+            nlayers_src=nlayers_src,
+            nlayers_trg=nlayers_trg,
+            dropout=dropout,
+            teacher_forcing_ratio=teacher_forcing_ratio,
+            scheduled_sampling=scheduled_sampling,
+            scheduled_sampling_batches=scheduled_sampling_batches,
         )
 
 

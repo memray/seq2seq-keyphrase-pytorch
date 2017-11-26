@@ -98,6 +98,9 @@ def preprocess_opts(parser):
     # Dictionary Options
     parser.add_argument('-vocab_size', type=int, default=50000,
                         help="Size of the source vocabulary")
+    # for copy model
+    parser.add_argument('-max_unk_words', type=int, default=1000,
+                        help="Maximum number of unknown words the model supports (mainly for masking in loss)")
 
     parser.add_argument('-words_min_frequency', type=int, default=0)
 
