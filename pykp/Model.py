@@ -2,6 +2,7 @@
 """
 Python File Template 
 """
+import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
@@ -151,7 +152,6 @@ class SoftDotAttention(nn.Module):
 
     # @time_usage
     def forward_(self, hidden, context):
-        print("forward funtion")
         """
         Original forward for DotAttention, it doesn't work if the dim of encoder and decoder are not same
         input and context must be in same dim: return Softmax(hidden.dot([c for c in context]))
@@ -304,17 +304,18 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.teacher_forcing_ratio  = teacher_forcing_ratio
         self.scheduled_sampling     = scheduled_sampling
         self.scheduled_sampling_batches = scheduled_sampling_batches
+        self.scheduled_sampling_type= 'inverse_sigmoid' # decay curve type: linear or inverse_sigmoid
         self.current_batch          = 0
 
         if scheduled_sampling:
-            print("Applying scheduled sampling with linear decay for the first %d batches" % self.scheduled_sampling_batches)
+            logging.info("Applying scheduled sampling with %s decay for the first %d batches" % (self.scheduled_sampling_type, self.scheduled_sampling_batches))
         else:
             if teacher_forcing_ratio <= 0:
-                print("Training with All Sampling")
+                logging.info("Training with All Sampling")
             elif teacher_forcing_ratio >= 1:
-                print("Training with All Teacher Forcing")
+                logging.info("Training with All Teacher Forcing")
             else:
-                print("Conducting teacher forcing, rate=%f" % self.teacher_forcing_ratio)
+                logging.info("Training with Teacher Forcing with static rate=%f" % self.teacher_forcing_ratio)
 
         self.embedding = nn.Embedding(
             vocab_size,
@@ -539,15 +540,20 @@ class Seq2SeqLSTMAttention(nn.Module):
         # Teacher Forcing
         self.current_batch += 1
         if self.scheduled_sampling:
-            teacher_forcing_ratio = 1 - float(self.current_batch) / self.scheduled_sampling_batches
+            if self.scheduled_sampling_type == 'linear':
+                teacher_forcing_ratio = 1 - float(self.current_batch) / self.scheduled_sampling_batches
+            elif self.scheduled_sampling_type == 'inverse_sigmoid':
+                # apply function k/(k+e^(x/k-m)), default k=1 and m=5, scale x to [0, 2*m], to ensure the many initial rounds are trained with teacher forcing
+                x = float(self.current_batch) / self.scheduled_sampling_batches * 10
+                teacher_forcing_ratio = 1. / (1. + np.exp(x - 5))
         else:
             teacher_forcing_ratio = self.teacher_forcing_ratio
 
         # flip a coin
         coin = random.random()
-        print('coin = %f, tf_ratio = %f' % (coin, teacher_forcing_ratio))
+        logging.info('coin = %f, tf_ratio = %f' % (coin, teacher_forcing_ratio))
         if must_teacher_forcing or coin < teacher_forcing_ratio:
-            print("Training batches with Teacher Forcing")
+            logging.info("Training batches with Teacher Forcing")
             # truncate the last word, as there's no further word after it for decoder to predict
             trg_input = trg_input[:, :-1]
 
@@ -568,7 +574,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             # decoder_probs  = torch.nn.functional.softmax(decoder_logits.view(-1, decoder_logits.size(2))).view(batch_size, trg_len, -1)
 
         else:
-            print("Training batches with All Sampling")
+            logging.info("Training batches with All Sampling")
             # truncate the last word, as there's no further word after it for decoder to predict (batch_size, 1)
             trg_input = trg_input[:, 0].unsqueeze(1)
             decoder_logits = []
@@ -672,7 +678,6 @@ class Seq2SeqLSTMAttention(nn.Module):
 
             # prepare the next input
             if is_train and i < trg_input.size(1) - 1:
-                print('teacher forcing')
                 trg_emb_i = trg_emb[i + 1].unsqueeze(0)
             else:
                 top_v, top_idx = decoder_logit.data.topk(1, dim = -1)
