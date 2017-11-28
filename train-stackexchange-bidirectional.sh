@@ -14,4 +14,4 @@
 # Run the job
 export EXP_NAME="rnn.teacher_forcing"
 export DATA_NAME="stackexchange"
-srun python -m train -data data/$DATA_NAME/$DATA_NAME.train_valid.pt -vocab data/$DATA_NAME/$DATA_NAME.vocab.pt -exp_path "exp/$EXP_NAME/%s.bi-directional.%s" -save_path "model/$EXP_NAME/%s.bi-directional.%s" -exp "$DATA_NAME" -batch_size 256 -bidirectional -run_valid_every 1000
+srun python -m train -data data/$DATA_NAME/$DATA_NAME.train_valid.pt -vocab data/$DATA_NAME/$DATA_NAME.vocab.pt -exp_path "exp/$EXP_NAME/%s.bi-directional.%s" -save_path "model/$EXP_NAME/%s.bi-directional.%s" -exp "$DATA_NAME" -batch_size 256 -bidirectional -run_valid_every 1000 -teacher_forcing_ratio 1

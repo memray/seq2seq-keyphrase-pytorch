@@ -19,6 +19,8 @@ parser.add_argument('-train_path', required=True,
                     help="Path to the training data")
 parser.add_argument('-valid_path', required=True,
                     help="Path to the validation data")
+parser.add_argument('-test_path', required=True,
+                    help="Path to the test data")
 parser.add_argument('-save_data', required=True,
                     help="Output file for the prepared data")
 
@@ -37,8 +39,6 @@ opt = parser.parse_args()
 torch.manual_seed(opt.seed)
 
 def main():
-    print('Preparing training ...')
-
     '''
     Load and process training data
     '''
@@ -56,9 +56,22 @@ def main():
     print("Building Vocab...")
     word2id, id2word, vocab = pykp.IO.build_vocab(tokenized_train_pairs, opt)
 
+    print('Vocab size = %d' % len(vocab))
+
     print("Building training...")
-    train = pykp.IO.build_one2one_dataset(
-        tokenized_train_pairs, word2id, id2word, opt)
+    train_one2one = pykp.IO.build_dataset(tokenized_train_pairs, word2id, id2word, opt, mode='one2one')
+    print('#pairs of train_one2one = %d' % len(train_one2one))
+    print("Dumping train one2one to disk: %s" % (opt.save_data + '.train.one2one.pt'))
+    torch.save(train_one2one, open(opt.save_data + '.train.one2one.pt', 'wb'))
+    len_train_one2one = len(train_one2one)
+    train_one2one = None
+
+    train_one2many = pykp.IO.build_dataset(tokenized_train_pairs, word2id, id2word, opt, mode='one2many')
+    print('#pairs of train_one2many = %d' % len(train_one2many))
+    print("Dumping train one2many to disk: %s" % (opt.save_data + '.train.one2many.pt'))
+    torch.save(train_one2many, open(opt.save_data + '.train.one2many.pt', 'wb'))
+    len_train_one2many = len(train_one2many)
+    train_one2many = None
 
     '''
     Load and process validation data
@@ -73,26 +86,44 @@ def main():
         tokenize=pykp.IO.copyseq_tokenize, opt=opt, valid_check=True)
 
     print("Building validation...")
-    valid = pykp.IO.build_one2one_dataset(
-        tokenized_valid_pairs, word2id, id2word, opt)
+    valid_one2one = pykp.IO.build_dataset(
+        tokenized_valid_pairs, word2id, id2word, opt, mode='one2one', include_original=True)
+    valid_one2many = pykp.IO.build_dataset(
+        tokenized_valid_pairs, word2id, id2word, opt, mode='one2many', include_original=True)
 
-    data_dict = {'train': train, 'valid': valid, 'word2id': word2id, 'id2word': id2word, 'vocab': vocab}
+    '''
+    Load and process test data
+    '''
+    print("Loading test data...")
+    # src_trgs_pairs = pykp.IO.load_json_data(opt.test_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
+    src_trgs_pairs = pykp.IO.load_json_data(opt.test_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
-    print('Vocab size = %d' % len(vocab))
-    print('Training data size = %d' % len(tokenized_train_pairs))
-    print('Training data pairs = %d' % len(train))
-    print('Validation data size = %d' % len(tokenized_valid_pairs))
-    print('Validation data pairs = %d' % len(valid))
+    print("Processing test data...")
+    tokenized_test_pairs = pykp.IO.tokenize_filter_data(
+        src_trgs_pairs,
+        tokenize=pykp.IO.copyseq_tokenize, opt=opt, valid_check=True)
+    print("Building testing...")
+    test_one2one = pykp.IO.build_dataset(
+        tokenized_test_pairs, word2id, id2word, opt, mode='one2one', include_original=True)
+    test_one2many = pykp.IO.build_dataset(
+        tokenized_test_pairs, word2id, id2word, opt, mode='one2many', include_original=True)
 
-    print("***************** Length Statistics ******************")
-    len_counter = {}
-    for src_tokens, trgs_tokens in tokenized_train_pairs:
-        len_count = len_counter.get(len(src_tokens), 0) + 1
-        len_counter[len(src_tokens)] = len_count
-    sorted_len = sorted(len_counter.items(), key=lambda x:x[0], reverse=True)
+    print('#pairs of train_one2one  = %d' % len_train_one2one)
+    print('#pairs of train_one2many = %d' % len_train_one2many)
+    print('#pairs of valid_one2one  = %d' % len(valid_one2one))
+    print('#pairs of valid_one2many = %d' % len(valid_one2many))
+    print('#pairs of test_one2one   = %d' % len(test_one2one))
+    print('#pairs of test_one2many  = %d' % len(test_one2many))
 
-    for len_, count in sorted_len:
-        print('%d,%d' % (len_, count))
+    # print("***************** Length Statistics ******************")
+    # len_counter = {}
+    # for src_tokens, trgs_tokens in tokenized_train_pairs:
+    #     len_count = len_counter.get(len(src_tokens), 0) + 1
+    #     len_counter[len(src_tokens)] = len_count
+    # sorted_len = sorted(len_counter.items(), key=lambda x:x[0], reverse=True)
+    #
+    # for len_, count in sorted_len:
+    #     print('%d,%d' % (len_, count))
 
     '''
     dump to disk
@@ -100,8 +131,12 @@ def main():
     print("Dumping dict to disk: %s" % opt.save_data + '.vocab.pt')
     torch.save([word2id, id2word, vocab],
                open(opt.save_data + '.vocab.pt', 'wb'))
-    print("Dumping train/valid to disk: %s" % (opt.save_data + '.train_valid.pt'))
-    torch.save(data_dict, open(opt.save_data + '.train_valid.pt', 'wb'))
+    print("Dumping valid to disk: %s" % (opt.save_data + '.valid.pt'))
+    torch.save(valid_one2one, open(opt.save_data + '.valid.one2one.pt', 'wb'))
+    torch.save(valid_one2many, open(opt.save_data + '.valid.one2many.pt', 'wb'))
+    print("Dumping test to disk: %s" % (opt.save_data + '.valid.pt'))
+    torch.save(test_one2one, open(opt.save_data + '.test.one2one.pt', 'wb'))
+    torch.save(test_one2many, open(opt.save_data + '.test.one2many.pt', 'wb'))
     print("Dumping done!")
 
 if __name__ == "__main__":

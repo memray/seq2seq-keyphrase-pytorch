@@ -121,39 +121,6 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
         progbar.update(epoch, i, [('valid_loss', loss.data[0])])
         print("-progbar.update --- %s" % (time.time() - start_time))
 
-        # Don't run through all the validation data, take 5% of training batches. we skip all the remaining iterations
-        if i > int(opt.run_valid_every * 0.05):
-            break
-        '''
-        if i > 1 and i % opt.report_every == 0:
-            logging.info('Epoch : %d Minibatch : %d Loss : %.5f' % (epoch, i, np.mean(losses)))
-            sampled_size = 2
-            logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
-
-            if torch.cuda.is_available():
-                max_words_pred = decoder_probs.data.cpu().numpy().argmax(axis=-1)
-                trg = trg.data.cpu().numpy()
-            else:
-                max_words_pred    = decoder_probs.data.numpy().argmax(axis=-1)
-                trg = trg.data.numpy()
-
-            sampled_trg_idx = np.random.random_integers(low=0, high=len(trg)-1, size=sampled_size)
-            max_words_pred  = [max_words_pred[i] for i in sampled_trg_idx]
-            trg         = [trg[i] for i in sampled_trg_idx]
-
-            for i, (sentence_pred, sentence_real) in enumerate(zip(max_words_pred, trg)):
-                sentence_pred = [opt.id2word[x] for x in sentence_pred]
-                sentence_real = [opt.id2word[x] for x in sentence_real]
-
-                if '</s>' in sentence_real:
-                    index = sentence_real.index('</s>')
-                    sentence_real = sentence_real[:index]
-                    sentence_pred = sentence_pred[:index]
-
-                logging.info('======================  %d  =========================' % (i+1))
-                logging.info('\t\tPredicted : %s ' % (' '.join(sentence_pred)))
-                logging.info('\t\tReal : %s ' % (' '.join(sentence_real)))
-        '''
     return losses
 
 

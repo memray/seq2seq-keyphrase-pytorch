@@ -14,4 +14,4 @@
 # Run the job
 export EXP_NAME="rnn.teacher_forcing"
 export DATA_NAME="kp20k"
-srun python -m train -data data/$DATA_NAME/$DATA_NAME.train_valid.pt -vocab data/$DATA_NAME/$DATA_NAME.vocab.pt -exp_path "exp/$EXP_NAME/%s.uni-directional.%s" -save_path "model/$EXP_NAME/%s.uni-directional.%s" -exp "$DATA_NAME" -batch_size 256 -run_valid_every 2000
+srun python -m train -data data/$DATA_NAME/$DATA_NAME.train_valid.pt -vocab data/$DATA_NAME/$DATA_NAME.vocab.pt -exp_path "exp/$EXP_NAME/%s.uni-directional.%s" -save_path "model/$EXP_NAME/%s.uni-directional.%s" -exp "$DATA_NAME" -batch_size 256 -run_valid_every 2000 -teacher_forcing_ratio 1
