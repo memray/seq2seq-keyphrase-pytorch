@@ -105,7 +105,7 @@ class SoftDotAttention(nn.Module):
     # @time_usage
     def forward(self, hidden, encoder_outputs):
         '''
-        Compute the attention and h_tilde
+        Compute the attention and h_tilde, inputs/outputs must be batch first
         :param hidden: (batch_size, trg_len, trg_hidden_dim)
         :param encoder_outputs: (batch_size, src_len, trg_hidden_dim) as this is dot attention, you have to convert enc_dim to trg_dim first
         :return: return h_tilde (batch_size, trg_len, trg_hidden_dim), attn (batch_size, trg_len, src_len)
@@ -399,11 +399,152 @@ class Seq2SeqLSTMAttention(nn.Module):
     # @time_usage
     def forward(self, input_src, input_trg, trg_mask=None, ctx_mask=None, must_teacher_forcing=True):
         '''
-        :param must_teacher_forcing: if True, it would apply teacher forcing (which significantly speed up the training at the beginning)
+        :param must_teacher_forcing: if True, it would apply teacher forcing (which significantly help the training at the beginning)
+        :returns
+            decoder_logits  : (batch_size, trg_seq_len, vocab_size)
+            decoder_outputs : (batch_size, trg_seq_len, hidden_size)
+            attn_weights    : (batch_size, trg_seq_len, src_seq_len)
         '''
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
         decoder_logits, decoder_hiddens, attn_weights = self.decode(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, must_teacher_forcing=must_teacher_forcing)
         return decoder_logits, decoder_hiddens, attn_weights
+
+    # @time_usage
+    def encode(self, input_src):
+        """Propogate input through the network."""
+        src_emb = self.embedding(input_src)
+
+        # initial encoder state, two zero-matrix as h and c at time=0
+        self.h0_encoder, self.c0_encoder = self.init_encoder_state(input_src) # (self.encoder.num_layers * self.num_directions, batch_size, self.src_hidden_dim)
+
+        # src_h (batch_size, seq_len, hidden_size * num_directions): outputs (h_t) of all the time steps
+        # src_h_t, src_c_t (num_layers * num_directions, batch, hidden_size): hidden and cell state at last time step
+        src_h, (src_h_t, src_c_t) = self.encoder(
+            src_emb, (self.h0_encoder, self.c0_encoder)
+        )
+
+        # concatenate to (batch_size, hidden_size * num_directions)
+        if self.bidirectional:
+            h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
+            c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
+        else:
+            h_t = src_h_t[-1]
+            c_t = src_c_t[-1]
+
+        return src_h, (h_t, c_t)
+
+    # @time_usage
+    def decode(self, trg_input, enc_context, enc_hidden, trg_mask, ctx_mask, must_teacher_forcing=False):
+        '''
+        Initial decoder state h0 (batch_size, trg_hidden_size), converted from h_t of encoder (batch_size, src_hidden_size * num_directions) through a linear layer
+            No transformation for cell state c_t. Pass directly to decoder.
+            Nov. 11st: update: change to pass c_t as well
+            People also do that directly feed the end hidden state of encoder and initialize cell state as zeros
+        :param 
+                trg_input:         (batch_size, trg_len)
+                context vector:    (batch_size, src_len, hidden_size * num_direction) is outputs of encoder
+        :returns
+            decoder_logits  : (batch_size, trg_seq_len, vocab_size)
+            decoder_outputs : (batch_size, trg_seq_len, hidden_size)
+            attn_weights    : (batch_size, trg_seq_len, src_seq_len)
+        '''
+        batch_size      = trg_input.size(0)
+        src_len         = enc_context.size(1)
+        trg_len         = trg_input.size(1)
+        context_dim     = enc_context.size(2)
+        trg_hidden_dim  = self.trg_hidden_dim
+
+        # prepare the init hidden vector, (batch_size, dec_hidden_dim) -> 2 * (1, batch_size, dec_hidden_dim)
+        init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
+
+        # enc_context has to be reshaped before dot attention (batch_size, src_len, context_dim) -> (batch_size, src_len, trg_hidden_dim)
+        enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
+
+        # maximum length to unroll
+        max_length  = trg_input.size(1) - 1
+
+        # Teacher Forcing
+        self.current_batch += 1
+        if self.do_teacher_forcing():
+            logging.info("Training batches with Teacher Forcing")
+            # truncate the last word, as there's no further word after it for decoder to predict
+            trg_input = trg_input[:, :-1]
+
+            # initialize target embedding and reshape the targets to be time step first
+            trg_emb = self.embedding(trg_input) # (batch_size, trg_len, embed_dim)
+            trg_emb  = trg_emb.permute(1, 0, 2) # (trg_len, batch_size, embed_dim)
+
+            # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
+            decoder_outputs, hidden = self.decoder(
+                trg_emb, init_hidden
+            )
+            # Get the h_tilde (hidden after attention) and attention weights, inputs/outputs must be batch first
+            h_tildes, attn_weights = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context)
+
+            # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
+            # (batch_size, trg_len, trg_hidden_size) -> (batch_size, trg_len, vocab_size)
+            decoder_logits = self.decoder2vocab(h_tildes.view(-1, trg_hidden_dim)).view(batch_size, max_length, -1)
+            # decoder_probs  = torch.nn.functional.softmax(decoder_logits.view(-1, decoder_logits.size(2))).view(batch_size, trg_len, -1)
+            decoder_outputs  = decoder_outputs.permute(1, 0, 2)
+
+        else:
+            logging.info("Training batches with All Sampling")
+            # truncate the last word, as there's no further word after it for decoder to predict (batch_size, 1)
+            trg_input = trg_input[:, 0].unsqueeze(1)
+            decoder_logits = []
+            decoder_outputs= []
+            attn_weights   = []
+
+            for di in range(max_length):
+                # initialize target embedding and reshape the targets to be time step first
+                trg_emb = self.embedding(trg_input) # (batch_size, trg_len, embed_dim)
+                trg_emb  = trg_emb.permute(1, 0, 2) # (trg_len, batch_size, embed_dim)
+
+                # this is trg_len first
+                decoder_output, hidden = self.decoder(
+                    trg_emb, init_hidden
+                )
+
+                # Get the h_tilde (hidden after attention) and attention weights, both inputs and outputs are batch first
+                h_tilde, attn_weight = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context)
+
+                # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
+                # (batch_size, trg_hidden_size) -> (batch_size, vocab_size)
+                decoder_logit = self.decoder2vocab(h_tilde)
+
+                top_v, top_idx = decoder_logit.data.topk(1, dim=-1)
+                top_idx = Variable(top_idx.squeeze(2))
+                # top_idx and next_index are (batch_size, 1)
+                trg_input = top_idx.cuda() if torch.cuda.is_available() else top_idx
+
+                # permute to trg_len first, otherwise the cat operation would mess up things
+                decoder_outputs.append(decoder_output)
+                attn_weights.append(attn_weight.permute(1, 0, 2))
+                decoder_logits.append(decoder_logit.permute(1, 0, 2))
+
+            # convert output into the right shape and make batch first
+            decoder_logits = torch.cat(decoder_logits, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, vocab_size)
+            decoder_outputs= torch.cat(decoder_outputs, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, vocab_size)
+            attn_weights   = torch.cat(attn_weights, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, src_seq_len)
+
+        # Return final outputs, hidden states, and attention weights (for visualization)
+        return decoder_logits, decoder_outputs, attn_weights
+
+    def do_teacher_forcing(self):
+        if self.scheduled_sampling:
+            if self.scheduled_sampling_type == 'linear':
+                teacher_forcing_ratio = 1 - float(self.current_batch) / self.scheduled_sampling_batches
+            elif self.scheduled_sampling_type == 'inverse_sigmoid':
+                # apply function k/(k+e^(x/k-m)), default k=1 and m=5, scale x to [0, 2*m], to ensure the many initial rounds are trained with teacher forcing
+                x = float(self.current_batch) / self.scheduled_sampling_batches * 10
+                teacher_forcing_ratio = 1. / (1. + np.exp(x - 5))
+        else:
+            teacher_forcing_ratio = self.teacher_forcing_ratio
+
+        # flip a coin
+        coin = random.random()
+        logging.info('coin = %f, tf_ratio = %f' % (coin, teacher_forcing_ratio))
+        return coin < teacher_forcing_ratio
 
     # @time_usage
     def generate(self, trg_input, hidden, enc_context, k = 1, feed_all_timesteps=False, return_attention=False):
@@ -486,136 +627,6 @@ class Seq2SeqLSTMAttention(nn.Module):
             return pred_words, top_probs, hidden, attn_weights
         else:
             return pred_words, decoder_probs, hidden
-
-    # @time_usage
-    def encode(self, input_src):
-        """Propogate input through the network."""
-        src_emb = self.embedding(input_src)
-
-        # initial encoder state, two zero-matrix as h and c at time=0
-        self.h0_encoder, self.c0_encoder = self.init_encoder_state(input_src) # (self.encoder.num_layers * self.num_directions, batch_size, self.src_hidden_dim)
-
-        # src_h (batch_size, seq_len, hidden_size * num_directions): outputs (h_t) of all the time steps
-        # src_h_t, src_c_t (num_layers * num_directions, batch, hidden_size): hidden and cell state at last time step
-        src_h, (src_h_t, src_c_t) = self.encoder(
-            src_emb, (self.h0_encoder, self.c0_encoder)
-        )
-
-        # concatenate to (batch_size, hidden_size * num_directions)
-        if self.bidirectional:
-            h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
-            c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
-        else:
-            h_t = src_h_t[-1]
-            c_t = src_c_t[-1]
-
-        return src_h, (h_t, c_t)
-
-    # @time_usage
-    def decode(self, trg_input, enc_context, enc_hidden, trg_mask, ctx_mask, must_teacher_forcing=False):
-        '''
-        Initial decoder state h0 (batch_size, trg_hidden_size), converted from h_t of encoder (batch_size, src_hidden_size * num_directions) through a linear layer
-            No transformation for cell state c_t. Pass directly to decoder.
-            Nov. 11st: update: change to pass c_t as well
-            People also do that directly feed the end hidden state of encoder and initialize cell state as zeros
-        :param 
-                trg_input:         (batch_size, trg_len)
-                context vector:    (batch_size, src_len, hidden_size * num_direction) is outputs of encoder
-        '''
-        batch_size      = trg_input.size(0)
-        src_len         = enc_context.size(1)
-        trg_len         = trg_input.size(1)
-        context_dim     = enc_context.size(2)
-        trg_hidden_dim  = self.trg_hidden_dim
-
-        # prepare the init hidden vector, (batch_size, dec_hidden_dim) -> 2 * (1, batch_size, dec_hidden_dim)
-        init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
-
-        # enc_context has to be reshaped before dot attention (batch_size, src_len, context_dim) -> (batch_size, src_len, trg_hidden_dim)
-        enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
-
-        # maximum length to unroll
-        max_length  = trg_input.size(1) - 1
-
-        # Teacher Forcing
-        self.current_batch += 1
-        if self.scheduled_sampling:
-            if self.scheduled_sampling_type == 'linear':
-                teacher_forcing_ratio = 1 - float(self.current_batch) / self.scheduled_sampling_batches
-            elif self.scheduled_sampling_type == 'inverse_sigmoid':
-                # apply function k/(k+e^(x/k-m)), default k=1 and m=5, scale x to [0, 2*m], to ensure the many initial rounds are trained with teacher forcing
-                x = float(self.current_batch) / self.scheduled_sampling_batches * 10
-                teacher_forcing_ratio = 1. / (1. + np.exp(x - 5))
-        else:
-            teacher_forcing_ratio = self.teacher_forcing_ratio
-
-        # flip a coin
-        coin = random.random()
-        logging.info('coin = %f, tf_ratio = %f' % (coin, teacher_forcing_ratio))
-        if must_teacher_forcing or coin < teacher_forcing_ratio:
-            logging.info("Training batches with Teacher Forcing")
-            # truncate the last word, as there's no further word after it for decoder to predict
-            trg_input = trg_input[:, :-1]
-
-            # initialize target embedding and reshape the targets to be time step first
-            trg_emb = self.embedding(trg_input) # (batch_size, trg_len, embed_dim)
-            trg_emb  = trg_emb.permute(1, 0, 2) # (trg_len, batch_size, embed_dim)
-
-            # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
-            decoder_outputs, hidden = self.decoder(
-                trg_emb, init_hidden
-            )
-            # Get the h_tilde (hidden after attention) and attention weights, inputs/outputs must be batch first
-            h_tildes, attn_weights = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context)
-
-            # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
-            # (batch_size, trg_len, trg_hidden_size) -> (batch_size, trg_len, vocab_size)
-            decoder_logits = self.decoder2vocab(h_tildes.view(-1, trg_hidden_dim)).view(batch_size, max_length, -1)
-            # decoder_probs  = torch.nn.functional.softmax(decoder_logits.view(-1, decoder_logits.size(2))).view(batch_size, trg_len, -1)
-            decoder_outputs  = decoder_outputs.permute(1, 0, 2)
-
-        else:
-            logging.info("Training batches with All Sampling")
-            # truncate the last word, as there's no further word after it for decoder to predict (batch_size, 1)
-            trg_input = trg_input[:, 0].unsqueeze(1)
-            decoder_logits = []
-            decoder_outputs= []
-            attn_weights   = []
-
-            for di in range(max_length):
-                # initialize target embedding and reshape the targets to be time step first
-                trg_emb = self.embedding(trg_input) # (batch_size, trg_len, embed_dim)
-                trg_emb  = trg_emb.permute(1, 0, 2) # (trg_len, batch_size, embed_dim)
-
-                # this is trg_len first
-                decoder_output, hidden = self.decoder(
-                    trg_emb, init_hidden
-                )
-
-                # Get the h_tilde (hidden after attention) and attention weights, both inputs and outputs are batch first
-                h_tilde, attn_weight = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context)
-
-                # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
-                # (batch_size, trg_hidden_size) -> (batch_size, vocab_size)
-                decoder_logit = self.decoder2vocab(h_tilde)
-
-                top_v, top_idx = decoder_logit.data.topk(1, dim=-1)
-                top_idx = Variable(top_idx.squeeze(2))
-                # top_idx and next_index are (batch_size, 1)
-                trg_input = top_idx.cuda() if torch.cuda.is_available() else top_idx
-
-                # permute to trg_len first, otherwise the cat operation would mess up things
-                decoder_outputs.append(decoder_output)
-                attn_weights.append(attn_weight.permute(1, 0, 2))
-                decoder_logits.append(decoder_logit.permute(1, 0, 2))
-
-            # convert output into the right shape and make batch first
-            decoder_logits = torch.cat(decoder_logits, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, vocab_size)
-            decoder_outputs= torch.cat(decoder_outputs, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, vocab_size)
-            attn_weights   = torch.cat(attn_weights, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, src_seq_len)
-
-        # Return final outputs, hidden states, and attention weights (for visualization)
-        return decoder_logits, decoder_outputs, attn_weights
 
     # @time_usage
     def greedy_predict(self, input_src, input_trg, trg_mask=None, ctx_mask=None):
@@ -716,6 +727,7 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
             teacher_forcing_ratio=0.,
             scheduled_sampling=False,
             scheduled_sampling_batches=2000,
+            max_unk_words = 1000,
         ):
         super(Seq2SeqLSTMAttentionCopy, self).__init__(
             emb_dim,
@@ -735,7 +747,190 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
             scheduled_sampling=scheduled_sampling,
             scheduled_sampling_batches=scheduled_sampling_batches,
         )
+        self.copy_model      = 'See'
+        self.max_unk_words   = max_unk_words
 
+        if self.copy_model == 'Gu':
+            self.copy_attention_layer = SoftDotAttention(self.src_hidden_dim * self.num_directions, trg_hidden_dim)
+        elif self.copy_model == 'See':
+            self.copy_attention_layer = None
+            self.copy_gate            = nn.Linear(trg_hidden_dim, vocab_size)
+
+    # @time_usage
+    def forward(self, input_src, input_trg, input_src_ext, trg_mask=None, ctx_mask=None, must_teacher_forcing=True):
+        '''
+        The differences of copy model from normal seq2seq here are:
+         1. The size of decoder_logits is (batch_size, trg_seq_len, vocab_size + max_unk_words).Usually vocab_size=50000 and max_unk_words=1000. And only very few of (it's very rare to have many unk words, in most cases it's because the text is not in English)
+         2. Return the copy_attn_weights as well. If it's See's model, the weights are same to attn_weights as it reuse the original attention
+         3. Very important: as we need to merge probs of copying and generative part, thus we have to operate with probs instead of logits. Thus here we return the probs not logits. Respectively, the loss criterion outside is NLLLoss but not CrossEntropyLoss any more.
+        :param
+            input_src : numericalized source text, oov words have been replaced with <unk>
+            input_trg : numericalized target text, oov words have been replaced with temporary oov index
+            input_src_ext : numericalized source text in extended vocab, oov words have been replaced with temporary oov index, for copy mechanism to map the probs of pointed words to vocab words
+        :returns
+            decoder_logits      : (batch_size, trg_seq_len, vocab_size)
+            decoder_outputs     : (batch_size, trg_seq_len, hidden_size)
+            attn_weights        : (batch_size, trg_seq_len, src_seq_len)
+            copy_attn_weights   : (batch_size, trg_seq_len, src_seq_len)
+        '''
+        src_h, (src_h_t, src_c_t) = self.encode(input_src)
+        decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights = self.decode(trg_input=input_trg, src_map=input_src_ext, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, must_teacher_forcing=must_teacher_forcing)
+        return decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights
+
+    # @time_usage
+    def encode(self, input_src):
+        """Propogate input through the network."""
+        src_emb = self.embedding(input_src)
+
+        # initial encoder state, two zero-matrix as h and c at time=0
+        self.h0_encoder, self.c0_encoder = self.init_encoder_state(input_src) # (self.encoder.num_layers * self.num_directions, batch_size, self.src_hidden_dim)
+
+        # src_h (batch_size, seq_len, hidden_size * num_directions): outputs (h_t) of all the time steps
+        # src_h_t, src_c_t (num_layers * num_directions, batch, hidden_size): hidden and cell state at last time step
+        src_h, (src_h_t, src_c_t) = self.encoder(
+            src_emb, (self.h0_encoder, self.c0_encoder)
+        )
+
+        # concatenate to (batch_size, hidden_size * num_directions)
+        if self.bidirectional:
+            h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
+            c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
+        else:
+            h_t = src_h_t[-1]
+            c_t = src_c_t[-1]
+
+        return src_h, (h_t, c_t)
+
+    def merge_copy_probs(self, decoder_probs, copy_weights, src_map):
+        '''
+        :param decoder_probs: (batch_size, trg_seq_len, vocab_size)
+        :param copy_weights:  (batch_size, trg_len, src_len) the pointing/copying probabilities of each target words
+        :param src_map:       (batch_size, src_len)
+        :return:
+            decoder_copy_probs       : (batch_size, trg_seq_len, vocab_size + max_unk_words)
+        '''
+        batch_size, max_length, _ = decoder_probs.size()
+        src_len = src_map.size(1)
+
+        # flatten and extend size of decoder_probs from (vocab_size) to (vocab_size+max_unk_words)
+        flattened_decoder_probs = decoder_probs.view(batch_size * max_length, -1)
+        extended_zeros          = Variable(torch.zeros(batch_size * max_length, self.max_unk_words))
+        extended_zeros          = extended_zeros.cuda() if torch.cuda.is_available() else extended_zeros
+        flattened_decoder_probs = torch.cat((flattened_decoder_probs, extended_zeros), dim=1)
+
+        # add probs of copied words by scatter_add_(dim, index, src), index should be in the same shape with src. decoder_probs=(batch_size * trg_len, vocab_size+max_unk_words), copy_weights=(batch_size, trg_len, src_len)
+        expanded_src_map = src_map.unsqueeze(1).expand(batch_size, max_length, src_len).contiguous().view(batch_size * max_length, -1)  # (batch_size, src_len) -> (batch_size * trg_len, src_len)
+        flattened_decoder_probs.scatter_add_(dim=1, index=expanded_src_map, src=copy_weights.view(batch_size * max_length, -1))
+
+        # apply another softmax to ensure it meets the properties of probability, (batch_size * trg_len, src_len)
+        flattened_decoder_probs = torch.nn.functional.softmax(flattened_decoder_probs)
+
+        # reshape to batch first before returning (batch_size, trg_len, src_len)
+        decoder_copy_probs = flattened_decoder_probs.view(batch_size, max_length, -1)
+
+        return decoder_copy_probs
+
+    # @time_usage
+    def decode(self, trg_input, src_map, enc_context, enc_hidden, trg_mask, ctx_mask, must_teacher_forcing=False):
+        '''
+        :param
+                trg_input:         (batch_size, trg_len)
+                src_map  :         (batch_size, src_len), almost the same with src but oov words are replaced with temporary oov index, for copy mechanism to map the probs of pointed words to vocab words. The word index can be beyond vocab_size, e.g. 50000, 50001, 50002 etc, depends on how many oov words appear in the source text
+                context vector:    (batch_size, src_len, hidden_size * num_direction) the outputs (hidden vectors) of encoder
+        :returns
+            decoder_probs       : (batch_size, trg_seq_len, vocab_size + max_unk_words)
+            decoder_outputs     : (batch_size, trg_seq_len, hidden_size)
+            attn_weights        : (batch_size, trg_seq_len, src_seq_len)
+            copy_attn_weights   : (batch_size, trg_seq_len, src_seq_len)
+        '''
+        batch_size      = trg_input.size(0)
+        src_len         = enc_context.size(1)
+        trg_len         = trg_input.size(1)
+        context_dim     = enc_context.size(2)
+        trg_hidden_dim  = self.trg_hidden_dim
+
+        # prepare the init hidden vector, (batch_size, dec_hidden_dim) -> 2 * (1, batch_size, dec_hidden_dim)
+        init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
+
+        # enc_context has to be reshaped before dot attention (batch_size, src_len, context_dim) -> (batch_size, src_len, trg_hidden_dim)
+        enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
+
+        # maximum length to unroll
+        max_length  = trg_input.size(1) - 1
+
+        # Teacher Forcing
+        self.current_batch += 1
+        if must_teacher_forcing or self.do_teacher_forcing():
+            logging.info("Training batches with Teacher Forcing")
+            '''
+            Normal RNN procedure
+            '''
+            # truncate the last word, as there's no further word after it for decoder to predict
+            trg_input = trg_input[:, :-1]
+
+            # initialize target embedding and reshape the targets to be time step first
+            trg_emb = self.embedding(trg_input) # (batch_size, trg_len, embed_dim)
+            trg_emb  = trg_emb.permute(1, 0, 2) # (trg_len, batch_size, embed_dim)
+
+            # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
+            decoder_outputs, hidden = self.decoder(
+                trg_emb, init_hidden
+            )
+            # Get the h_tilde (batch_size, trg_len, trg_hidden_dim) and attention weights (batch_size, trg_len, src_len)
+            h_tildes, attn_weights = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context)
+
+            # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde), (batch_size, trg_len, trg_hidden_size) -> (batch_size * trg_len, vocab_size)
+            decoder_logits = self.decoder2vocab(h_tildes.view(-1, trg_hidden_dim))
+            decoder_probs  = torch.nn.functional.softmax(decoder_logits).view(batch_size, max_length, -1) # (batch_size, trg_len, vocab_size)
+
+            '''
+            Copy Mechanism
+            '''
+            decoder_probs   = self.merge_copy_probs(decoder_probs, attn_weights, src_map) # (batch_size, trg_len, vocab_size + max_unk_words)
+            decoder_outputs = decoder_outputs.permute(1, 0, 2) # (batch_size, trg_len, trg_hidden_dim)
+
+        else:
+            logging.info("Training batches with All Sampling")
+            # truncate the last word, as there's no further word after it for decoder to predict (batch_size, 1)
+            trg_input = trg_input[:, 0].unsqueeze(1)
+            decoder_logits = []
+            decoder_outputs= []
+            attn_weights   = []
+
+            for di in range(max_length):
+                # initialize target embedding and reshape the targets to be time step first
+                trg_emb = self.embedding(trg_input) # (batch_size, trg_len, embed_dim)
+                trg_emb  = trg_emb.permute(1, 0, 2) # (trg_len, batch_size, embed_dim)
+
+                # this is trg_len first
+                decoder_output, hidden = self.decoder(
+                    trg_emb, init_hidden
+                )
+
+                # Get the h_tilde (hidden after attention) and attention weights, both inputs and outputs are batch first
+                h_tilde, attn_weight = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context)
+
+                # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
+                # (batch_size, trg_hidden_size) -> (batch_size, vocab_size)
+                decoder_logit = self.decoder2vocab(h_tilde)
+
+                top_v, top_idx = decoder_logit.data.topk(1, dim=-1)
+                top_idx = Variable(top_idx.squeeze(2))
+                # top_idx and next_index are (batch_size, 1)
+                trg_input = top_idx.cuda() if torch.cuda.is_available() else top_idx
+
+                # permute to trg_len first, otherwise the cat operation would mess up things
+                decoder_outputs.append(decoder_output)
+                attn_weights.append(attn_weight.permute(1, 0, 2))
+                decoder_logits.append(decoder_logit.permute(1, 0, 2))
+
+            # convert output into the right shape and make batch first
+            decoder_logits = torch.cat(decoder_logits, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, vocab_size + max_unk_words)
+            decoder_outputs= torch.cat(decoder_outputs, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, hidden_size)
+            attn_weights   = torch.cat(attn_weights, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, src_seq_len)
+
+        # Return final outputs, hidden states, and attention weights (for visualization)
+        return decoder_probs, decoder_outputs, attn_weights, attn_weights
 
 class Seq2SeqLSTMAttentionOld(nn.Module):
     """

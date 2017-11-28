@@ -95,14 +95,14 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             src.cuda()
             trg.cuda()
 
-        decoder_probs, _, _ = model.forward(src, trg)
+        decoder_probs, _, _, _ = model.forward(src, trg)
 
         # simply average losses of all the predicitons
         start_time = time.time()
 
         loss = criterion(
-            decoder_logits.contiguous().view(-1, opt.vocab_size)[:-1],
-            trg.view(-1)[1:]
+            decoder_probs.contiguous().view(-1, opt.vocab_size + opt.max_unk_words),
+            trg[:, 1:].contiguous().view(-1)
         )
         print("--loss calculation --- %s" % (time.time() - start_time))
 
@@ -187,7 +187,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
         for batch_i, batch in enumerate(training_data_loader):
             batch_i += 1
             total_batch += 1
-            src, trg, oov_list = batch
+            src, trg, src_ext, oov_lists = batch
             print("src size - ",src.size())
             print("target size - ",trg.size())
             if torch.cuda.is_available():
@@ -195,14 +195,14 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 trg.cuda()
 
             optimizer.zero_grad()
-            decoder_logits, _, _ = model.forward(src, trg)
+            decoder_probs, _, _, _ = model.forward(src, trg, src_ext, must_teacher_forcing=True)
 
             # simply average losses of all the predicitons
             # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
             start_time = time.time()
             loss = criterion(
-                decoder_logits.contiguous().view(-1, opt.vocab_size)[:-1],
-                trg.view(-1)[1:]
+                decoder_probs.contiguous().view(-1, opt.vocab_size + opt.max_unk_words),
+                trg[:, 1:].contiguous().view(-1)
             )
             print("--loss calculation- %s seconds ---" % (time.time() - start_time))
 
@@ -228,8 +228,8 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 sampled_size = 2
                 logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
-                # softmax logits to get probabilities (batch_size, trg_len, vocab_size)
-                decoder_probs = torch.nn.functional.softmax(decoder_logits.view(trg.size(0) * trg.size(1), -1)).view(*trg.size(), -1)
+                # softmax logits to get probabilities (batch_size, trg_len, vocab_size), not needed after changing loss to NLL
+                # decoder_probs = torch.nn.functional.softmax(decoder_logits.view(trg.size(0) * trg.size(1), -1)).view(*trg.size(), -1)
                 if torch.cuda.is_available():
                     decoder_probs = decoder_probs.data.cpu().numpy()
                     max_words_pred = decoder_probs.argmax(axis=-1)
@@ -317,10 +317,10 @@ def load_train_valid_data(opt):
     id2word = data_dict['id2word']
     vocab = data_dict['vocab']
 
-    train_dataset = KeyphraseDatasetCopy(data_dict['train'], pad_id=word2id[pykp.IO.PAD_WORD])
-    valid_dataset = KeyphraseDatasetCopy(data_dict['valid'], pad_id=word2id[pykp.IO.PAD_WORD])
-    training_data_loader = DataLoader(dataset=train_dataset, collate_fn=train_dataset.collate_fn, num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=True)
-    validation_data_loader = DataLoader(dataset=valid_dataset, collate_fn=valid_dataset.collate_fn, num_workers=opt.batch_workers, batch_size=opt.batch_size, shuffle=False)
+    train_dataset = KeyphraseDatasetCopy(data_dict['train'], word2id=word2id)
+    valid_dataset = KeyphraseDatasetCopy(data_dict['valid'], word2id=word2id)
+    training_data_loader = DataLoader(dataset=train_dataset, collate_fn=train_dataset.collate_fn, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=True)
+    validation_data_loader = DataLoader(dataset=valid_dataset, collate_fn=valid_dataset.collate_fn, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=False)
 
     # training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=False, shuffle=False, sort=True, device=device)
     # validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, shuffle=False, sort=True, device = device)
@@ -340,9 +340,8 @@ def load_train_valid_data(opt):
 def init_optimizer_criterion(model, opt):
     # mask the BOS <s> and PAD <pad> when computing loss
     weight_mask = torch.ones(opt.vocab_size + opt.max_unk_words).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size + opt.max_unk_words)
-    weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
-    weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
-    criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
+    weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0 # only mask off the PAD, because BOS doesn't appear in targets
+    criterion = torch.nn.NLLLoss(weight=weight_mask)
 
     optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
     # optimizer = torch.optim.Adadelta(model.parameters(), lr=0.1)
@@ -384,7 +383,9 @@ def init_model(word2id, config):
         dropout=opt.dropout,
         teacher_forcing_ratio=opt.teacher_forcing_ratio,
         scheduled_sampling=opt.scheduled_sampling,
-        scheduled_sampling_batches=opt.scheduled_sampling_batches
+        scheduled_sampling_batches=opt.scheduled_sampling_batches,
+        max_unk_words=opt.max_unk_words,
+
     )
 
     logging.info('======================  Model Parameters  =========================')

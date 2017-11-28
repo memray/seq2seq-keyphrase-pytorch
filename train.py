@@ -353,8 +353,7 @@ def load_train_valid_data(opt):
 def init_optimizer_criterion(model, opt):
     # mask the BOS <s> and PAD <pad> when computing loss
     weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
-    weight_mask[opt.word2id[pykp.IO.BOS_WORD]] = 0
-    weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
+    weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0 # only mask off the PAD, because BOS doesn't appear in targets
     criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
     # criterion = torch.nn.CrossEntropyLoss()
 
