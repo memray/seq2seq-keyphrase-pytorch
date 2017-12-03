@@ -92,8 +92,8 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
 
     # Note that the data should be shuffled every time
     for i, batch in enumerate(data_loader):
-        if i >= 10:
-            break
+        # if i >= 100:
+        #     break
 
         src, trg, trg_target, trg_copy_target, src_ext, oov_lists = batch
 
@@ -409,11 +409,14 @@ def init_model(word2id, opt):
     if opt.train_from:
         logging.info("loading previous checkpoint from %s" % opt.train_from)
         if torch.cuda.is_available():
-            model.load_state_dict(torch.load(open(opt.train_from, 'rb')))
+            checkpoint = torch.load(open(opt.train_from, 'rb'))
         else:
-            model.load_state_dict(torch.load(
+            checkpoint = torch.load(
                 open(opt.train_from, 'rb'), map_location=lambda storage, loc: storage
-            ))
+            )
+        # some compatible problems, keys are started with 'module.'
+        checkpoint = dict([(k[k.find('module.')+7:],v) for k,v in checkpoint.items()])
+        model.load_state_dict(checkpoint)
     utils.tally_parameters(model)
 
     return model

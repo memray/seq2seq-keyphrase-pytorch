@@ -1,5 +1,8 @@
 # large files
 data/*
+model/*
+.model
+*.model
 
 
 # PyCharm
