@@ -92,7 +92,7 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
 
     # Note that the data should be shuffled every time
     for i, batch in enumerate(data_loader):
-        if i >= 100:
+        if i >= 10:
             break
 
         src, trg, trg_target, trg_copy_target, src_ext, oov_lists = batch
@@ -104,7 +104,7 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             trg_copy_target    = trg_copy_target.cuda()
             src_ext            = src_ext.cuda()
 
-        decoder_log_probs, _, _ = model.forward(src, trg, src_ext, must_teacher_forcing=True)
+        decoder_log_probs, _, _ = model.forward(src, trg, src_ext)
 
         start_time = time.time()
 
