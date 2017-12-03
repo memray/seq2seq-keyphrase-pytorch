@@ -285,6 +285,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         nlayers_src=2,
         nlayers_trg=2,
         dropout=0.,
+        must_teacher_forcing=False,
         teacher_forcing_ratio=0.,
         scheduled_sampling=False,
         scheduled_sampling_batches=2000,
@@ -304,6 +305,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.bidirectional          = bidirectional
         self.nlayers_src            = nlayers_src
         self.dropout                = dropout
+        self.must_teacher_forcing   = must_teacher_forcing
         self.teacher_forcing_ratio  = teacher_forcing_ratio
         self.scheduled_sampling     = scheduled_sampling
         self.scheduled_sampling_batches = scheduled_sampling_batches
@@ -313,10 +315,10 @@ class Seq2SeqLSTMAttention(nn.Module):
         if scheduled_sampling:
             logging.info("Applying scheduled sampling with %s decay for the first %d batches" % (self.scheduled_sampling_type, self.scheduled_sampling_batches))
         else:
-            if teacher_forcing_ratio <= 0:
-                logging.info("Training with All Sampling")
-            elif teacher_forcing_ratio >= 1:
+            if self.must_teacher_forcing or self.teacher_forcing_ratio >= 1:
                 logging.info("Training with All Teacher Forcing")
+            elif self.teacher_forcing_ratio <= 0:
+                logging.info("Training with All Sampling")
             else:
                 logging.info("Training with Teacher Forcing with static rate=%f" % self.teacher_forcing_ratio)
 
@@ -400,17 +402,16 @@ class Seq2SeqLSTMAttention(nn.Module):
         return decoder_init_hidden, decoder_init_cell
 
     # @time_usage
-    def forward(self, input_src, input_trg, trg_mask=None, ctx_mask=None, must_teacher_forcing=False):
+    def forward(self, input_src, input_trg, trg_mask=None, ctx_mask=None):
         '''
         To be compatible with the Copy Model, we change the output of logits to log_probs
-        :param must_teacher_forcing: if True, it would apply teacher forcing (which significantly help the training at the beginning)
         :returns
             decoder_logits  : (batch_size, trg_seq_len, vocab_size)
             decoder_outputs : (batch_size, trg_seq_len, hidden_size)
             attn_weights    : (batch_size, trg_seq_len, src_seq_len)
         '''
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
-        decoder_log_probs, decoder_hiddens, attn_weights = self.decode(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, must_teacher_forcing=must_teacher_forcing)
+        decoder_log_probs, decoder_hiddens, attn_weights = self.decode(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask)
         return decoder_log_probs, decoder_hiddens, attn_weights
 
     # @time_usage
@@ -438,7 +439,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         return src_h, (h_t, c_t)
 
     # @time_usage
-    def decode(self, trg_input, enc_context, enc_hidden, trg_mask, ctx_mask, must_teacher_forcing=False):
+    def decode(self, trg_input, enc_context, enc_hidden, trg_mask, ctx_mask):
         '''
         Initial decoder state h0 (batch_size, trg_hidden_size), converted from h_t of encoder (batch_size, src_hidden_size * num_directions) through a linear layer
             No transformation for cell state c_t. Pass directly to decoder.
@@ -544,6 +545,8 @@ class Seq2SeqLSTMAttention(nn.Module):
                 # apply function k/(k+e^(x/k-m)), default k=1 and m=5, scale x to [0, 2*m], to ensure the many initial rounds are trained with teacher forcing
                 x = float(self.current_batch) / self.scheduled_sampling_batches * 10
                 teacher_forcing_ratio = 1. / (1. + np.exp(x - 5))
+        elif self.must_teacher_forcing:
+            teacher_forcing_ratio = 1.0
         else:
             teacher_forcing_ratio = self.teacher_forcing_ratio
 
@@ -730,6 +733,7 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
             nlayers_src=2,
             nlayers_trg=2,
             dropout=0.,
+            must_teacher_forcing=False,
             teacher_forcing_ratio=0.,
             scheduled_sampling=False,
             scheduled_sampling_batches=2000,
@@ -750,6 +754,7 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
             nlayers_src=nlayers_src,
             nlayers_trg=nlayers_trg,
             dropout=dropout,
+            must_teacher_forcing=must_teacher_forcing,
             teacher_forcing_ratio=teacher_forcing_ratio,
             scheduled_sampling=scheduled_sampling,
             scheduled_sampling_batches=scheduled_sampling_batches,
@@ -765,7 +770,7 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
             self.copy_gate            = nn.Linear(trg_hidden_dim, vocab_size)
 
     # @time_usage
-    def forward(self, input_src, input_trg, input_src_ext, trg_mask=None, ctx_mask=None, must_teacher_forcing=False):
+    def forward(self, input_src, input_trg, input_src_ext, trg_mask=None, ctx_mask=None):
         '''
         The differences of copy model from normal seq2seq here are:
          1. The size of decoder_logits is (batch_size, trg_seq_len, vocab_size + max_unk_words).Usually vocab_size=50000 and max_unk_words=1000. And only very few of (it's very rare to have many unk words, in most cases it's because the text is not in English)
@@ -782,7 +787,7 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
             copy_attn_weights   : (batch_size, trg_seq_len, src_seq_len)
         '''
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
-        decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights = self.decode(trg_input=input_trg, src_map=input_src_ext, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, must_teacher_forcing=must_teacher_forcing)
+        decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights = self.decode(trg_input=input_trg, src_map=input_src_ext, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask)
         return decoder_probs, decoder_hiddens, (attn_weights, copy_attn_weights)
 
     # @time_usage
@@ -811,15 +816,27 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
 
     def merge_oov2unk(self, decoder_log_prob):
         '''
-        Merge the probs of
+        Merge the probs of oov words to the probs of <unk>, in order to generate the next word
         :param decoder_log_prob: log_probs after merging generative and copying (batch_size, trg_seq_len, vocab_size + max_unk_words)
         :return:
         '''
         batch_size, seq_len, _ = decoder_log_prob.size()
-        merged_log_prob = torch.index_select(decoder_log_prob, dim=2, index=Variable(torch.arange(start=0, end=self.vocab_size).type(torch.LongTensor))).view(batch_size * seq_len, self.vocab_size)
-        oov_log_prob    = torch.index_select(decoder_log_prob, dim=2, index=Variable(torch.arange(start=self.vocab_size, end=self.vocab_size+self.max_unk_words).type(torch.LongTensor))).view(batch_size * seq_len, self.max_unk_words)
-        oov2unk_index   = Variable(torch.zeros(oov_log_prob.size()).type(torch.LongTensor) + self.unk_word)
-        merged_log_prob = merged_log_prob.scatter_add_(dim=1, index=oov2unk_index, src=oov_log_prob)
+        # range(0, vocab_size)
+        vocab_index     = Variable(torch.arange(start=0, end=self.vocab_size).type(torch.LongTensor))
+        # range(vocab_size, vocab_size+max_unk_words)
+        oov_index       = Variable(torch.arange(start=self.vocab_size, end=self.vocab_size+self.max_unk_words).type(torch.LongTensor))
+        oov2unk_index   = Variable(torch.zeros(batch_size * seq_len, self.max_unk_words).type(torch.LongTensor) + self.unk_word)
+
+        if torch.cuda.is_available():
+            vocab_index   = vocab_index.cuda()
+            oov_index     = oov_index.cuda()
+            oov2unk_index = oov2unk_index.cuda()
+
+        merged_log_prob = torch.index_select(decoder_log_prob, dim=2, index=vocab_index).view(batch_size * seq_len, self.vocab_size)
+        oov_log_prob    = torch.index_select(decoder_log_prob, dim=2, index=oov_index).view(batch_size * seq_len, self.max_unk_words)
+
+        # all positions are zeros except the index of unk_word, then add all the probs of oovs to <unk>
+        merged_log_prob = merged_log_prob.scatter_add_(1, oov2unk_index, oov_log_prob)
         merged_log_prob = merged_log_prob.view(batch_size, seq_len, self.vocab_size)
 
         return merged_log_prob
@@ -837,14 +854,15 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
         src_len = src_map.size(1)
 
         # flatten and extend size of decoder_probs from (vocab_size) to (vocab_size+max_unk_words)
-        flattened_decoder_logits = decoder_logits.view(batch_size * max_length, self.vocab_size+self.max_unk_words)
+        flattened_decoder_logits = decoder_logits.view(batch_size * max_length, self.vocab_size)
         extended_zeros           = Variable(torch.zeros(batch_size * max_length, self.max_unk_words))
         extended_zeros           = extended_zeros.cuda() if torch.cuda.is_available() else extended_zeros
         flattened_decoder_logits = torch.cat((flattened_decoder_logits, extended_zeros), dim=1)
 
         # add probs of copied words by scatter_add_(dim, index, src), index should be in the same shape with src. decoder_probs=(batch_size * trg_len, vocab_size+max_unk_words), copy_weights=(batch_size, trg_len, src_len)
         expanded_src_map = src_map.unsqueeze(1).expand(batch_size, max_length, src_len).contiguous().view(batch_size * max_length, -1)  # (batch_size, src_len) -> (batch_size * trg_len, src_len)
-        flattened_decoder_logits.scatter_add_(dim=1, index=expanded_src_map, src=copy_logits.view(batch_size * max_length, -1))
+        # flattened_decoder_logits.scatter_add_(dim=1, index=expanded_src_map, src=copy_logits.view(batch_size * max_length, -1))
+        flattened_decoder_logits.scatter_add_(1, expanded_src_map, copy_logits.view(batch_size * max_length, -1))
 
         # apply log softmax to normalize, ensuring it meets the properties of probability, (batch_size * trg_len, src_len)
         flattened_decoder_logits = torch.nn.functional.log_softmax(flattened_decoder_logits)
@@ -855,7 +873,7 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
         return decoder_log_probs
 
     # @time_usage
-    def decode(self, trg_input, src_map, enc_context, enc_hidden, trg_mask, ctx_mask, must_teacher_forcing=False):
+    def decode(self, trg_input, src_map, enc_context, enc_hidden, trg_mask, ctx_mask):
         '''
         :param
                 trg_input:         (batch_size, trg_len)
@@ -884,7 +902,7 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
 
         # Teacher Forcing
         self.current_batch += 1
-        if must_teacher_forcing or self.do_teacher_forcing():
+        if self.do_teacher_forcing():
             logging.info("Training batches with Teacher Forcing")
             '''
             Normal RNN procedure

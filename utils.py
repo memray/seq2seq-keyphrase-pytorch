@@ -165,11 +165,11 @@ class Progbar(object):
             else:
                 info += ' - %ds' % (now - self.start)
             for k in self.unique_values:
-                info += ' - %s: %.4f' % (k, self.sum_values[k][0] / max(1, self.sum_values[k][1]))
-                # if k == 'perplexity' or k == 'PPL':
-                #     info += ' - %s: %.4f' % (k, np.exp(self.sum_values[k][0] / max(1, self.sum_values[k][1])))
-                # else:
-                #     info += ' - %s: %.4f' % (k, self.sum_values[k][0] / max(1, self.sum_values[k][1]))
+                # info += ' - %s: %.4f' % (k, self.sum_values[k][0] / max(1, self.sum_values[k][1]))
+                if k == 'perplexity' or k == 'PPL':
+                    info += ' - %s: %.4f' % (k, np.exp(self.sum_values[k][0] / max(1, self.sum_values[k][1])))
+                else:
+                    info += ' - %s: %.4f' % (k, self.sum_values[k][0] / max(1, self.sum_values[k][1]))
 
             # update progress stats
             '''

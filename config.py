@@ -200,6 +200,8 @@ def train_opts(parser):
                         help="Dropout probability; applied in LSTM stacks.")
 
     # Teacher Forcing and Scheduled Sampling
+    parser.add_argument('-must_teacher_forcing', action="store_true",
+                        help="Apply must_teacher_forcing or not")
     parser.add_argument('-teacher_forcing_ratio', type=float, default=0,
                         help="The ratio to apply teaching forcing ratio (default 0)")
     parser.add_argument('-scheduled_sampling', action="store_true",

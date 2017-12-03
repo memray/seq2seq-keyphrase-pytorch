@@ -92,6 +92,9 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
 
     # Note that the data should be shuffled every time
     for i, batch in enumerate(data_loader):
+        if i >= 100:
+            break
+
         src, trg, trg_target, trg_copy_target, src_ext, oov_lists = batch
 
         if torch.cuda.is_available():
@@ -131,7 +134,7 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
         losses.append(loss.data[0])
 
         start_time = time.time()
-        progbar.update(epoch, i, [('valid_loss', loss.data[0])])
+        progbar.update(epoch, i, [('valid_loss', loss.data[0]), ('PPL', loss.data[0])])
         print("-progbar.update --- %s" % (time.time() - start_time))
 
     return losses
@@ -213,14 +216,13 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             optimizer.step()
 
             train_losses.append(loss.data[0])
-            perplexity = np.math.exp(loss.data[0])
 
-            progbar.update(epoch, batch_i, [('train_loss', loss.data[0]), ('perplexity', perplexity)])
+            progbar.update(epoch, batch_i, [('train_loss', loss.data[0]), ('PPL', loss.data[0])])
 
             if batch_i > 1 and batch_i % opt.report_every == 0:
                 logging.info('======================  %d  =========================' % (batch_i))
 
-                logging.info('Epoch : %d Minibatch : %d, Loss=%.5f, PPL=%.5f' % (epoch, batch_i, np.mean(loss.data[0]), perplexity))
+                logging.info('Epoch : %d Minibatch : %d, Loss=%.5f' % (epoch, batch_i, np.mean(loss.data[0])))
                 sampled_size = 2
                 logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
@@ -245,7 +247,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 if not opt.copy_model:
                     trg_target      = [trg_target[i] for i in sampled_trg_idx] # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
                 else:
-                    trg_target      = trg_copy_target.cpu().data.numpy() if torch.cuda.is_available() else trg_copy_target.data.numpy()
+                    trg_target      = [trg_copy_target[i] for i in sampled_trg_idx]
 
                 for i, (src_wi, pred_wi, trg_i, oov_i) in enumerate(zip(src, max_words_pred, trg_target, oov_lists)):
                     nll_prob = -np.sum([decoder_log_probs[i][l][pred_wi[l]] for l in range(len(trg_i))])
@@ -261,7 +263,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
 
                     logging.info('==================================================')
                     logging.info('Source: %s '          % (' '.join(sentence_source)))
-                    logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob) + ' (FIND COPY)' if find_copy else '')
+                    logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob) + (' (FIND COPY)' if find_copy else ''))
                     logging.info('\t\tReal : %s '       % (' '.join(sentence_real)))
 
             if total_batch > 1 and total_batch % opt.run_valid_every == 0:
@@ -374,6 +376,7 @@ def init_model(word2id, opt):
             nlayers_src=opt.enc_layers,
             nlayers_trg=opt.dec_layers,
             dropout=opt.dropout,
+            must_teacher_forcing=opt.must_teacher_forcing,
             teacher_forcing_ratio=opt.teacher_forcing_ratio,
             scheduled_sampling=opt.scheduled_sampling,
             scheduled_sampling_batches=opt.scheduled_sampling_batches,
@@ -394,6 +397,7 @@ def init_model(word2id, opt):
             nlayers_src=opt.enc_layers,
             nlayers_trg=opt.dec_layers,
             dropout=opt.dropout,
+            must_teacher_forcing=opt.must_teacher_forcing,
             teacher_forcing_ratio=opt.teacher_forcing_ratio,
             scheduled_sampling=opt.scheduled_sampling,
             scheduled_sampling_batches=opt.scheduled_sampling_batches,
