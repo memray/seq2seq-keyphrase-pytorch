@@ -38,14 +38,14 @@ torchtext.vocab.Vocab.__setstate__ = __setstate__
 class KeyphraseDatasetCopy(torch.utils.data.Dataset):
     def __init__(self, examples, word2id):
         # keys of matter. `src_oov_map` is for mapping pointed word to dict, `oov_dict` is for determining the dim of predicted logit: dim=vocab_size+max_oov_dict_in_batch
-        keys = ['src', 'trg_copy', 'src_oov', 'oov_dict', 'oov_list']
+        keys = ['src', 'trg', 'trg_copy', 'src_oov', 'oov_dict', 'oov_list']
         filtered_examples = []
 
         for e in examples:
             filtered_example = {}
             for k in keys:
                 filtered_example[k] = e[k]
-            if 'oov_dict' in filtered_example:
+            if 'oov_list' in filtered_example:
                 filtered_example['oov_number'] = len(filtered_example['oov_list'])
             filtered_examples.append(filtered_example)
 
@@ -73,17 +73,21 @@ class KeyphraseDatasetCopy(torch.utils.data.Dataset):
             x_mask  = Variable(torch.stack([torch.from_numpy(m_) for m_ in x_mask], 0))
             return x, x_lens, x_mask
 
-        # extended src (unk words are replaced with temporary idx, e.g. 50000, 50001 etc.)
         src = [[self.word2id[BOS_WORD]] + b['src'] + [self.word2id[EOS_WORD]] for b in batches]
-        trg = [[self.word2id[BOS_WORD]] + b['trg_copy'] + [self.word2id[EOS_WORD]] for b in batches]
+        # target_input: input to decoder, starts with BOS and oovs are replaced with <unk>
+        trg_input  = [[self.word2id[BOS_WORD]] + b['trg'] + [self.word2id[EOS_WORD]] for b in batches]
+        # target_for_loss: input to criterion, oovs are replaced with temporary idx, e.g. 50000, 50001 etc.)
+        trg_target = [b['trg_copy'] + [self.word2id[EOS_WORD]] for b in batches]
+        # extended src (unk words are replaced with temporary idx, e.g. 50000, 50001 etc.)
         src_ext = [[self.word2id[BOS_WORD]] + b['src_oov'] + [self.word2id[EOS_WORD]] for b in batches]
         src, src_lens, src_mask = _pad(src)
-        trg, trg_lens, trg_mask = _pad(trg)
+        trg_input, _, _ = _pad(trg_input)
+        trg_target, _, _ = _pad(trg_target)
         src_ext, src_ext_lens, src_ext_mask = _pad(src_ext)
 
         oov_lists = [b['oov_list'] for b in batches]
 
-        return src, trg, src_ext, oov_lists
+        return src, trg_input, trg_target, src_ext, oov_lists
 
 class KeyphraseDataset(torchtext.data.Dataset):
     @staticmethod
@@ -386,7 +390,6 @@ def extend_vocab_OOV(source_words, word2id, vocab_size, max_unk_words):
     """
     src_ext = []
     oov_dict = {}
-    oov_list = []
     for w in source_words:
         if w in word2id and word2id[w] < vocab_size: # a OOV can be either outside the vocab or id>=vocab_size
             src_ext.append(word2id[w])
@@ -395,14 +398,13 @@ def extend_vocab_OOV(source_words, word2id, vocab_size, max_unk_words):
                 # e.g. 50000 for the first article OOV, 50001 for the second...
                 word_id = oov_dict.get(w, len(oov_dict) + vocab_size)
                 oov_dict[w] = word_id
-                oov_list.append(w)
                 src_ext.append(word_id)
             else:
                 # exceeds the maximum number of acceptable oov words, replace it with <unk>
                 word_id = word2id[UNK_WORD]
-                oov_list.append(UNK_WORD)
                 src_ext.append(word_id)
 
+    oov_list = [w for w,w_id in sorted(oov_dict.items(), key=lambda x:x[1])]
     return src_ext, oov_dict, oov_list
 
 def copy_martix(source, target):

@@ -84,6 +84,8 @@ def model_opts(parser):
                         dotprot or general (Luong) or MLP (Bahdanau)""")
 
     # Genenerator and loss options.
+    parser.add_argument('-copy_model', action="store_true",
+                        help='Train a copy model.')
     parser.add_argument('-copy_attn', action="store_true",
                         help='Train copy attention layer.')
     parser.add_argument('-copy_attn_force', action="store_true",

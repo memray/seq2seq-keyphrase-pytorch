@@ -14,9 +14,8 @@ import torchtext
 from torch.autograd import Variable
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-import config
-#import configse as config
 
+import config
 import utils
 import copy
 
@@ -117,6 +116,7 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             if opt.max_grad_norm > 0:
                 torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
             optimizer.step()
+
         print("--backward function - %s seconds ---" % (time.time() - start_time))
 
         losses.append(loss.data[0])
@@ -124,10 +124,6 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
         start_time = time.time()
         progbar.update(epoch, i, [('valid_loss', loss.data[0])])
         print("-progbar.update --- %s" % (time.time() - start_time))
-
-        # Don't run through all the validation data, take 5%/10% of training batches. we skip all the remaining iterations
-        # if i > 10: #int(opt.run_valid_every * 0.1):
-        #     break
 
     return losses
 
@@ -198,15 +194,14 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             optimizer.step()
 
             train_losses.append(loss.data[0])
+            perplexity = np.math.exp(loss.data[0])
 
-            progbar.update(epoch, batch_i, [('train_loss', loss.data[0])])
+            progbar.update(epoch, batch_i, [('train_loss', loss.data[0]), ('perplexity', perplexity)])
 
             if batch_i > 1 and batch_i % opt.report_every == 0:
                 logging.info('======================  %d  =========================' % (batch_i))
 
-                logging.info('Epoch : %d Minibatch : %d Loss : %.5f' % (epoch, batch_i, np.mean(loss.data[0])))
-                # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
-                # logging.info('grad norm = %e' % (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2))
+                logging.info('Epoch : %d Minibatch : %d, Loss=%.5f, PPL=%.5f' % (epoch, batch_i, np.mean(loss.data[0]), perplexity))
                 sampled_size = 2
                 logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
@@ -239,15 +234,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                     logging.info('==================================================')
                     logging.info('Source: %s '          % (' '.join(sentence_source)))
                     logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob))
-                    logging.info('\t\tReal : %s ' % (' '.join(sentence_real)))
-
-            if total_batch > 1 and epoch >= opt.start_checkpoint_at and total_batch % opt.save_model_every == 0:
-                # Save the checkpoint
-                logging.info('Saving checkpoint to: %s' % os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'))
-                torch.save(
-                    model.state_dict(),
-                    open(os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
-                )
+                    logging.info('\t\tReal : %s '       % (' '.join(sentence_real)))
 
             if total_batch > 1 and total_batch % opt.run_valid_every == 0:
                 logging.info('*' * 50)
@@ -270,6 +257,15 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 is_best_loss = valid_loss < best_loss
                 rate_of_change = float(valid_loss - best_loss) / float(best_loss)
 
+                # only store the checkpoints that make better validation performances
+                if total_batch > 1 and epoch >= opt.start_checkpoint_at and (total_batch % opt.save_model_every == 0 or is_best_loss):
+                    # Save the checkpoint
+                    logging.info('Saving checkpoint to: %s' % os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d.error=%f' % (opt.exp, epoch, batch_i, total_batch, valid_loss) + '.model'))
+                    torch.save(
+                        model.state_dict(),
+                        open(os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
+                    )
+
                 # valid error doesn't decrease
                 if rate_of_change >= 0:
                     stop_increasing += 1
@@ -289,7 +285,6 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                     early_stop_flag = True
                     break
                 logging.info('*' * 50)
-
 
 def load_train_valid_data(opt):
     logging.info("Loading train and validate data from '%s'" % opt.data)
@@ -364,7 +359,6 @@ def init_optimizer_criterion(model, opt):
     return optimizer, criterion
 
 def init_model(word2id, opt):
-    # model = Seq2SeqLSTMAttentionOld(
     model = Seq2SeqLSTMAttention(
         emb_dim=opt.word_vec_size,
         vocab_size=opt.vocab_size,

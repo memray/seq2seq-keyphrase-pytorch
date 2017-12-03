@@ -108,7 +108,10 @@ class SoftDotAttention(nn.Module):
         Compute the attention and h_tilde, inputs/outputs must be batch first
         :param hidden: (batch_size, trg_len, trg_hidden_dim)
         :param encoder_outputs: (batch_size, src_len, trg_hidden_dim) as this is dot attention, you have to convert enc_dim to trg_dim first
-        :return: return h_tilde (batch_size, trg_len, trg_hidden_dim), attn (batch_size, trg_len, src_len)
+        :return:
+            h_tilde (batch_size, trg_len, trg_hidden_dim)
+            attn_weights (batch_size, trg_len, src_len)
+            attn_energies  (batch_size, trg_len, src_len): the attention energies before softmax
         '''
         """
         # Create variable to store attention energies
@@ -136,10 +139,10 @@ class SoftDotAttention(nn.Module):
         # Normalize energies to weights in range 0 to 1, (batch_size, src_len)
         # attn = torch.nn.functional.softmax(attn_energies.view(-1, encoder_outputs.size(1))) # correct attention, normalize after reshaping
         #  (batch_size, trg_len, src_len)
-        attn = torch.nn.functional.softmax(attn_energies.view(-1, src_len)).view(batch_size, trg_len, src_len) # wrong attention, normalize before reshaping, but it's working
+        attn_weights = torch.nn.functional.softmax(attn_energies.view(-1, src_len)).view(batch_size, trg_len, src_len) # wrong attention, normalize before reshaping, but it's working
 
         # reweighting context, attn (batch_size, trg_len, src_len) * encoder_outputs (batch_size, src_len, src_hidden_dim) = (batch_size, trg_len, src_hidden_dim)
-        weighted_context = torch.bmm(attn, encoder_outputs)
+        weighted_context = torch.bmm(attn_weights, encoder_outputs)
 
         # get h_tilde by = tanh(W_c[c_t, h_t]), both hidden and h_tilde are (batch_size, trg_hidden_dim)
         # (batch_size, trg_len=1, src_hidden_dim + trg_hidden_dim)
@@ -148,7 +151,7 @@ class SoftDotAttention(nn.Module):
         h_tilde = self.tanh(self.linear_out(h_tilde.view(-1, context_dim + trg_hidden_dim)))
 
         # return h_tilde (batch_size, trg_len, trg_hidden_dim), attn (batch_size, trg_len, src_len)
-        return h_tilde.view(batch_size, trg_len, trg_hidden_dim), attn.view(batch_size, trg_len, src_len)
+        return h_tilde.view(batch_size, trg_len, trg_hidden_dim), attn_weights, attn_energies
 
     # @time_usage
     def forward_(self, hidden, context):
@@ -397,8 +400,9 @@ class Seq2SeqLSTMAttention(nn.Module):
         return decoder_init_hidden, decoder_init_cell
 
     # @time_usage
-    def forward(self, input_src, input_trg, trg_mask=None, ctx_mask=None, must_teacher_forcing=True):
+    def forward(self, input_src, input_trg, trg_mask=None, ctx_mask=None, must_teacher_forcing=False):
         '''
+        To be compatible with the Copy Model, we change the output of logits to log_probs
         :param must_teacher_forcing: if True, it would apply teacher forcing (which significantly help the training at the beginning)
         :returns
             decoder_logits  : (batch_size, trg_seq_len, vocab_size)
@@ -406,8 +410,8 @@ class Seq2SeqLSTMAttention(nn.Module):
             attn_weights    : (batch_size, trg_seq_len, src_seq_len)
         '''
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
-        decoder_logits, decoder_hiddens, attn_weights = self.decode(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, must_teacher_forcing=must_teacher_forcing)
-        return decoder_logits, decoder_hiddens, attn_weights
+        decoder_log_probs, decoder_hiddens, attn_weights = self.decode(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, must_teacher_forcing=must_teacher_forcing)
+        return decoder_log_probs, decoder_hiddens, attn_weights
 
     # @time_usage
     def encode(self, input_src):
@@ -479,19 +483,20 @@ class Seq2SeqLSTMAttention(nn.Module):
                 trg_emb, init_hidden
             )
             # Get the h_tilde (hidden after attention) and attention weights, inputs/outputs must be batch first
-            h_tildes, attn_weights = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context)
+            h_tildes, attn_weights, _ = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context)
 
             # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
             # (batch_size, trg_len, trg_hidden_size) -> (batch_size, trg_len, vocab_size)
-            decoder_logits = self.decoder2vocab(h_tildes.view(-1, trg_hidden_dim)).view(batch_size, max_length, -1)
-            # decoder_probs  = torch.nn.functional.softmax(decoder_logits.view(-1, decoder_logits.size(2))).view(batch_size, trg_len, -1)
+            decoder_logits = self.decoder2vocab(h_tildes.view(-1, trg_hidden_dim))
+            decoder_log_probs  = torch.nn.functional.log_softmax(decoder_logits).view(batch_size, max_length, self.vocab_size)
+
             decoder_outputs  = decoder_outputs.permute(1, 0, 2)
 
         else:
             logging.info("Training batches with All Sampling")
             # truncate the last word, as there's no further word after it for decoder to predict (batch_size, 1)
             trg_input = trg_input[:, 0].unsqueeze(1)
-            decoder_logits = []
+            decoder_log_probs = []
             decoder_outputs= []
             attn_weights   = []
 
@@ -506,13 +511,14 @@ class Seq2SeqLSTMAttention(nn.Module):
                 )
 
                 # Get the h_tilde (hidden after attention) and attention weights, both inputs and outputs are batch first
-                h_tilde, attn_weight = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context)
+                h_tilde, attn_weight, _ = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context)
 
                 # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
                 # (batch_size, trg_hidden_size) -> (batch_size, vocab_size)
-                decoder_logit = self.decoder2vocab(h_tilde)
+                decoder_logit = self.decoder2vocab(h_tilde.view(-1, trg_hidden_dim))
+                decoder_log_prob  = torch.nn.functional.log_softmax(decoder_logit).view(batch_size, 1, self.vocab_size)
 
-                top_v, top_idx = decoder_logit.data.topk(1, dim=-1)
+                top_v, top_idx = decoder_log_prob.data.topk(1, dim=-1)
                 top_idx = Variable(top_idx.squeeze(2))
                 # top_idx and next_index are (batch_size, 1)
                 trg_input = top_idx.cuda() if torch.cuda.is_available() else top_idx
@@ -520,15 +526,15 @@ class Seq2SeqLSTMAttention(nn.Module):
                 # permute to trg_len first, otherwise the cat operation would mess up things
                 decoder_outputs.append(decoder_output)
                 attn_weights.append(attn_weight.permute(1, 0, 2))
-                decoder_logits.append(decoder_logit.permute(1, 0, 2))
+                decoder_log_probs.append(decoder_log_prob.permute(1, 0, 2))
 
             # convert output into the right shape and make batch first
-            decoder_logits = torch.cat(decoder_logits, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, vocab_size)
+            decoder_log_probs = torch.cat(decoder_log_probs, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, vocab_size)
             decoder_outputs= torch.cat(decoder_outputs, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, vocab_size)
             attn_weights   = torch.cat(attn_weights, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, src_seq_len)
 
         # Return final outputs, hidden states, and attention weights (for visualization)
-        return decoder_logits, decoder_outputs, attn_weights
+        return decoder_log_probs, decoder_outputs, attn_weights
 
     def do_teacher_forcing(self):
         if self.scheduled_sampling:
@@ -728,6 +734,7 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
             scheduled_sampling=False,
             scheduled_sampling_batches=2000,
             max_unk_words = 1000,
+            unk_word = 3,
         ):
         super(Seq2SeqLSTMAttentionCopy, self).__init__(
             emb_dim,
@@ -747,8 +754,9 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
             scheduled_sampling=scheduled_sampling,
             scheduled_sampling_batches=scheduled_sampling_batches,
         )
-        self.copy_model      = 'See'
+        self.copy_model      = 'Gu'
         self.max_unk_words   = max_unk_words
+        self.unk_word  = unk_word
 
         if self.copy_model == 'Gu':
             self.copy_attention_layer = SoftDotAttention(self.src_hidden_dim * self.num_directions, trg_hidden_dim)
@@ -757,7 +765,7 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
             self.copy_gate            = nn.Linear(trg_hidden_dim, vocab_size)
 
     # @time_usage
-    def forward(self, input_src, input_trg, input_src_ext, trg_mask=None, ctx_mask=None, must_teacher_forcing=True):
+    def forward(self, input_src, input_trg, input_src_ext, trg_mask=None, ctx_mask=None, must_teacher_forcing=False):
         '''
         The differences of copy model from normal seq2seq here are:
          1. The size of decoder_logits is (batch_size, trg_seq_len, vocab_size + max_unk_words).Usually vocab_size=50000 and max_unk_words=1000. And only very few of (it's very rare to have many unk words, in most cases it's because the text is not in English)
@@ -775,7 +783,7 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
         '''
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
         decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights = self.decode(trg_input=input_trg, src_map=input_src_ext, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, must_teacher_forcing=must_teacher_forcing)
-        return decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights
+        return decoder_probs, decoder_hiddens, (attn_weights, copy_attn_weights)
 
     # @time_usage
     def encode(self, input_src):
@@ -801,34 +809,50 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
 
         return src_h, (h_t, c_t)
 
-    def merge_copy_probs(self, decoder_probs, copy_weights, src_map):
+    def merge_oov2unk(self, decoder_log_prob):
         '''
-        :param decoder_probs: (batch_size, trg_seq_len, vocab_size)
-        :param copy_weights:  (batch_size, trg_len, src_len) the pointing/copying probabilities of each target words
-        :param src_map:       (batch_size, src_len)
+        Merge the probs of
+        :param decoder_log_prob: log_probs after merging generative and copying (batch_size, trg_seq_len, vocab_size + max_unk_words)
         :return:
-            decoder_copy_probs       : (batch_size, trg_seq_len, vocab_size + max_unk_words)
         '''
-        batch_size, max_length, _ = decoder_probs.size()
+        batch_size, seq_len, _ = decoder_log_prob.size()
+        merged_log_prob = torch.index_select(decoder_log_prob, dim=2, index=Variable(torch.arange(start=0, end=self.vocab_size).type(torch.LongTensor))).view(batch_size * seq_len, self.vocab_size)
+        oov_log_prob    = torch.index_select(decoder_log_prob, dim=2, index=Variable(torch.arange(start=self.vocab_size, end=self.vocab_size+self.max_unk_words).type(torch.LongTensor))).view(batch_size * seq_len, self.max_unk_words)
+        oov2unk_index   = Variable(torch.zeros(oov_log_prob.size()).type(torch.LongTensor) + self.unk_word)
+        merged_log_prob = merged_log_prob.scatter_add_(dim=1, index=oov2unk_index, src=oov_log_prob)
+        merged_log_prob = merged_log_prob.view(batch_size, seq_len, self.vocab_size)
+
+        return merged_log_prob
+
+    def merge_copy_probs(self, decoder_logits, copy_logits, src_map):
+        '''
+        The function takes logits as inputs here because Gu's model applies softmax in the end, to normalize generative/copying together
+        :param decoder_logits: (batch_size, trg_seq_len, vocab_size)
+        :param copy_logits:    (batch_size, trg_len, src_len) the pointing/copying logits of each target words
+        :param src_map:        (batch_size, src_len)
+        :return:
+            decoder_copy_probs: return the log_probs (batch_size, trg_seq_len, vocab_size + max_unk_words)
+        '''
+        batch_size, max_length, _ = decoder_logits.size()
         src_len = src_map.size(1)
 
         # flatten and extend size of decoder_probs from (vocab_size) to (vocab_size+max_unk_words)
-        flattened_decoder_probs = decoder_probs.view(batch_size * max_length, -1)
-        extended_zeros          = Variable(torch.zeros(batch_size * max_length, self.max_unk_words))
-        extended_zeros          = extended_zeros.cuda() if torch.cuda.is_available() else extended_zeros
-        flattened_decoder_probs = torch.cat((flattened_decoder_probs, extended_zeros), dim=1)
+        flattened_decoder_logits = decoder_logits.view(batch_size * max_length, self.vocab_size+self.max_unk_words)
+        extended_zeros           = Variable(torch.zeros(batch_size * max_length, self.max_unk_words))
+        extended_zeros           = extended_zeros.cuda() if torch.cuda.is_available() else extended_zeros
+        flattened_decoder_logits = torch.cat((flattened_decoder_logits, extended_zeros), dim=1)
 
         # add probs of copied words by scatter_add_(dim, index, src), index should be in the same shape with src. decoder_probs=(batch_size * trg_len, vocab_size+max_unk_words), copy_weights=(batch_size, trg_len, src_len)
         expanded_src_map = src_map.unsqueeze(1).expand(batch_size, max_length, src_len).contiguous().view(batch_size * max_length, -1)  # (batch_size, src_len) -> (batch_size * trg_len, src_len)
-        flattened_decoder_probs.scatter_add_(dim=1, index=expanded_src_map, src=copy_weights.view(batch_size * max_length, -1))
+        flattened_decoder_logits.scatter_add_(dim=1, index=expanded_src_map, src=copy_logits.view(batch_size * max_length, -1))
 
-        # apply another softmax to ensure it meets the properties of probability, (batch_size * trg_len, src_len)
-        flattened_decoder_probs = torch.nn.functional.softmax(flattened_decoder_probs)
+        # apply log softmax to normalize, ensuring it meets the properties of probability, (batch_size * trg_len, src_len)
+        flattened_decoder_logits = torch.nn.functional.log_softmax(flattened_decoder_logits)
 
         # reshape to batch first before returning (batch_size, trg_len, src_len)
-        decoder_copy_probs = flattened_decoder_probs.view(batch_size, max_length, -1)
+        decoder_log_probs = flattened_decoder_logits.view(batch_size, max_length, self.vocab_size+self.max_unk_words)
 
-        return decoder_copy_probs
+        return decoder_log_probs
 
     # @time_usage
     def decode(self, trg_input, src_map, enc_context, enc_hidden, trg_mask, ctx_mask, must_teacher_forcing=False):
@@ -877,60 +901,91 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
                 trg_emb, init_hidden
             )
             # Get the h_tilde (batch_size, trg_len, trg_hidden_dim) and attention weights (batch_size, trg_len, src_len)
-            h_tildes, attn_weights = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context)
+            h_tildes, attn_weights, attn_logits = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context)
 
             # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde), (batch_size, trg_len, trg_hidden_size) -> (batch_size * trg_len, vocab_size)
-            decoder_logits = self.decoder2vocab(h_tildes.view(-1, trg_hidden_dim))
-            decoder_probs  = torch.nn.functional.softmax(decoder_logits).view(batch_size, max_length, -1) # (batch_size, trg_len, vocab_size)
+            # h_tildes=(batch_size, trg_len, trg_hidden_size) -> decoder2vocab(h_tildes.view)=(batch_size * trg_len, vocab_size) -> decoder_logits=(batch_size, trg_len, vocab_size)
+            decoder_logits = self.decoder2vocab(h_tildes.view(-1, trg_hidden_dim)).view(batch_size, max_length, -1)
 
             '''
             Copy Mechanism
             '''
-            decoder_probs   = self.merge_copy_probs(decoder_probs, attn_weights, src_map) # (batch_size, trg_len, vocab_size + max_unk_words)
-            decoder_outputs = decoder_outputs.permute(1, 0, 2) # (batch_size, trg_len, trg_hidden_dim)
+            # copy_weights and copy_logits is (batch_size, trg_len, src_len)
+            if self.copy_attention_layer:
+                _, copy_weights, copy_logits    = self.copy_attention_layer(decoder_outputs.permute(1, 0, 2), enc_context)
+            else:
+                copy_logits = attn_logits
+
+            # merge the generative and copying probs, (batch_size, trg_len, vocab_size + max_unk_words)
+            decoder_log_probs   = self.merge_copy_probs(decoder_logits, copy_logits, src_map) # (batch_size, trg_len, vocab_size + max_unk_words)
+            decoder_outputs     = decoder_outputs.permute(1, 0, 2) # (batch_size, trg_len, trg_hidden_dim)
 
         else:
             logging.info("Training batches with All Sampling")
-            # truncate the last word, as there's no further word after it for decoder to predict (batch_size, 1)
+            '''
+            Normal RNN procedure
+            '''
+            # take the first word (should be BOS <s>) of each target sequence (batch_size, 1)
             trg_input = trg_input[:, 0].unsqueeze(1)
-            decoder_logits = []
+            decoder_log_probs = []
             decoder_outputs= []
             attn_weights   = []
+            copy_weights   = []
 
             for di in range(max_length):
                 # initialize target embedding and reshape the targets to be time step first
-                trg_emb = self.embedding(trg_input) # (batch_size, trg_len, embed_dim)
-                trg_emb  = trg_emb.permute(1, 0, 2) # (trg_len, batch_size, embed_dim)
+                trg_emb = self.embedding(trg_input) # (batch_size, 1, embed_dim)
+                trg_emb  = trg_emb.permute(1, 0, 2) # (1, batch_size, embed_dim)
 
                 # this is trg_len first
                 decoder_output, hidden = self.decoder(
                     trg_emb, init_hidden
                 )
 
-                # Get the h_tilde (hidden after attention) and attention weights, both inputs and outputs are batch first
-                h_tilde, attn_weight = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context)
+                # Get the h_tilde (hidden after attention) and attention weights. h_tilde (batch_size,1,trg_hidden), attn_weight & attn_logit(batch_size,1,src_len)
+                h_tilde, attn_weight, attn_logit = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context)
 
                 # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
-                # (batch_size, trg_hidden_size) -> (batch_size, vocab_size)
-                decoder_logit = self.decoder2vocab(h_tilde)
+                # h_tilde=(batch_size, 1, trg_hidden_size) -> decoder2vocab(h_tilde.view)=(batch_size * 1, vocab_size) -> decoder_logit=(batch_size, 1, vocab_size)
+                decoder_logit = self.decoder2vocab(h_tilde.view(-1, trg_hidden_dim)).view(batch_size, 1, -1)
 
-                top_v, top_idx = decoder_logit.data.topk(1, dim=-1)
+                '''
+                Copy Mechanism
+                '''
+                # copy_weights and copy_logits is (batch_size, trg_len, src_len)
+                if self.copy_attention_layer:
+                    _, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context)
+                else:
+                    copy_logit = attn_logit
+
+                # merge the generative and copying probs (batch_size, 1, vocab_size + max_unk_words)
+                decoder_log_prob   = self.merge_copy_probs(decoder_logit, copy_logit, src_map)
+
+                '''
+                Find the next word
+                '''
+                # before locating the topk, we need to move the probs of oovs to <unk>
+                oov2unk_prob = self.merge_oov2unk(decoder_log_prob)
+
+                top_v, top_idx = oov2unk_prob.data.topk(1, dim=-1)
                 top_idx = Variable(top_idx.squeeze(2))
                 # top_idx and next_index are (batch_size, 1)
                 trg_input = top_idx.cuda() if torch.cuda.is_available() else top_idx
 
                 # permute to trg_len first, otherwise the cat operation would mess up things
+                decoder_log_probs.append(decoder_log_prob.permute(1, 0, 2))
                 decoder_outputs.append(decoder_output)
                 attn_weights.append(attn_weight.permute(1, 0, 2))
-                decoder_logits.append(decoder_logit.permute(1, 0, 2))
+                copy_weights.append(copy_weight.permute(1, 0, 2))
 
             # convert output into the right shape and make batch first
-            decoder_logits = torch.cat(decoder_logits, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, vocab_size + max_unk_words)
-            decoder_outputs= torch.cat(decoder_outputs, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, hidden_size)
-            attn_weights   = torch.cat(attn_weights, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, src_seq_len)
+            decoder_log_probs   = torch.cat(decoder_log_probs, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, vocab_size + max_unk_words)
+            decoder_outputs     = torch.cat(decoder_outputs, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, hidden_size)
+            attn_weights        = torch.cat(attn_weights, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, src_seq_len)
+            copy_weights        = torch.cat(copy_weights, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, src_seq_len)
 
-        # Return final outputs, hidden states, and attention weights (for visualization)
-        return decoder_probs, decoder_outputs, attn_weights, attn_weights
+        # Return final outputs (logits after log_softmax), hidden states, and attention weights (for visualization)
+        return decoder_log_probs, decoder_outputs, attn_weights, copy_weights
 
 class Seq2SeqLSTMAttentionOld(nn.Module):
     """
