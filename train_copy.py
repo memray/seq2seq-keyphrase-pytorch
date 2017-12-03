@@ -98,7 +98,7 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             src.cuda()
             trg.cuda()
 
-        decoder_log_probs, _, _, _ = model.forward(src, trg, src_ext, must_teacher_forcing=True)
+        decoder_log_probs, _, _ = model.forward(src, trg, src_ext, must_teacher_forcing=True)
 
         start_time = time.time()
 
@@ -303,21 +303,19 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
 
 def load_train_valid_data(opt):
     logging.info("Loading train and validate data from '%s'" % opt.data)
+    train_one2one  = torch.load(opt.data + '.train.one2one.pt', 'wb')
+    valid_one2one  = torch.load(opt.data + '.valid.one2one.pt', 'wb')
+    test_one2one   = torch.load(opt.data + '.test.one2one.pt', 'wb')
+    valid_one2many = torch.load(opt.data + '.valid.one2many.pt', 'wb')
+    test_one2many  = torch.load(opt.data + '.test.one2many.pt', 'wb')
 
     logging.info("Loading train/valid from disk: %s" % (opt.data))
-    data_dict = torch.load(opt.data, 'wb')
+    word2id, id2word, vocab = torch.load(opt.vocab, 'wb')
 
-    word2id = data_dict['word2id']
-    id2word = data_dict['id2word']
-    vocab = data_dict['vocab']
-
-    train_dataset = KeyphraseDatasetCopy(data_dict['train'], word2id=word2id)
-    valid_dataset = KeyphraseDatasetCopy(data_dict['valid'], word2id=word2id)
+    train_dataset = KeyphraseDatasetCopy(train_one2one, word2id=word2id)
+    valid_dataset = KeyphraseDatasetCopy(valid_one2one, word2id=word2id)
     training_data_loader = DataLoader(dataset=train_dataset, collate_fn=train_dataset.collate_fn, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=True)
     validation_data_loader = DataLoader(dataset=valid_dataset, collate_fn=valid_dataset.collate_fn, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=False)
-
-    # training_data_loader    = torchtext.data.BucketIterator(dataset=train, batch_size=opt.batch_size, train=True, repeat=False, shuffle=False, sort=True, device=device)
-    # validation_data_loader  = torchtext.data.BucketIterator(dataset=valid, batch_size=opt.batch_size, train=False, repeat=False, shuffle=False, sort=True, device = device)
 
     opt.word2id = word2id
     opt.id2word = id2word
