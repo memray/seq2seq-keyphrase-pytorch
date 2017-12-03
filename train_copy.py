@@ -92,11 +92,14 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
 
     # Note that the data should be shuffled every time
     for i, batch in enumerate(data_loader):
-        src, trg, trg_loss, src_ext, oov_lists = batch
+        src, trg, trg_target, trg_copy_target, src_ext, oov_lists = batch
 
         if torch.cuda.is_available():
-            src.cuda()
-            trg.cuda()
+            src                = src.cuda()
+            trg                = trg.cuda()
+            trg_target         = trg_target.cuda()
+            trg_copy_target    = trg_copy_target.cuda()
+            src_ext            = src_ext.cuda()
 
         decoder_log_probs, _, _ = model.forward(src, trg, src_ext, must_teacher_forcing=True)
 
@@ -105,12 +108,12 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
         if not opt.copy_model:
             loss = criterion(
                 decoder_log_probs.contiguous().view(-1, opt.vocab_size),
-                trg_loss.contiguous().view(-1)
+                trg_target.contiguous().view(-1)
             )
         else:
             loss = criterion(
                 decoder_log_probs.contiguous().view(-1, opt.vocab_size + opt.max_unk_words),
-                trg_loss.contiguous().view(-1)
+                trg_copy_target.contiguous().view(-1)
             )
 
         print("--loss calculation --- %s" % (time.time() - start_time))
@@ -167,16 +170,20 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
         for batch_i, batch in enumerate(training_data_loader):
             batch_i += 1 # for the aesthetics of printing
             total_batch += 1
-            src, trg, trg_loss, src_ext, oov_lists = batch
+            src, trg, trg_target, trg_copy_target, src_ext, oov_lists = batch
             print("src size - ",src.size())
             print("target size - ",trg.size())
+
             if torch.cuda.is_available():
-                src.cuda()
-                trg.cuda()
+                src = src.cuda()
+                trg = trg.cuda()
+                trg_target = trg_target.cuda()
+                trg_copy_target = trg_copy_target.cuda()
+                src_ext = src_ext.cuda()
 
             optimizer.zero_grad()
 
-            decoder_log_probs, _, _ = model.forward(src, trg, src_ext, must_teacher_forcing=True)
+            decoder_log_probs, _, _ = model.forward(src, trg, src_ext)
 
             # simply average losses of all the predicitons
             # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
@@ -185,12 +192,12 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             if not opt.copy_model:
                 loss = criterion(
                     decoder_log_probs.contiguous().view(-1, opt.vocab_size),
-                    trg_loss.contiguous().view(-1)
+                    trg_target.contiguous().view(-1)
                 )
             else:
                 loss = criterion(
                     decoder_log_probs.contiguous().view(-1, opt.vocab_size + opt.max_unk_words),
-                    trg_loss.contiguous().view(-1)
+                    trg_copy_target.contiguous().view(-1)
                 )
             print("--loss calculation- %s seconds ---" % (time.time() - start_time))
 
@@ -218,26 +225,32 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
                 if torch.cuda.is_available():
-                    src = src.data.cpu().numpy()
-                    decoder_log_probs = decoder_log_probs.data.cpu().numpy()
-                    max_words_pred = decoder_log_probs.argmax(axis=-1)
-                    trg = trg.data.cpu().numpy()
+                    src                 = src.data.cpu().numpy()
+                    decoder_log_probs   = decoder_log_probs.data.cpu().numpy()
+                    max_words_pred      = decoder_log_probs.argmax(axis=-1)
+                    trg_target          = trg_target.data.cpu().numpy()
+                    trg_copy_target     = trg_copy_target.data.cpu().numpy()
                 else:
-                    src = src.data.numpy()
-                    decoder_log_probs = decoder_log_probs.data.numpy()
-                    max_words_pred = decoder_log_probs.argmax(axis=-1)
-                    trg = trg.data.numpy()
+                    src                 = src.data.numpy()
+                    decoder_log_probs   = decoder_log_probs.data.numpy()
+                    max_words_pred      = decoder_log_probs.argmax(axis=-1)
+                    trg_target          = trg_target.data.numpy()
+                    trg_copy_target     = trg_copy_target.data.numpy()
 
                 sampled_trg_idx     = np.random.random_integers(low=0, high=len(trg) - 1, size=sampled_size)
                 src                 = src[sampled_trg_idx]
                 oov_lists           = [oov_lists[i] for i in sampled_trg_idx]
                 max_words_pred      = [max_words_pred[i] for i in sampled_trg_idx]
                 decoder_log_probs   = decoder_log_probs[sampled_trg_idx]
-                trg_loss            = trg_loss.data.numpy()
-                trg                 = [trg_loss[i] for i in sampled_trg_idx] # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
+                if not opt.copy_model:
+                    trg_target      = [trg_target[i] for i in sampled_trg_idx] # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
+                else:
+                    trg_target      = trg_copy_target.cpu().data.numpy() if torch.cuda.is_available() else trg_copy_target.data.numpy()
 
-                for i, (src_wi, pred_wi, trg_i, oov_i) in enumerate(zip(src, max_words_pred, trg, oov_lists)):
+                for i, (src_wi, pred_wi, trg_i, oov_i) in enumerate(zip(src, max_words_pred, trg_target, oov_lists)):
                     nll_prob = -np.sum([decoder_log_probs[i][l][pred_wi[l]] for l in range(len(trg_i))])
+                    find_copy       = np.any([x >= opt.vocab_size for x in src_wi])
+
                     sentence_source = [opt.id2word[x] if x < opt.vocab_size else oov_i[x-opt.vocab_size] for x in src_wi]
                     sentence_pred   = [opt.id2word[x] if x < opt.vocab_size else oov_i[x-opt.vocab_size] for x in pred_wi]
                     sentence_real   = [opt.id2word[x] if x < opt.vocab_size else oov_i[x-opt.vocab_size] for x in trg_i]
@@ -248,7 +261,7 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
 
                     logging.info('==================================================')
                     logging.info('Source: %s '          % (' '.join(sentence_source)))
-                    logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob))
+                    logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob) + ' (FIND COPY)' if find_copy else '')
                     logging.info('\t\tReal : %s '       % (' '.join(sentence_real)))
 
             if total_batch > 1 and total_batch % opt.run_valid_every == 0:

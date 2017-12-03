@@ -75,19 +75,22 @@ class KeyphraseDatasetCopy(torch.utils.data.Dataset):
 
         src = [[self.word2id[BOS_WORD]] + b['src'] + [self.word2id[EOS_WORD]] for b in batches]
         # target_input: input to decoder, starts with BOS and oovs are replaced with <unk>
-        trg_input  = [[self.word2id[BOS_WORD]] + b['trg'] + [self.word2id[EOS_WORD]] for b in batches]
-        # target_for_loss: input to criterion, oovs are replaced with temporary idx, e.g. 50000, 50001 etc.)
-        trg_target = [b['trg_copy'] + [self.word2id[EOS_WORD]] for b in batches]
+        trg  = [[self.word2id[BOS_WORD]] + b['trg'] + [self.word2id[EOS_WORD]] for b in batches]
+
+        # target_for_loss: input to criterion, if it's copy model, oovs are replaced with temporary idx, e.g. 50000, 50001 etc.)
+        trg_target  = [b['trg'] + [self.word2id[EOS_WORD]] for b in batches]
+        trg_copy_target = [b['trg_copy'] + [self.word2id[EOS_WORD]] for b in batches]
         # extended src (unk words are replaced with temporary idx, e.g. 50000, 50001 etc.)
         src_ext = [[self.word2id[BOS_WORD]] + b['src_oov'] + [self.word2id[EOS_WORD]] for b in batches]
         src, src_lens, src_mask = _pad(src)
-        trg_input, _, _ = _pad(trg_input)
+        trg, _, _ = _pad(trg)
         trg_target, _, _ = _pad(trg_target)
+        trg_copy_target, _, _ = _pad(trg_copy_target)
         src_ext, src_ext_lens, src_ext_mask = _pad(src_ext)
 
         oov_lists = [b['oov_list'] for b in batches]
 
-        return src, trg_input, trg_target, src_ext, oov_lists
+        return src, trg, trg_target, trg_copy_target, src_ext, oov_lists
 
 class KeyphraseDataset(torchtext.data.Dataset):
     @staticmethod
