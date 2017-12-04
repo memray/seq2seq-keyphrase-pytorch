@@ -22,11 +22,14 @@ import copy
 import torch
 import torch.nn as nn
 from torch import cuda
+
+from evaluate import evaluate_beam_search
+from pykp.dataloader import KeyphraseDataLoader
 from utils import Progbar, plot_learning_curve
 
 import pykp
-from pykp.IO import KeyphraseDatasetCopy
-from pykp.Model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionOld, Seq2SeqLSTMAttentionCopy
+from pykp.IO import KeyphraseDataset
+from pykp.Model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionCopy
 
 import time
 
@@ -45,48 +48,11 @@ def time_usage(func):
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
-# load settings for training
-parser = argparse.ArgumentParser(
-    description='train.py',
-    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-config.preprocess_opts(parser)
-config.model_opts(parser)
-config.train_opts(parser)
-opt = parser.parse_args()
-
-if opt.seed > 0:
-    torch.manual_seed(opt.seed)
-
-print(opt.gpuid)
-if torch.cuda.is_available() and not opt.gpuid:
-    opt.gpuid = 0
-
-# if opt.gpuid:
-#     cuda.set_device(0)
-
-# fill time into the name
-if opt.exp_path.find('%s') > 0:
-    opt.exp_path    = opt.exp_path % (opt.exp, opt.timemark)
-    opt.save_path   = opt.save_path % (opt.exp, opt.timemark)
-
-if not os.path.exists(opt.exp_path):
-    os.makedirs(opt.exp_path)
-if not os.path.exists(opt.save_path):
-    os.makedirs(opt.save_path)
-
-config.init_logging(opt.exp_path + '/output.log')
-
-logging.info('Parameters:')
-[logging.info('%s    :    %s' % (k, str(v))) for k,v in opt.__dict__.items()]
-
 @time_usage
-def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False):
+def _valid_error(data_loader, model, criterion, epoch, opt):
     progbar = Progbar(title='Validating', target=len(data_loader), batch_size=opt.batch_size,
                       total_examples=len(data_loader.dataset))
-    if is_train:
-        model.train()
-    else:
-        model.eval()
+    model.eval()
 
     losses = []
 
@@ -95,7 +61,8 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
         # if i >= 100:
         #     break
 
-        src, trg, trg_target, trg_copy_target, src_ext, oov_lists = batch
+        one2many_batch, one2one_batch = batch
+        src, trg, trg_target, trg_copy_target, src_ext, oov_lists = one2one_batch
 
         if torch.cuda.is_available():
             src                = src.cuda()
@@ -105,8 +72,6 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
             src_ext            = src_ext.cuda()
 
         decoder_log_probs, _, _ = model.forward(src, trg, src_ext)
-
-        start_time = time.time()
 
         if not opt.copy_model:
             loss = criterion(
@@ -118,29 +83,14 @@ def _valid(data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
                 decoder_log_probs.contiguous().view(-1, opt.vocab_size + opt.max_unk_words),
                 trg_copy_target.contiguous().view(-1)
             )
-
-        print("--loss calculation --- %s" % (time.time() - start_time))
-
-        start_time = time.time()
-        if is_train:
-            optimizer.zero_grad()
-            loss.backward()
-            if opt.max_grad_norm > 0:
-                torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
-            optimizer.step()
-
-        print("--backward function - %s seconds ---" % (time.time() - start_time))
-
         losses.append(loss.data[0])
 
-        start_time = time.time()
         progbar.update(epoch, i, [('valid_loss', loss.data[0]), ('PPL', loss.data[0])])
-        print("-progbar.update --- %s" % (time.time() - start_time))
 
     return losses
 
 
-def train_model(model, optimizer, criterion, training_data_loader, validation_data_loader, opt):
+def train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, opt):
     logging.info('======================  Checking GPU Availability  =========================')
     if torch.cuda.is_available():
         if isinstance(opt.gpuid, int):
@@ -166,14 +116,15 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
         if early_stop_flag:
             break
 
-        progbar = Progbar(title='Training', target=len(training_data_loader), batch_size=opt.batch_size,
-                          total_examples=len(training_data_loader.dataset))
+        progbar = Progbar(title='Training', target=len(train_data_loader), batch_size=opt.batch_size,
+                          total_examples=len(train_data_loader.dataset))
         model.train()
 
-        for batch_i, batch in enumerate(training_data_loader):
+        for batch_i, batch in enumerate(train_data_loader):
             batch_i += 1 # for the aesthetics of printing
             total_batch += 1
-            src, trg, trg_target, trg_copy_target, src_ext, oov_lists = batch
+            one2many_batch, one2one_batch = batch
+            src, trg, trg_target, trg_copy_target, src_ext, oov_lists = one2one_batch
             print("src size - ",src.size())
             print("target size - ",trg.size())
 
@@ -269,7 +220,9 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
             if total_batch > 1 and total_batch % opt.run_valid_every == 0:
                 logging.info('*' * 50)
                 logging.info('Run validation test @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
-                valid_losses = _valid(validation_data_loader, model, criterion, optimizer, epoch, opt, is_train=False)
+                valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
+                valid_f_scores  = evaluate_beam_search(valid_data_loader, model, criterion, epoch, opt)
+                test_f_scores   = evaluate_beam_search(test_data_loader, model, criterion, epoch, opt)
 
                 train_history_losses.append(copy.copy(train_losses))
                 valid_history_losses.append(valid_losses)
@@ -316,33 +269,53 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                     break
                 logging.info('*' * 50)
 
-def load_train_valid_data(opt):
+def load_data_vocab(opt, load_train=True):
+
+    logging.info("Loading vocab from disk: %s" % (opt.vocab))
+    word2id, id2word, vocab = torch.load(opt.vocab, 'wb')
+
+    # one2one data loader
     logging.info("Loading train and validate data from '%s'" % opt.data)
+    '''
     train_one2one  = torch.load(opt.data + '.train.one2one.pt', 'wb')
     valid_one2one  = torch.load(opt.data + '.valid.one2one.pt', 'wb')
-    test_one2one   = torch.load(opt.data + '.test.one2one.pt', 'wb')
+
+    train_one2one_dataset = KeyphraseDataset(train_one2one, word2id=word2id)
+    valid_one2one_dataset = KeyphraseDataset(valid_one2one, word2id=word2id)
+    train_one2one_loader = DataLoader(dataset=train_one2one_dataset, collate_fn=train_one2one_dataset.collate_fn_one2one, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=True)
+    valid_one2one_loader = DataLoader(dataset=valid_one2one_dataset, collate_fn=valid_one2one_dataset.collate_fn_one2one, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=False)
+    '''
+
+    # one2many data loader
+    if load_train:
+        train_one2many = torch.load(opt.data + '.train.one2many.pt', 'wb')
+        train_one2many_dataset = KeyphraseDataset(train_one2many, word2id=word2id, id2word=id2word, type='one2many')
+        train_one2many_loader  = KeyphraseDataLoader(dataset=train_one2many_dataset, collate_fn=train_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=True)
+        logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d' % (len(train_one2many_loader.dataset), len(train_one2many_loader)))
+    else:
+        train_one2many_loader = None
+
     valid_one2many = torch.load(opt.data + '.valid.one2many.pt', 'wb')
     test_one2many  = torch.load(opt.data + '.test.one2many.pt', 'wb')
 
-    logging.info("Loading train/valid from disk: %s" % (opt.data))
-    word2id, id2word, vocab = torch.load(opt.vocab, 'wb')
+    valid_one2many_dataset = KeyphraseDataset(valid_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
+    test_one2many_dataset  = KeyphraseDataset(test_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
 
-    train_dataset = KeyphraseDatasetCopy(train_one2one, word2id=word2id)
-    valid_dataset = KeyphraseDatasetCopy(valid_one2one, word2id=word2id)
-    training_data_loader = DataLoader(dataset=train_dataset, collate_fn=train_dataset.collate_fn, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=True)
-    validation_data_loader = DataLoader(dataset=valid_dataset, collate_fn=valid_dataset.collate_fn, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=False)
+    valid_one2many_loader  = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=False)
+    test_one2many_loader   = KeyphraseDataLoader(dataset=test_one2many_dataset, collate_fn=test_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=False)
 
     opt.word2id = word2id
     opt.id2word = id2word
     opt.vocab   = vocab
 
     logging.info('======================  Dataset  =========================')
-    logging.info('#(training data pairs)=%d' % len(training_data_loader.dataset))
-    logging.info('#(validation data pairs)=%d' % len(validation_data_loader.dataset))
+    logging.info('#(valid data size: #(one2many pair)=%d, #(one2one pair)=%d' % (len(valid_one2many_loader.dataset), len(valid_one2many_loader)))
+    logging.info('#(test data size:  #(one2many pair)=%d, #(one2one pair)=%d' % (len(test_one2many_loader.dataset), len(test_one2many_loader)))
+
     logging.info('#(vocab)=%d' % len(vocab))
     logging.info('#(vocab used)=%d' % opt.vocab_size)
 
-    return training_data_loader, validation_data_loader, word2id, id2word, vocab
+    return train_one2many_loader, valid_one2many_loader, test_one2many_loader, word2id, id2word, vocab
 
 def init_optimizer_criterion(model, opt):
     # mask the PAD <pad> when computing loss, BOS doesn't appear in targets
@@ -359,7 +332,7 @@ def init_optimizer_criterion(model, opt):
 
     return optimizer, criterion
 
-def init_model(word2id, opt):
+def init_model(opt):
     if not opt.copy_model:
         logging.info('Train a normal seq2seq model')
         model = Seq2SeqLSTMAttention(
@@ -371,8 +344,8 @@ def init_model(word2id, opt):
             attention_mode='dot',
             batch_size=opt.batch_size,
             bidirectional=opt.bidirectional,
-            pad_token_src = word2id[pykp.IO.PAD_WORD],
-            pad_token_trg = word2id[pykp.IO.PAD_WORD],
+            pad_token_src = opt.word2id[pykp.IO.PAD_WORD],
+            pad_token_trg = opt.word2id[pykp.IO.PAD_WORD],
             nlayers_src=opt.enc_layers,
             nlayers_trg=opt.dec_layers,
             dropout=opt.dropout,
@@ -392,8 +365,8 @@ def init_model(word2id, opt):
             attention_mode='dot',
             batch_size=opt.batch_size,
             bidirectional=opt.bidirectional,
-            pad_token_src = word2id[pykp.IO.PAD_WORD],
-            pad_token_trg = word2id[pykp.IO.PAD_WORD],
+            pad_token_src = opt.word2id[pykp.IO.PAD_WORD],
+            pad_token_trg = opt.word2id[pykp.IO.PAD_WORD],
             nlayers_src=opt.enc_layers,
             nlayers_trg=opt.dec_layers,
             dropout=opt.dropout,
@@ -402,7 +375,7 @@ def init_model(word2id, opt):
             scheduled_sampling=opt.scheduled_sampling,
             scheduled_sampling_batches=opt.scheduled_sampling_batches,
             max_unk_words=opt.max_unk_words,
-            unk_word=word2id[pykp.IO.UNK_WORD],
+            unk_word=opt.word2id[pykp.IO.UNK_WORD],
         )
 
     logging.info('======================  Model Parameters  =========================')
@@ -417,16 +390,48 @@ def init_model(word2id, opt):
         # some compatible problems, keys are started with 'module.'
         checkpoint = dict([(k[k.find('module.')+7:],v) for k,v in checkpoint.items()])
         model.load_state_dict(checkpoint)
+
     utils.tally_parameters(model)
 
     return model
 
 def main():
+    # load settings for training
+    parser = argparse.ArgumentParser(
+        description='train.py',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    config.preprocess_opts(parser)
+    config.model_opts(parser)
+    config.train_opts(parser)
+    opt = parser.parse_args()
+
+    if opt.seed > 0:
+        torch.manual_seed(opt.seed)
+
+    print(opt.gpuid)
+    if torch.cuda.is_available() and not opt.gpuid:
+        opt.gpuid = 0
+
+    # fill time into the name
+    if opt.exp_path.find('%s') > 0:
+        opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
+        opt.save_path = opt.save_path % (opt.exp, opt.timemark)
+
+    if not os.path.exists(opt.exp_path):
+        os.makedirs(opt.exp_path)
+    if not os.path.exists(opt.save_path):
+        os.makedirs(opt.save_path)
+
+    config.init_logging(opt.exp_path + '/output.log')
+
+    logging.info('Parameters:')
+    [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
+
     try:
-        training_data_loader, validation_data_loader, word2id, id2word, vocab = load_train_valid_data(opt)
-        model = init_model(word2id, opt)
+        train_data_loader, valid_data_loader, test_data_loader, word2id, id2word, vocab = load_data_vocab(opt)
+        model = init_model(opt)
         optimizer, criterion = init_optimizer_criterion(model, opt)
-        train_model(model, optimizer, criterion, training_data_loader, validation_data_loader, opt)
+        train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, opt)
     except Exception as e:
         logging.exception("message")
 

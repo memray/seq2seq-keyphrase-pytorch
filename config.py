@@ -252,56 +252,54 @@ def train_opts(parser):
     parser.add_argument('-save_path', type=str, default="model/%s.%s",
                         help="Path of checkpoints.")
 
-
-
-def predict_opts(parser):
-    parser.add_argument('-test_data', required=True,
-                        help="""Source sequence to decode (one line per
-                        sequence)""")
-    parser.add_argument('-save_data', required=True,
-                        help="Output file for the prepared test data")
-    parser.add_argument('-model_path', required=True,
-                        help='Path to model .pt file')
-    parser.add_argument('-vocab', required=True,
-                        help="""Path prefix to the ".vocab.pt"
-                        file path from preprocess.py""")
-    parser.add_argument('-output', default='pred.txt',
-                        help="""Path to output the predictions (each line will
-                        be the decoded sequence""")
-    parser.add_argument('-replace_unk', action="store_true",
-                        help="""Replace the generated UNK tokens with the
-                        source token that had highest attention weight. If
-                        phrase_table is provided, it will lookup the
-                        identified source token and give the corresponding
-                        target token. If it is not provided(or the identified
-                        source token does not exist in the table) then it
-                        will copy the source token""")
-    parser.add_argument('-verbose', action="store_true",
-                        help='Print scores and predictions for each sentence')
-    parser.add_argument('-attn_debug', action="store_true",
-                        help='Print best attn for each word')
-    parser.add_argument('-dump_beam', type=str, default="",
-                        help='File to dump beam information to.')
-    parser.add_argument('-n_best', type=int, default=1,
-                        help="""If verbose is set, will output the n_best
-                        decoded sentences""")
-    # GPU
-    parser.add_argument('-gpuid', default=[0], nargs='+', type=int,
-                        help="Use CUDA on the listed devices.")
-    parser.add_argument('-seed', type=int, default=9527,
-                        help="""Random seed used for the experiments
-                        reproducibility.""")
-
-    # batch setting
-    parser.add_argument('-batch_size', type=int, default=1,
+    # beam search setting
+    parser.add_argument('-beam_search_batch_size', type=int, default=32,
                         help='Maximum batch size')
-    parser.add_argument('-batch_workers', type=int, default=4,
+    parser.add_argument('-beam_search_batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')
 
-    # beam search setting
-    parser.add_argument('-beam_size',  type=int, default=6,
+    parser.add_argument('-beam_size',  type=int, default=64,
                         help='Beam size')
-    parser.add_argument('-max_sent_length', type=int, default=6,
+    parser.add_argument('-max_sent_length', type=int, default=7,
                         help='Maximum sentence length.')
-    parser.add_argument('-heap_size', type=int, default=1024,
+    parser.add_argument('-heap_size', type=int, default=256,
                         help='Maximum size of search queue.')
+
+def predict_opts(parser):
+    pass
+    # parser.add_argument('-test_data', required=True,
+    #                     help="""Source sequence to decode (one line per
+    #                     sequence)""")
+    # parser.add_argument('-save_data', required=True,
+    #                     help="Output file for the prepared test data")
+    # parser.add_argument('-model_path', required=True,
+    #                     help='Path to model .pt file')
+    # parser.add_argument('-vocab', required=True,
+    #                     help="""Path prefix to the ".vocab.pt"
+    #                     file path from preprocess.py""")
+    # parser.add_argument('-output', default='pred.txt',
+    #                     help="""Path to output the predictions (each line will
+    #                     be the decoded sequence""")
+    # parser.add_argument('-replace_unk', action="store_true",
+    #                     help="""Replace the generated UNK tokens with the
+    #                     source token that had highest attention weight. If
+    #                     phrase_table is provided, it will lookup the
+    #                     identified source token and give the corresponding
+    #                     target token. If it is not provided(or the identified
+    #                     source token does not exist in the table) then it
+    #                     will copy the source token""")
+    # parser.add_argument('-verbose', action="store_true",
+    #                     help='Print scores and predictions for each sentence')
+    # parser.add_argument('-attn_debug', action="store_true",
+    #                     help='Print best attn for each word')
+    # parser.add_argument('-dump_beam', type=str, default="",
+    #                     help='File to dump beam information to.')
+    # parser.add_argument('-n_best', type=int, default=1,
+    #                     help="""If verbose is set, will output the n_best
+    #                     decoded sentences""")
+    # GPU
+    # parser.add_argument('-gpuid', default=[0], nargs='+', type=int,
+    #                     help="Use CUDA on the listed devices.")
+    # parser.add_argument('-seed', type=int, default=9527,
+    #                     help="""Random seed used for the experiments
+    #                     reproducibility.""")

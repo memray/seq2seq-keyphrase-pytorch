@@ -25,7 +25,7 @@ from torch import cuda
 from utils import Progbar, plot_learning_curve
 
 import pykp
-from pykp.IO import KeyphraseDataset
+from pykp.IO import KeyphraseDatasetTorchText
 from pykp.Model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionOld, Seq2SeqLSTMAttentionCopy
 
 import time
@@ -317,8 +317,8 @@ def load_train_valid_data(opt):
         batch_first=True
     )
 
-    train = KeyphraseDataset(list(zip(train_src, train_trg)), [('src', src_field), ('trg', trg_field)])
-    valid = KeyphraseDataset(list(zip(valid_src, valid_trg)), [('src', src_field), ('trg', trg_field)])
+    train = KeyphraseDatasetTorchText(list(zip(train_src, train_trg)), [('src', src_field), ('trg', trg_field)])
+    valid = KeyphraseDatasetTorchText(list(zip(valid_src, valid_trg)), [('src', src_field), ('trg', trg_field)])
 
     if torch.cuda.is_available():
         device = opt.gpuid

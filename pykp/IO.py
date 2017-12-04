@@ -7,10 +7,17 @@ import inspect
 import itertools
 import json
 import re
+import traceback
 from collections import Counter
 from collections import defaultdict
 import numpy as np
+import sys
 from torch.autograd import Variable
+
+import torch.multiprocessing as multiprocessing
+import queue
+import threading
+
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -35,10 +42,12 @@ torchtext.vocab.Vocab.__getstate__ = __getstate__
 torchtext.vocab.Vocab.__setstate__ = __setstate__
 
 
-class KeyphraseDatasetCopy(torch.utils.data.Dataset):
-    def __init__(self, examples, word2id):
+class KeyphraseDataset(torch.utils.data.Dataset):
+    def __init__(self, examples, word2id, id2word, type='one2one', include_original=False):
         # keys of matter. `src_oov_map` is for mapping pointed word to dict, `oov_dict` is for determining the dim of predicted logit: dim=vocab_size+max_oov_dict_in_batch
         keys = ['src', 'trg', 'trg_copy', 'src_oov', 'oov_dict', 'oov_list']
+        if include_original:
+            keys = keys + ['src_str', 'trg_str']
         filtered_examples = []
 
         for e in examples:
@@ -46,12 +55,19 @@ class KeyphraseDatasetCopy(torch.utils.data.Dataset):
             for k in keys:
                 filtered_example[k] = e[k]
             if 'oov_list' in filtered_example:
-                filtered_example['oov_number'] = len(filtered_example['oov_list'])
+                if type == 'one2one':
+                    filtered_example['oov_number'] = len(filtered_example['oov_list'])
+                elif type == 'one2many':
+                    filtered_example['oov_number'] = [len(oov) for oov in filtered_example['oov_list']]
+
             filtered_examples.append(filtered_example)
 
-        self.examples = filtered_examples
-        self.word2id   = word2id
-        self.pad_id    = word2id[PAD_WORD]
+        self.examples           = filtered_examples
+        self.word2id            = word2id
+        self.id2word            = id2word
+        self.pad_id             = word2id[PAD_WORD]
+        self.type               = type
+        self.include_original   = include_original
 
     def __getitem__(self, index):
         return self.examples[index]
@@ -59,20 +75,23 @@ class KeyphraseDatasetCopy(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.examples)
 
-    def collate_fn(self, batches):
+    def _pad(self, x_raw):
+        x_raw = np.asarray(x_raw)
+        x_lens = [len(x_) for x_ in x_raw]
+        max_length = max(x_lens) + 1  # ensure at least one padding appears in the end
+        x = np.array([np.concatenate((x_, [self.pad_id] * (max_length - len(x_)))) for x_ in x_raw])
+        x = Variable(torch.stack([torch.from_numpy(x_) for x_ in x], 0))
+        x_mask = np.array([[1] * x_len + [0] * (max_length - x_len) for x_len in x_lens])
+        x_mask = Variable(torch.stack([torch.from_numpy(m_) for m_ in x_mask], 0))
+
+        assert x.shape[1] == max_length
+
+        return x, x_lens, x_mask
+
+    def collate_fn_one2one(self, batches):
         '''
         Puts each data field into a tensor with outer dimension batch size"
         '''
-        def _pad(x):
-            x       = np.asarray(x)
-            x_lens  = [len(x_) for x_ in x]
-            max_length = max(x_lens) + 1 # ensure at least one padding appears in the end
-            x       = np.array([x_ + [self.pad_id] * (max_length - len(x_)) for x_ in x])
-            x       = Variable(torch.stack([torch.from_numpy(x_) for x_ in x], 0))
-            x_mask  = np.array([[1] * x_len + [0] * (max_length - x_len) for x_len in x_lens])
-            x_mask  = Variable(torch.stack([torch.from_numpy(m_) for m_ in x_mask], 0))
-            return x, x_lens, x_mask
-
         src = [[self.word2id[BOS_WORD]] + b['src'] + [self.word2id[EOS_WORD]] for b in batches]
         # target_input: input to decoder, starts with BOS and oovs are replaced with <unk>
         trg  = [[self.word2id[BOS_WORD]] + b['trg'] + [self.word2id[EOS_WORD]] for b in batches]
@@ -82,17 +101,82 @@ class KeyphraseDatasetCopy(torch.utils.data.Dataset):
         trg_copy_target = [b['trg_copy'] + [self.word2id[EOS_WORD]] for b in batches]
         # extended src (unk words are replaced with temporary idx, e.g. 50000, 50001 etc.)
         src_ext = [[self.word2id[BOS_WORD]] + b['src_oov'] + [self.word2id[EOS_WORD]] for b in batches]
-        src, src_lens, src_mask = _pad(src)
-        trg, _, _ = _pad(trg)
-        trg_target, _, _ = _pad(trg_target)
-        trg_copy_target, _, _ = _pad(trg_copy_target)
-        src_ext, src_ext_lens, src_ext_mask = _pad(src_ext)
+        src, src_lens, src_mask = self._pad(src)
+        trg, _, _ = self._pad(trg)
+        trg_target, _, _ = self._pad(trg_target)
+        trg_copy_target, _, _ = self._pad(trg_copy_target)
+        src_ext, src_ext_lens, src_ext_mask = self._pad(src_ext)
 
         oov_lists = [b['oov_list'] for b in batches]
 
         return src, trg, trg_target, trg_copy_target, src_ext, oov_lists
 
-class KeyphraseDataset(torchtext.data.Dataset):
+    def collate_fn_one2many(self, batches):
+        # source with oov words replaced by
+        src         = [[self.word2id[BOS_WORD]] + b['src'] + [self.word2id[EOS_WORD]] for b in batches]
+        # extended src (oov words are replaced with temporary idx, e.g. 50000, 50001 etc.)
+        src_oov     = [[self.word2id[BOS_WORD]] + b['src_oov'] + [self.word2id[EOS_WORD]] for b in batches]
+        # target_input: input to decoder, starts with BOS and oovs are replaced with <unk>
+        trg         = [[[self.word2id[BOS_WORD]] + t + [self.word2id[EOS_WORD]] for t in b['trg']] for b in batches]
+
+        # target_for_loss: input to criterion, if it's copy model, oovs are replaced with temporary idx, e.g. 50000, 50001 etc.)
+        trg_target          = [[t + [self.word2id[EOS_WORD]] for t in b['trg']] for b in batches]
+        trg_copy_target     = [[t + [self.word2id[EOS_WORD]] for t in b['trg_copy']] for b in batches]
+        oov_lists           = [b['oov_list'] for b in batches]
+
+        if self.include_original:
+            src_str = [b['src_str'] for b in batches]
+            trg_str = [b['trg_str'] for b in batches]
+
+        # for training, the trg_copy_target_o2m is the final target (no way to uncover real unseen words). for evaluation, the trg_str is the final target.
+
+        # pad the one2many variables
+        src_o2m, _, _               = self._pad(src)
+        trg_o2m                     = trg
+        src_oov_o2m, _, _           = self._pad(src_oov)
+        # trg_target_o2m, _, _      = self._pad(trg_target)
+        trg_copy_target_o2m         = trg_copy_target
+        oov_lists_o2m               = oov_lists
+
+        # unfold the one2many pairs and pad the one2one variables
+        src_o2o, _, _               = self._pad(list(itertools.chain(*[[src[idx]]*len(t) for idx,t in enumerate(trg)])))
+        src_oov_o2o, _, _           = self._pad(list(itertools.chain(*[[src_oov[idx]]*len(t) for idx,t in enumerate(trg)])))
+        trg_o2o, _, _               = self._pad(list(itertools.chain(*[t for t in trg])))
+        trg_target_o2o, _, _        = self._pad(list(itertools.chain(*[t for t in trg_target])))
+        trg_copy_target_o2o, _, _   = self._pad(list(itertools.chain(*[t for t in trg_copy_target])))
+        oov_lists_o2o               = list(itertools.chain(*[t for t in oov_lists]))
+
+        assert (len(src) == len(src_o2m) == len(src_oov_o2m) == len(trg_copy_target_o2m) == len(oov_lists_o2m))
+        assert (sum([len(t) for t in trg]) == len(src_o2o) == len(src_oov_o2o) == len(trg_copy_target_o2o) == len(oov_lists_o2o))
+        assert (src_o2m.size() == src_oov_o2m.size())
+        assert (src_o2o.size() == src_oov_o2o.size())
+        assert ([trg_o2o.size(0), trg_o2o.size(1)-1] == list(trg_target_o2o.size()) == list(trg_copy_target_o2o.size()))
+
+        '''
+        for s, s_o2m, t, s_str, t_str in zip(src, src_o2m.data.numpy(), trg, src_str, trg_str):
+            print('=' * 30)
+            print('[Source Str] %s' % s_str)
+            print('[Target Str] %s' % str(t_str))
+            print('[Source]     %s' % str([self.id2word[w] for w in s]))
+            print('[Source O2M] %s' % str([self.id2word[w] for w in s_o2m]))
+            print('[Targets]    %s' % str([[self.id2word[w] for w in tt] for tt in t]))
+
+
+        for s, s_o2o, t, t_o2o in zip(list(itertools.chain(*[[src[idx]]*len(t) for idx,t in enumerate(trg)])), src_o2o.data.numpy(), list(itertools.chain(*[t for t in trg])), trg_o2o.data.numpy()):
+            print('=' * 30)
+            print('[Source]        %s' % str([self.id2word[w] for w in s]))
+            print('[Target]        %s' % str([self.id2word[w] for w in t]))
+            print('[Source O2O]    %s' % str([self.id2word[w] for w in s_o2o]))
+            print('[Target O2O]    %s' % str([self.id2word[w] for w in t_o2o]))
+        '''
+
+        # return two tuples, 1st for one2many and 2nd for one2one (src, src_oov, trg, trg_target, trg_copy_target, oov_lists)
+        if self.include_original:
+            return (src_o2m, trg_o2m, None, trg_copy_target_o2m, src_oov_o2m, oov_lists_o2m, src_str, trg_str), (src_o2o, trg_o2o, trg_target_o2o, trg_copy_target_o2o, src_oov_o2o, oov_lists_o2o)
+        else:
+            return (src_o2m, trg_o2m, None, trg_copy_target_o2m, src_oov_o2m, oov_lists_o2m), (src_o2o, trg_o2o, trg_target_o2o, trg_copy_target_o2o, src_oov_o2o, oov_lists_o2o)
+
+class KeyphraseDatasetTorchText(torchtext.data.Dataset):
     @staticmethod
     def sort_key(ex):
         return torchtext.data.interleave_keys(len(ex.src), len(ex.trg))
@@ -113,7 +197,7 @@ class KeyphraseDataset(torchtext.data.Dataset):
             examples.append(torchtext.data.Example.fromlist(
                 [src_tokens, trg_tokens], fields))
 
-        super(KeyphraseDataset, self).__init__(examples, fields, **kwargs)
+        super(KeyphraseDatasetTorchText, self).__init__(examples, fields, **kwargs)
 
 def load_json_data(path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';'):
     '''
