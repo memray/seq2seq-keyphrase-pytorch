@@ -216,7 +216,7 @@ class Progbar(object):
         self.seen_so_far = 0
 
 
-def plot_learning_curve(train_scores, test_scores, title, curve1_name='curve1_name', curve2_name='curve2_name', ylim=None, save_path=None):
+def plot_learning_curve(scores, curve_names, checkpoint_names, title, ylim=None, save_path=None):
     """
     Generate a simple plot of the test and training learning curve.
 
@@ -228,7 +228,7 @@ def plot_learning_curve(train_scores, test_scores, title, curve1_name='curve1_na
     ylim : tuple, shape (ymin, ymax), optional
         Defines minimum and maximum yvalues plotted.
     """
-    train_sizes=np.linspace(1, len(train_scores), len(train_scores))
+    train_sizes=np.linspace(1, len(scores[0]), len(scores[0]))
     plt.figure(dpi=200)
     plt.title(title)
     if ylim is not None:
@@ -238,26 +238,36 @@ def plot_learning_curve(train_scores, test_scores, title, curve1_name='curve1_na
 
     # print(train_scores)
     # print(test_scores)
-    train_scores_mean   = np.mean(train_scores, axis=1)
-    train_scores_std    = np.std(train_scores, axis=1)
-    test_scores_mean    = np.mean(test_scores, axis=1)
-    test_scores_std     = np.std(test_scores, axis=1)
     plt.grid()
+    means   = []
+    stds    = []
 
-    plt.fill_between(train_sizes, train_scores_mean - train_scores_std,
-                     train_scores_mean + train_scores_std, alpha=0.1,
-                     color="r")
-    plt.fill_between(train_sizes, test_scores_mean - test_scores_std,
-                     test_scores_mean + test_scores_std, alpha=0.1, color="g")
-    plt.plot(train_sizes, train_scores_mean, 'o-', color="r",
-             label=curve1_name)
-    plt.plot(train_sizes, test_scores_mean, 'o-', color="g",
-             label=curve2_name)
+    colors = "rgbcmykw"
+
+    for i, (name, score) in enumerate(zip(curve_names, scores)):
+        mean = np.mean(score, axis=1)
+        means.append(mean)
+        std  = np.std(score, axis=1)
+        stds.append(std)
+
+        plt.fill_between(train_sizes, mean - std,
+                         mean + std, alpha=0.1,
+                         color=colors[i])
+        plt.plot(train_sizes, mean, 'o-', color=colors[i],
+                 label=name)
 
     plt.legend(loc="best")
     # plt.show()
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
+        plt.savefig(save_path + '.png', bbox_inches='tight')
+
+        csv_lines = []
+        for name, score in zip(checkpoint_names, *scores):
+            csv_line = name + ',' + ','.join(score)
+            csv_lines.append(csv_line)
+
+        with open(save_path + '.csv', 'w') as result_csv:
+            result_csv.writelines(csv_line)
 
     plt.close()
     return plt

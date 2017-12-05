@@ -68,7 +68,7 @@ def main():
                                       heap_size=opt.heap_size
                                   )
 
-        evaluate_beam_search(model, generator, test_data_loader, opt)
+        evaluate_beam_search(generator, test_data_loader, opt, save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]test_result.csv' % (0, 0, 0))
         # predict_greedy(model, test_data_loader, test_examples, opt)
 
     except Exception as e:

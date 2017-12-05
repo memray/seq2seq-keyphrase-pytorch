@@ -606,13 +606,14 @@ class Seq2SeqLSTMAttention(nn.Module):
             if not hasattr(self, 'copy_model'):
                 decoder_log_prob  = torch.nn.functional.log_softmax(decoder_logit).view(batch_size, 1, self.vocab_size)
             else:
+                decoder_logit = decoder_logit.view(batch_size, 1, self.vocab_size)
                 # copy_weights and copy_logits is (batch_size, trg_len, src_len)
                 if self.copy_attention_layer:
                     _, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context)
                 else:
                     copy_weight = attn_weight
-                    copy_logit = attn_logit
-                    copy_weights.append(copy_weight.permute(1, 0, 2)) # (1, batch_size, src_len)
+                    copy_logit  = attn_logit
+                copy_weights.append(copy_weight.permute(1, 0, 2)) # (1, batch_size, src_len)
                 # merge the generative and copying probs (batch_size, 1, vocab_size + max_unk_word)
                 decoder_log_prob   = self.merge_copy_probs(decoder_logit, copy_logit, src_map)
 
@@ -641,7 +642,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 return pred_words, top_log_probs, dec_hidden, attn_weights
             else:
                 copy_weights    = torch.cat(copy_weights, 0).permute(1, 0, 2) # (batch_size, max_len, src_seq_len)
-                return pred_words, top_log_probs, dec_hidden, attn_weights, copy_weights
+                return pred_words, top_log_probs, dec_hidden, (attn_weights, copy_weights)
         else:
             return pred_words, top_log_probs, dec_hidden
 

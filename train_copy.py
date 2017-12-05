@@ -23,6 +23,7 @@ import torch
 import torch.nn as nn
 from torch import cuda
 
+from beam_search import SequenceGenerator
 from evaluate import evaluate_beam_search
 from pykp.dataloader import KeyphraseDataLoader
 from utils import Progbar, plot_learning_curve
@@ -91,19 +92,28 @@ def _valid_error(data_loader, model, criterion, epoch, opt):
 
 
 def train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, opt):
+    generator = SequenceGenerator(model,
+                                  eos_id=opt.word2id[pykp.IO.EOS_WORD],
+                                  beam_size=opt.beam_size,
+                                  max_sequence_length=opt.max_sent_length,
+                                  heap_size=opt.heap_size
+                                  )
+
     logging.info('======================  Checking GPU Availability  =========================')
     if torch.cuda.is_available():
         if isinstance(opt.gpuid, int):
             opt.gpuid = [opt.gpuid]
         logging.info('Running on GPU! devices=%s' % str(opt.gpuid))
-        model = nn.DataParallel(model, device_ids=opt.gpuid)
+        # model = nn.DataParallel(model, device_ids=opt.gpuid)
     else:
         logging.info('Running on CPU!')
 
     logging.info('======================  Start Training  =========================')
 
-    train_history_losses = []
-    valid_history_losses = []
+    checkpoint_names        = []
+    train_history_losses    = []
+    valid_history_losses    = []
+    test_history_losses     = []
     best_loss = sys.float_info.max
 
     train_losses = []
@@ -218,25 +228,30 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
             if total_batch > 1 and total_batch % opt.run_valid_every == 0:
                 logging.info('*' * 50)
                 logging.info('Run validation test @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
-                valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
-                valid_f_scores  = evaluate_beam_search(valid_data_loader, model, criterion, epoch, opt)
-                test_f_scores   = evaluate_beam_search(test_data_loader, model, criterion, epoch, opt)
+                # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
+                # valid_history_losses.append(valid_losses)
+                valid_f_scores, valid_score_dict  = evaluate_beam_search(generator, valid_data_loader, opt, epoch, save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]valid_result.csv' % (epoch, batch_i, total_batch))
+                test_f_scores, test_score_dict    = evaluate_beam_search(generator, test_data_loader, opt, epoch, save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]test_result.csv' % (epoch, batch_i, total_batch))
 
+                checkpoint_names.append('epoch=%d,batch=%d,total_batch=%d' % (epoch, batch_i, total_batch))
                 train_history_losses.append(copy.copy(train_losses))
-                valid_history_losses.append(valid_losses)
+                valid_history_losses.append(valid_f_scores)
+                test_history_losses.append(test_f_scores)
                 train_losses = []
 
                 # Plot the learning curve
-                plot_learning_curve(train_history_losses, valid_history_losses, 'Training and Validation',
-                                    curve1_name='Training Error', curve2_name='Validation Error',
-                                    save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_curve.png' % (epoch, batch_i, total_batch))
+                plot_learning_curve(scores=[train_history_losses, valid_history_losses, test_history_losses],
+                                    curve_names=['Training Error', 'Validation F-score', 'Test F-score'],
+                                    checkpoint_names=checkpoint_names,
+                                    title='Training, Validation & Test',
+                                    save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve.png' % (epoch, batch_i, total_batch))
 
                 '''
                 determine if early stop training
                 '''
-                valid_loss = np.average(valid_history_losses[-1])
-                is_best_loss = valid_loss < best_loss
-                rate_of_change = float(valid_loss - best_loss) / float(best_loss)
+                valid_loss      = np.average(valid_history_losses[-1])
+                is_best_loss    = valid_loss < best_loss
+                rate_of_change  = float(valid_loss - best_loss) / float(best_loss)
 
                 # only store the checkpoints that make better validation performances
                 if total_batch > 1 and epoch >= opt.start_checkpoint_at and (total_batch % opt.save_model_every == 0 or is_best_loss):
@@ -299,8 +314,8 @@ def load_data_vocab(opt, load_train=True):
     valid_one2many_dataset = KeyphraseDataset(valid_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
     test_one2many_dataset  = KeyphraseDataset(test_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
 
-    valid_one2many_loader  = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=False)
-    test_one2many_loader   = KeyphraseDataLoader(dataset=test_one2many_dataset, collate_fn=test_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=False)
+    valid_one2many_loader  = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
+    test_one2many_loader   = KeyphraseDataLoader(dataset=test_one2many_dataset, collate_fn=test_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
 
     opt.word2id = word2id
     opt.id2word = id2word
@@ -406,6 +421,7 @@ def main():
     config.preprocess_opts(parser)
     config.model_opts(parser)
     config.train_opts(parser)
+    config.predict_opts(parser)
     opt = parser.parse_args()
 
     if opt.seed > 0:

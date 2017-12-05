@@ -75,14 +75,20 @@ def post_process_predseqs(pred_seqs, src_str, oov, id2word, opt, must_appear_in_
 
     return processed_seqs
 
-def evaluate_beam_search(model, generator, data_loader, opt, epoch=1):
-    model.eval()
+def evaluate_beam_search(generator, data_loader, opt, epoch=1, save_path=None):
     progbar = Progbar(title='Testing', target=len(data_loader), batch_size=opt.batch_size,
                       total_examples=len(data_loader.dataset))
 
-    score_dict = {'precision@5':[],'recall@5':[],'f1score@5':[], 'precision@10':[],'recall@10':[],'f1score@10':[]}
+    score_dict = {} # {'precision@5':[],'recall@5':[],'f1score@5':[], 'precision@10':[],'recall@10':[],'f1score@10':[]}
+    num_oneword_range  = [1, 2, 3]
+    topk_range         = [5, 10]
+    score_names        = ['precision', 'recall', 'f_score']
+    default_score_name = 'f_score@5,#oneword=1'
 
     for i, batch in enumerate(data_loader):
+        # if i > 2:
+        #     break
+
         one2many_batch, one2one_batch = batch
         src_list, trg_list, _, trg_copy_target_list, src_oov_list, oov_list, src_str_list, trg_str_list = one2many_batch
 
@@ -105,41 +111,51 @@ def evaluate_beam_search(model, generator, data_loader, opt, epoch=1):
             # print_out += 'Real Target Input:  \n\t\t%s \n' % str([[opt.id2word[x] for x in t] for t in trg])
             # print('Real Target Copy:   \n\t\t%s ' % str([[opt.id2word[x] for x in t] for t in trg_copy]))
 
-            filtered_pred_seq = post_process_predseqs(pred_seq, src_str, oov, opt.id2word, opt, must_appear_in_src=opt.must_appear_in_src, num_oneword_seq=opt.num_oneword_seq)
-            print_out += 'Top predicted sequences after filtering (%d / %d): \n' % (len(filtered_pred_seq), len(pred_seq))
+            for num_oneword_seq in num_oneword_range:
+                filtered_pred_seq = post_process_predseqs(pred_seq, src_str, oov, opt.id2word, opt, must_appear_in_src=opt.must_appear_in_src, num_oneword_seq=num_oneword_seq)
 
-            match_list = get_match_result(true_seqs=trg_str, pred_seqs=filtered_pred_seq)
+                print_out += 'Top predicted sequences after filtering, #(one-word)=%d : (%d / %d): \n' % (num_oneword_seq, len(filtered_pred_seq), len(pred_seq))
 
-            for p_id, (words, score, match) in enumerate(zip(filtered_pred_seq, [s.score for s in pred_seq], match_list)):
-                if p_id > 10:
-                    break
-                if match == 1.0:
-                    print_out += '\t\t[%.4f]\t%s [correct]\n' % (score, ' '.join(words))
-                else:
-                    print_out += '\t\t[%.4f]\t%s\n' % (score, ' '.join(words))
+                match_list = get_match_result(true_seqs=trg_str, pred_seqs=filtered_pred_seq)
 
-            logging.info(print_out)
+                for p_id, (words, score, match) in enumerate(zip(filtered_pred_seq, [s.score for s in pred_seq], match_list)):
+                    if p_id > 5:
+                        break
+                    if match == 1.0:
+                        print_out += '\t\t[%.4f]\t%s [correct]\n' % (score, ' '.join(words))
+                    else:
+                        print_out += '\t\t[%.4f]\t%s\n' % (score, ' '.join(words))
 
-            precision, recall, f_score = evalute(match_list, filtered_pred_seq, trg_str, topk=5)
-            score_dict['precision@5'].append(precision)
-            score_dict['recall@5'].append(recall)
-            score_dict['f1score@5'].append(f_score)
-            logging.info("individual precision %.4f ,  recall %.4f,  fscore %.4f" % (precision, recall, f_score))
+                logging.info(print_out)
 
-            precision, recall, f_score = evalute(match_list, filtered_pred_seq, trg_str, topk=10)
-            score_dict['precision@10'].append(precision)
-            score_dict['recall@10'].append(recall)
-            score_dict['f1score@10'].append(f_score)
+                for topk in topk_range:
+                    results = evalute(match_list, filtered_pred_seq, trg_str, topk=topk)
+                    for k,v  in zip(score_names, results):
+                        if '%s@%d,#oneword=%d' % (k, topk, num_oneword_seq) not in score_dict:
+                            score_dict['%s@%d,#oneword=%d' % (k, topk, num_oneword_seq)] = []
+                        score_dict['%s@%d,#oneword=%d' % (k, topk, num_oneword_seq)].append(v)
 
-        progbar.update(epoch, i, [('f-score@5', np.average(score_dict['f1score@5'])), ('f-score@10', np.average(score_dict['f1score@10']))])
+        progbar.update(epoch, i, [('f_score@5,#oneword=1', np.average(score_dict['f_score@5,#oneword=1'])), ('f_score@10,#oneword=1', np.average(score_dict['f_score@10,#oneword=1']))])
+
+    if save_path:
+        with open(save_path, 'w') as result_csv:
+            csv_lines = []
+            for num_oneword_seq in num_oneword_range:
+                for topk in topk_range:
+                    csv_line = '#oneword=%d-score@%d' % (num_oneword_seq, topk)
+                    for k in score_names:
+                        csv_line += ',%f' % np.average(score_dict['%s@%d,#oneword=%d' % (k, topk, num_oneword_seq)])
+                    csv_lines.append(csv_line+'\n')
+
+            result_csv.writelines(csv_lines)
 
     # precision, recall, f_score = macro_averaged_score(precisionlist=score_dict['precision'], recalllist=score_dict['recall'])
-    logging.info("Macro@5\n\t\tprecision %.4f\n\t\tmacro recall %.4f\n\t\tmacro fscore %.4f " % (np.average(score_dict['precision@5']), np.average(score_dict['recall@5']), np.average(score_dict['f1score@5'])))
-    logging.info("Macro@10\n\t\tprecision %.4f\n\t\tmacro recall %.4f\n\t\tmacro fscore %.4f " % (np.average(score_dict['precision@10']), np.average(score_dict['recall@10']), np.average(score_dict['f1score@10'])))
+    # logging.info("Macro@5\n\t\tprecision %.4f\n\t\tmacro recall %.4f\n\t\tmacro fscore %.4f " % (np.average(score_dict['precision@5']), np.average(score_dict['recall@5']), np.average(score_dict['f1score@5'])))
+    # logging.info("Macro@10\n\t\tprecision %.4f\n\t\tmacro recall %.4f\n\t\tmacro fscore %.4f " % (np.average(score_dict['precision@10']), np.average(score_dict['recall@10']), np.average(score_dict['f1score@10'])))
     # precision, recall, f_score = evaluate(true_seqs=target_all, pred_seqs=prediction_all, topn=5)
     # logging.info("micro precision %.4f , micro recall %.4f, micro fscore %.4f " % (precision, recall, f_score))
 
-    return score_dict
+    return score_dict[default_score_name], score_dict
 
 def evaluate_greedy(model, data_loader, test_examples, opt):
     model.eval()

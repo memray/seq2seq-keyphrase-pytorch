@@ -203,6 +203,7 @@ class SequenceGenerator(object):
         Returns:
           A list of batch size, each the most likely sequence from the possible beam_size candidates.
         """
+        self.model.eval()
         batch_size = len(src_input)
 
         src_context, (src_h, src_c) = self.model.encode(src_input)
@@ -260,7 +261,10 @@ class SequenceGenerator(object):
             words = words.squeeze(1)
             probs = probs.squeeze(1)
             # (hyp_seq_size, trg_len=1, src_len) -> (hyp_seq_size, src_len)
-            attn_weights = attn_weights.squeeze(1)
+            if isinstance(attn_weights, tuple): # if it's (attn, copy_attn)
+                attn_weights = (attn_weights[0].squeeze(1), attn_weights[1].squeeze(1))
+            else:
+                attn_weights = attn_weights.squeeze(1)
 
             # tuple of (num_layers * num_directions, batch_size, trg_hidden_dim)=(1, hyp_seq_size, trg_hidden_dim), squeeze the first dim
             if isinstance(new_dec_hiddens, tuple):
@@ -309,7 +313,11 @@ class SequenceGenerator(object):
                         new_partial_seq.dec_hidden = new_dec_hiddens[flattened_seq_id]
 
                         if self.return_attention:
-                            new_partial_seq.attention.append(attn_weights[flattened_seq_id])
+                            if isinstance(attn_weights, tuple): # if it's (attn, copy_attn)
+                                attn_weights = (attn_weights[0].squeeze(1), attn_weights[1].squeeze(1))
+                                new_partial_seq.attention.append((attn_weights[0][flattened_seq_id], attn_weights[1][flattened_seq_id]))
+                            else:
+                                new_partial_seq.attention.append(attn_weights[flattened_seq_id])
                         else:
                             new_partial_seq.attention = None
 

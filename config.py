@@ -253,16 +253,16 @@ def train_opts(parser):
                         help="Path of checkpoints.")
 
     # beam search setting
-    parser.add_argument('-beam_search_batch_size', type=int, default=32,
+    parser.add_argument('-beam_search_batch_size', type=int, default=8,
                         help='Maximum batch size')
     parser.add_argument('-beam_search_batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')
 
-    parser.add_argument('-beam_size',  type=int, default=32,
+    parser.add_argument('-beam_size',  type=int, default=16,
                         help='Beam size')
-    parser.add_argument('-max_sent_length', type=int, default=6,
+    parser.add_argument('-max_sent_length', type=int, default=5,
                         help='Maximum sentence length.')
-    parser.add_argument('-heap_size', type=int, default=128,
+    parser.add_argument('-heap_size', type=int, default=64,
                         help='Maximum size of search queue.')
 
 def predict_opts(parser):
