@@ -120,15 +120,22 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
     total_batch = 0
     early_stop_flag = False
 
+    if opt.train_from:
+        state_path = opt.train_from.replace('.model', '.state')
+        if os.path.exists(state_path):
+            (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_history_losses, valid_history_losses,
+     test_history_losses) = torch.load(open(state_path, 'rb'))
+            opt.start_epoch = epoch
+
     for epoch in range(opt.start_epoch , opt.epochs):
         if early_stop_flag:
             break
 
         progbar = Progbar(title='Training', target=len(train_data_loader), batch_size=opt.batch_size,
                           total_examples=len(train_data_loader.dataset))
-        model.train()
 
         for batch_i, batch in enumerate(train_data_loader):
+            model.train()
             batch_i += 1 # for the aesthetics of printing
             total_batch += 1
             one2many_batch, one2one_batch = batch
@@ -211,6 +218,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                 for i, (src_wi, pred_wi, trg_i, oov_i) in enumerate(zip(src, max_words_pred, trg_target, oov_lists)):
                     nll_prob = -np.sum([decoder_log_probs[i][l][pred_wi[l]] for l in range(len(trg_i))])
                     find_copy       = np.any([x >= opt.vocab_size for x in src_wi])
+                    has_copy        = np.any([x >= opt.vocab_size for x in trg_i])
 
                     sentence_source = [opt.id2word[x] if x < opt.vocab_size else oov_i[x-opt.vocab_size] for x in src_wi]
                     sentence_pred   = [opt.id2word[x] if x < opt.vocab_size else oov_i[x-opt.vocab_size] for x in pred_wi]
@@ -222,12 +230,12 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
 
                     logging.info('==================================================')
                     logging.info('Source: %s '          % (' '.join(sentence_source)))
-                    logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob) + (' (FIND COPY)' if find_copy else ''))
-                    logging.info('\t\tReal : %s '       % (' '.join(sentence_real)))
+                    logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob) + (' [FIND COPY]' if find_copy else ''))
+                    logging.info('\t\tReal : %s '       % (' '.join(sentence_real)) + (' [HAS COPY]' + str(trg_i) if has_copy else ''))
 
             if total_batch > 1 and total_batch % opt.run_valid_every == 0:
                 logging.info('*' * 50)
-                logging.info('Run validation test @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
+                logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
                 # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
                 # valid_history_losses.append(valid_losses)
                 valid_f_scores, valid_score_dict  = evaluate_beam_search(generator, valid_data_loader, opt, epoch, save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]valid_result.csv' % (epoch, batch_i, total_batch))
@@ -260,6 +268,10 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                     torch.save(
                         model.state_dict(),
                         open(os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
+                    )
+                    torch.save(
+                        (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_history_losses, valid_history_losses, test_history_losses),
+                        open(os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.state'), 'wb')
                     )
 
                 # valid error doesn't decrease

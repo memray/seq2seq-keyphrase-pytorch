@@ -17,7 +17,7 @@ from utils import Progbar
 stemmer = PorterStemmer()
 
 
-def post_process_predseqs(pred_seqs, src_str, oov, id2word, opt, must_appear_in_src=True, num_oneword_seq=1):
+def process_predseqs(pred_seqs, src_str, oov, id2word, opt, must_appear_in_src=True):
     '''
     :param pred_seqs:
     :param src_str:
@@ -25,7 +25,6 @@ def post_process_predseqs(pred_seqs, src_str, oov, id2word, opt, must_appear_in_
     :param id2word:
     :param opt:
     :param must_appear_in_src: the predicted sequences must appear in the source text
-    :param num_oneword_seq: number of one-word sequences to retain
     :return:
     '''
     processed_seqs = []
@@ -48,9 +47,6 @@ def post_process_predseqs(pred_seqs, src_str, oov, id2word, opt, must_appear_in_
         if keep_flag and any([w=='.' or w==',' for w in processed_seq]):
             keep_flag = False
 
-        if len(processed_seq) == 1 and num_oneword_seq <= 0:
-            keep_flag = False
-
         if keep_flag and must_appear_in_src:
             for src_start_idx in range(len(stemmed_src_str) - len(stemmed_pred_seq) + 1):
                 match = True
@@ -69,8 +65,21 @@ def post_process_predseqs(pred_seqs, src_str, oov, id2word, opt, must_appear_in_
 
         if keep_flag:
             processed_seqs.append(processed_seq)
+
+    return processed_seqs
+
+def post_process_predseqs(pred_seqs, num_oneword_seq=1):
+    processed_seqs = []
+    for seq in pred_seqs:
+        keep_flag = True
+
+        if len(seq) == 1 and num_oneword_seq <= 0:
+            keep_flag = False
+
+        if keep_flag:
+            processed_seqs.append(seq)
             # update the number of one-word sequeces to keep
-            if len(processed_seq) == 1:
+            if len(seq) == 1:
                 num_oneword_seq -= 1
 
     return processed_seqs
@@ -80,14 +89,14 @@ def evaluate_beam_search(generator, data_loader, opt, epoch=1, save_path=None):
                       total_examples=len(data_loader.dataset))
 
     score_dict = {} # {'precision@5':[],'recall@5':[],'f1score@5':[], 'precision@10':[],'recall@10':[],'f1score@10':[]}
-    num_oneword_range  = [1, 2, 3]
+    num_oneword_range  = [0, 1, 2, 3]
     topk_range         = [5, 10]
     score_names        = ['precision', 'recall', 'f_score']
     default_score_name = 'f_score@5,#oneword=1'
 
     for i, batch in enumerate(data_loader):
-        # if i > 2:
-        #     break
+        if i > 2:
+            break
 
         one2many_batch, one2one_batch = batch
         src_list, trg_list, _, trg_copy_target_list, src_oov_list, oov_list, src_str_list, trg_str_list = one2many_batch
@@ -110,23 +119,26 @@ def evaluate_beam_search(generator, data_loader, opt, epoch=1, save_path=None):
             print_out += 'Real Target String [%d] \n\t\t%s \n' % (len(trg_str), trg_str)
             # print_out += 'Real Target Input:  \n\t\t%s \n' % str([[opt.id2word[x] for x in t] for t in trg])
             # print('Real Target Copy:   \n\t\t%s ' % str([[opt.id2word[x] for x in t] for t in trg_copy]))
+            processed_pred_seq = process_predseqs(pred_seq, src_str, oov, opt.id2word, opt, must_appear_in_src=opt.must_appear_in_src)
 
             for num_oneword_seq in num_oneword_range:
-                filtered_pred_seq = post_process_predseqs(pred_seq, src_str, oov, opt.id2word, opt, must_appear_in_src=opt.must_appear_in_src, num_oneword_seq=num_oneword_seq)
-
-                print_out += 'Top predicted sequences after filtering, #(one-word)=%d : (%d / %d): \n' % (num_oneword_seq, len(filtered_pred_seq), len(pred_seq))
-
+                filtered_pred_seq = post_process_predseqs(processed_pred_seq, num_oneword_seq)
                 match_list = get_match_result(true_seqs=trg_str, pred_seqs=filtered_pred_seq)
 
-                for p_id, (words, score, match) in enumerate(zip(filtered_pred_seq, [s.score for s in pred_seq], match_list)):
-                    if p_id > 5:
-                        break
-                    if match == 1.0:
-                        print_out += '\t\t[%.4f]\t%s [correct]\n' % (score, ' '.join(words))
-                    else:
-                        print_out += '\t\t[%.4f]\t%s\n' % (score, ' '.join(words))
+                # only print out the unfiltered results (remove no onw-word)
+                if num_oneword_seq == 0:
+                    print_out += 'Top predicted sequences: (%d / %d): \n' % (len(processed_pred_seq), len(pred_seq))
 
-                logging.info(print_out)
+                    for p_id, (words, score, match) in enumerate(
+                            zip(processed_pred_seq, [s.score for s in pred_seq], match_list)):
+                        # if p_id > 5:
+                        #     break
+                        if match == 1.0:
+                            print_out += '\t\t[%.4f]\t%s [correct]\n' % (score, ' '.join(words))
+                        else:
+                            print_out += '\t\t[%.4f]\t%s\n' % (score, ' '.join(words))
+
+                    logging.info(print_out)
 
                 for topk in topk_range:
                     results = evalute(match_list, filtered_pred_seq, trg_str, topk=topk)
