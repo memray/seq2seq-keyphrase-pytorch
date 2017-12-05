@@ -75,6 +75,11 @@ def post_process_predseqs(pred_seqs, pred_scores, num_oneword_seq=1):
     processed_seqs = []
     processed_scores = []
     assert len(pred_seqs) == len(pred_scores)
+
+    # -1 means no filter applied
+    if num_oneword_seq == -1:
+        return pred_seqs, pred_scores
+
     for seq, score in zip(pred_seqs, pred_scores):
         keep_flag = True
 
@@ -95,10 +100,10 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                       total_examples=len(data_loader.dataset))
 
     score_dict = {} # {'precision@5':[],'recall@5':[],'f1score@5':[], 'precision@10':[],'recall@10':[],'f1score@10':[]}
-    num_oneword_range  = [0, 1, 2, 3]
+    num_oneword_range  = [-1, 1, 2, 3]
     topk_range         = [5, 10]
     score_names        = ['precision', 'recall', 'f_score']
-    default_score_name = 'f_score@5,#oneword=1'
+    default_score_name = opt.default_score_name #'f_score@5,#oneword=-1'
 
     for i, batch in enumerate(data_loader):
         # if i > 2:
@@ -129,16 +134,17 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
             for num_oneword_seq in num_oneword_range:
                 filtered_pred_seq, filtered_pred_score = post_process_predseqs(processed_pred_seq, processed_pred_score, num_oneword_seq)
+
                 match_list = get_match_result(true_seqs=trg_str, pred_seqs=filtered_pred_seq)
 
                 assert len(filtered_pred_seq) == len(filtered_pred_score) == len(match_list)
 
                 # only print out the unfiltered results (remove no onw-word)
-                if num_oneword_seq == 0:
-                    print_out += 'Top predicted sequences: (%d / %d): \n' % (len(processed_pred_seq), len(pred_seq))
+                if num_oneword_seq == -1:
+                    print_out += 'Top predicted sequences: (%d / %d): \n' % (len(filtered_pred_seq), len(pred_seq))
 
                     for p_id, (words, score, match) in enumerate(
-                            zip(processed_pred_seq, filtered_pred_score, match_list)):
+                            zip(filtered_pred_seq, filtered_pred_score, match_list)):
                         # if p_id > 5:
                         #     break
                         if match == 1.0:
@@ -258,8 +264,8 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
     for pred_id, pred_seq in enumerate(pred_seqs):
         if type == 'exact':
             correctly_matched[pred_id] = 0
-            match = True
             for true_id, true_seq in enumerate(true_seqs):
+                match = True
                 if len(pred_seq) != len(true_seq):
                     continue
                 for pred_w, true_w in zip(pred_seq, true_seq):
