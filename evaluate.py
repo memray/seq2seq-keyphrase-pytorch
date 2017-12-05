@@ -45,6 +45,9 @@ def post_process_predseqs(pred_seqs, src_str, oov, id2word, opt, must_appear_in_
         if keep_flag and any([w==pykp.IO.UNK_WORD for w in processed_seq]):
             keep_flag = False
 
+        if keep_flag and any([w=='.' or w==',' for w in processed_seq]):
+            keep_flag = False
+
         if len(processed_seq) == 1 and num_oneword_seq <= 0:
             keep_flag = False
 
@@ -74,22 +77,8 @@ def post_process_predseqs(pred_seqs, src_str, oov, id2word, opt, must_appear_in_
 
 def evaluate_beam_search(model, generator, data_loader, opt, epoch=1):
     model.eval()
-
-    if torch.cuda.is_available():
-        logging.info('Running on GPU!')
-        model.cuda()
-    else:
-        logging.info('Running on CPU!')
-
-    logging.info('======================  Start Predicting  =========================')
     progbar = Progbar(title='Testing', target=len(data_loader), batch_size=opt.batch_size,
                       total_examples=len(data_loader.dataset))
-
-    '''
-    Note here each batch only contains one data example, thus decoder_probs is flattened
-    '''
-    prediction_all = []
-    target_all = []
 
     score_dict = {'precision@5':[],'recall@5':[],'f1score@5':[], 'precision@10':[],'recall@10':[],'f1score@10':[]}
 
@@ -100,9 +89,9 @@ def evaluate_beam_search(model, generator, data_loader, opt, epoch=1):
         if torch.cuda.is_available():
             src_list.cuda()
 
-        logging.info('======================  %d =========================' % (i + 1))
-        print("src size - %s" % str(src_list.size()))
-        print("target size - %s" % len(trg_copy_target_list))
+        # logging.info('======================  %d =========================' % (i + 1))
+        # print("src size - %s" % str(src_list.size()))
+        # print("target size - %s" % len(trg_copy_target_list))
 
         pred_seq_list = generator.beam_search(src_list, src_oov_list, opt.word2id)
 
@@ -111,16 +100,18 @@ def evaluate_beam_search(model, generator, data_loader, opt, epoch=1):
             src = src.cpu().data.numpy() if torch.cuda.is_available() else src.data.numpy()
             print_out = ''
             print_out += '\nSource Input: \n %s\n' % (' '.join([opt.id2word[x] for x in src[:len(src_str) + 5]]))
-            # print('Real Target String: \n\t\t%s ' % (trg_str))
-            print_out += 'Real Target Input:  \n\t\t%s \n' % str([[opt.id2word[x] for x in t] for t in trg])
+            print_out += 'Real Target String [%d] \n\t\t%s \n' % (len(trg_str), trg_str)
+            # print_out += 'Real Target Input:  \n\t\t%s \n' % str([[opt.id2word[x] for x in t] for t in trg])
             # print('Real Target Copy:   \n\t\t%s ' % str([[opt.id2word[x] for x in t] for t in trg_copy]))
 
-            filtered_pred_seq = post_process_predseqs(pred_seq, src_str, oov, opt.id2word, opt)
+            filtered_pred_seq = post_process_predseqs(pred_seq, src_str, oov, opt.id2word, opt, must_appear_in_src=opt.must_appear_in_src, num_oneword_seq=opt.num_oneword_seq)
             print_out += 'Top predicted sequences after filtering (%d / %d): \n' % (len(filtered_pred_seq), len(pred_seq))
 
             match_list = get_match_result(true_seqs=trg_str, pred_seqs=filtered_pred_seq)
 
-            for words, score, match in zip(filtered_pred_seq, [s.score for s in pred_seq], match_list):
+            for p_id, (words, score, match) in enumerate(zip(filtered_pred_seq, [s.score for s in pred_seq], match_list)):
+                if p_id > 10:
+                    break
                 if match == 1.0:
                     print_out += '\t\t[%.4f]\t%s [correct]\n' % (score, ' '.join(words))
                 else:
@@ -142,10 +133,12 @@ def evaluate_beam_search(model, generator, data_loader, opt, epoch=1):
         progbar.update(epoch, i, [('f-score@5', np.average(score_dict['f1score@5'])), ('f-score@10', np.average(score_dict['f1score@10']))])
 
     # precision, recall, f_score = macro_averaged_score(precisionlist=score_dict['precision'], recalllist=score_dict['recall'])
-    logging.info("macro@5 precision %.4f , macro recall %.4f, macro fscore %.4f " % (np.average(score_dict['precision@5']), np.average(score_dict['recall@5']), np.average(score_dict['f1score@5'])))
-    logging.info("macro@10 precision %.4f , macro recall %.4f, macro fscore %.4f " % (np.average(score_dict['precision@10']), np.average(score_dict['recall@10']), np.average(score_dict['f1score@10'])))
+    logging.info("Macro@5\n\t\tprecision %.4f\n\t\tmacro recall %.4f\n\t\tmacro fscore %.4f " % (np.average(score_dict['precision@5']), np.average(score_dict['recall@5']), np.average(score_dict['f1score@5'])))
+    logging.info("Macro@10\n\t\tprecision %.4f\n\t\tmacro recall %.4f\n\t\tmacro fscore %.4f " % (np.average(score_dict['precision@10']), np.average(score_dict['recall@10']), np.average(score_dict['f1score@10'])))
     # precision, recall, f_score = evaluate(true_seqs=target_all, pred_seqs=prediction_all, topn=5)
     # logging.info("micro precision %.4f , micro recall %.4f, micro fscore %.4f " % (precision, recall, f_score))
+
+    return score_dict
 
 def evaluate_greedy(model, data_loader, test_examples, opt):
     model.eval()
@@ -228,16 +221,19 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
     for pred_id, pred_seq in enumerate(pred_seqs):
         if type == 'exact':
             correctly_matched[pred_id] = 0
+            match = True
             for true_id, true_seq in enumerate(true_seqs):
                 if len(pred_seq) != len(true_seq):
                     continue
                 for pred_w, true_w in zip(pred_seq, true_seq):
                     # if one two words are not same, match fails
                     if pred_w != true_w:
+                        match = False
                         break
                 # if every word in pred_seq matches one true_seq exactly, match succeeds
-                correctly_matched[pred_id] = 1
-                break
+                if match:
+                    correctly_matched[pred_id] = 1
+                    break
         elif type == 'partial':
             max_similarity = 0.
             pred_seq_set = set(pred_seq)
@@ -258,12 +254,14 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
 def evalute(match_list, predicted_list, true_list, topk=5):
     if len(match_list) > topk:
         match_list = match_list[:topk]
+    if len(predicted_list) > topk:
+        predicted_list = predicted_list[:topk]
 
     # Micro-Averaged  Method
-    micropk = float(sum(match_list)) / float(len(predicted_list))
-    micrork = float(sum(match_list)) / float(len(true_list))
+    micropk = float(sum(match_list)) / float(len(predicted_list)) if len(predicted_list) > 0 else 0.0
+    micrork = float(sum(match_list)) / float(len(true_list)) if len(true_list) > 0 else 0.0
 
-    if (micropk or micrork):
+    if micropk + micrork > 0:
         microf1 = float(2 * (micropk * micrork)) / (micropk + micrork)
     else:
         microf1 = 0.0

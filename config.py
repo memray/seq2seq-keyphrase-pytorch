@@ -266,7 +266,11 @@ def train_opts(parser):
                         help='Maximum size of search queue.')
 
 def predict_opts(parser):
-    pass
+    parser.add_argument('-must_appear_in_src', action="store_true",
+                        help="""whether the predicted sequences must appear in the source text""")
+    parser.add_argument('-num_oneword_seq', type=int, default=10000,
+                        help="""Source sequence to decode (one line per
+                        sequence)""")
     # parser.add_argument('-test_data', required=True,
     #                     help="""Source sequence to decode (one line per
     #                     sequence)""")
