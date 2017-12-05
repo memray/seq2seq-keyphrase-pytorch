@@ -588,6 +588,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
 
         for i in range(max_len):
+            print('TRG_INPUT: %s' % str(trg_input.size()))
+            print(trg_input.data.numpy())
             trg_emb = self.embedding(trg_input)  # (batch_size, trg_len = 1, emb_dim)
             trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
 

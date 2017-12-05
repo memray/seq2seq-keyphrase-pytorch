@@ -28,6 +28,7 @@ def process_predseqs(pred_seqs, src_str, oov, id2word, opt, must_appear_in_src=T
     :return:
     '''
     processed_seqs = []
+    processed_scores = []
 
     stemmed_src_str     = stem_word_list(src_str)
 
@@ -65,12 +66,16 @@ def process_predseqs(pred_seqs, src_str, oov, id2word, opt, must_appear_in_src=T
 
         if keep_flag:
             processed_seqs.append(processed_seq)
+            processed_scores.append(seq.score)
 
-    return processed_seqs
+    assert len(processed_seqs) == len(processed_scores)
+    return processed_seqs, processed_scores
 
-def post_process_predseqs(pred_seqs, num_oneword_seq=1):
+def post_process_predseqs(pred_seqs, pred_scores, num_oneword_seq=1):
     processed_seqs = []
-    for seq in pred_seqs:
+    processed_scores = []
+    assert len(pred_seqs) == len(pred_scores)
+    for seq, score in zip(pred_seqs, pred_scores):
         keep_flag = True
 
         if len(seq) == 1 and num_oneword_seq <= 0:
@@ -78,14 +83,15 @@ def post_process_predseqs(pred_seqs, num_oneword_seq=1):
 
         if keep_flag:
             processed_seqs.append(seq)
+            processed_scores.append(score)
             # update the number of one-word sequeces to keep
             if len(seq) == 1:
                 num_oneword_seq -= 1
 
-    return processed_seqs
+    return processed_seqs, processed_scores
 
-def evaluate_beam_search(generator, data_loader, opt, epoch=1, save_path=None):
-    progbar = Progbar(title='Testing', target=len(data_loader), batch_size=opt.batch_size,
+def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_path=None):
+    progbar = Progbar(title=title, target=len(data_loader), batch_size=opt.batch_size,
                       total_examples=len(data_loader.dataset))
 
     score_dict = {} # {'precision@5':[],'recall@5':[],'f1score@5':[], 'precision@10':[],'recall@10':[],'f1score@10':[]}
@@ -95,8 +101,8 @@ def evaluate_beam_search(generator, data_loader, opt, epoch=1, save_path=None):
     default_score_name = 'f_score@5,#oneword=1'
 
     for i, batch in enumerate(data_loader):
-        if i > 2:
-            break
+        # if i > 2:
+        #     break
 
         one2many_batch, one2one_batch = batch
         src_list, trg_list, _, trg_copy_target_list, src_oov_list, oov_list, src_str_list, trg_str_list = one2many_batch
@@ -119,18 +125,20 @@ def evaluate_beam_search(generator, data_loader, opt, epoch=1, save_path=None):
             print_out += 'Real Target String [%d] \n\t\t%s \n' % (len(trg_str), trg_str)
             # print_out += 'Real Target Input:  \n\t\t%s \n' % str([[opt.id2word[x] for x in t] for t in trg])
             # print('Real Target Copy:   \n\t\t%s ' % str([[opt.id2word[x] for x in t] for t in trg_copy]))
-            processed_pred_seq = process_predseqs(pred_seq, src_str, oov, opt.id2word, opt, must_appear_in_src=opt.must_appear_in_src)
+            processed_pred_seq, processed_pred_score = process_predseqs(pred_seq, src_str, oov, opt.id2word, opt, must_appear_in_src=opt.must_appear_in_src)
 
             for num_oneword_seq in num_oneword_range:
-                filtered_pred_seq = post_process_predseqs(processed_pred_seq, num_oneword_seq)
+                filtered_pred_seq, filtered_pred_score = post_process_predseqs(processed_pred_seq, processed_pred_score, num_oneword_seq)
                 match_list = get_match_result(true_seqs=trg_str, pred_seqs=filtered_pred_seq)
+
+                assert len(filtered_pred_seq) == len(filtered_pred_score) == len(match_list)
 
                 # only print out the unfiltered results (remove no onw-word)
                 if num_oneword_seq == 0:
                     print_out += 'Top predicted sequences: (%d / %d): \n' % (len(processed_pred_seq), len(pred_seq))
 
                     for p_id, (words, score, match) in enumerate(
-                            zip(processed_pred_seq, [s.score for s in pred_seq], match_list)):
+                            zip(processed_pred_seq, filtered_pred_score, match_list)):
                         # if p_id > 5:
                         #     break
                         if match == 1.0:

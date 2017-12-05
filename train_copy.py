@@ -238,8 +238,8 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
                 # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
                 # valid_history_losses.append(valid_losses)
-                valid_f_scores, valid_score_dict  = evaluate_beam_search(generator, valid_data_loader, opt, epoch, save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]valid_result.csv' % (epoch, batch_i, total_batch))
-                test_f_scores, test_score_dict    = evaluate_beam_search(generator, test_data_loader, opt, epoch, save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]test_result.csv' % (epoch, batch_i, total_batch))
+                valid_f_scores, valid_score_dict  = evaluate_beam_search(generator, valid_data_loader, opt, title='Validating', epoch=epoch, save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]valid_result.csv' % (epoch, batch_i, total_batch))
+                test_f_scores, test_score_dict    = evaluate_beam_search(generator, test_data_loader, opt, title='Testing', epoch=epoch, save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]test_result.csv' % (epoch, batch_i, total_batch))
 
                 checkpoint_names.append('epoch=%d,batch=%d,total_batch=%d' % (epoch, batch_i, total_batch))
                 train_history_losses.append(copy.copy(train_losses))
