@@ -84,7 +84,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         x_mask = np.array([[1] * x_len + [0] * (max_length - x_len) for x_len in x_lens])
         x_mask = Variable(torch.stack([torch.from_numpy(m_) for m_ in x_mask], 0))
 
-        assert x.shape[1] == max_length
+        assert x.size(1) == max_length
 
         return x, x_lens, x_mask
 

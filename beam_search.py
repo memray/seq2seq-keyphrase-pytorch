@@ -183,6 +183,15 @@ class SequenceGenerator(object):
         contexts = torch.cat([seq.context for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].context.size())
         src_oovs = torch.cat([seq.src_oov for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].src_oov.size())
 
+        if torch.cuda.is_available():
+            inputs      = inputs.cuda()
+            if isinstance(flattened_sequences[0].dec_hidden, tuple):
+                dec_hiddens = (dec_hiddens[0].cuda(), dec_hiddens[1].cuda())
+            else:
+                dec_hiddens = dec_hiddens.cuda()
+            contexts    = contexts.cuda()
+            src_oovs    = src_oovs.cuda()
+
         return seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, src_oovs
 
     def beam_search(self, src_input, src_oov, word2id):

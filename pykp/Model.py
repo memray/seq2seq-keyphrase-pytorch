@@ -417,6 +417,7 @@ class Seq2SeqLSTMAttention(nn.Module):
     # @time_usage
     def encode(self, input_src):
         """Propogate input through the network."""
+        # input (batch_size, src_len), src_emb (batch_size, src_len, emb_dim)
         src_emb = self.embedding(input_src)
 
         # initial encoder state, two zero-matrix as h and c at time=0
@@ -616,9 +617,10 @@ class Seq2SeqLSTMAttention(nn.Module):
                 decoder_log_prob   = self.merge_copy_probs(decoder_logit, copy_logit, src_map)
 
             # Prepare for the next iteration, get the top word, top_idx and next_index are (batch_size, K)
-            top_v, top_idx = decoder_log_prob.data.topk(k, dim=-1)
-            top_1_idx  = torch.index_select(top_idx, dim=1, index=torch.LongTensor([0])) # (batch_size, 1)
-            trg_input = Variable(top_1_idx).cuda() if torch.cuda.is_available() else Variable(top_1_idx) # (batch_size, 1)
+            top_v, top_idx      = decoder_log_prob.data.topk(k, dim=-1)
+            top_1_v, top_1_idx  = decoder_log_prob.data.topk(1, dim=-1) # (batch_size, 1)
+            trg_input           = Variable(top_1_idx.squeeze(2))
+            # trg_input           = Variable(top_1_idx).cuda() if torch.cuda.is_available() else Variable(top_1_idx) # (batch_size, 1)
 
             # append to return lists
             pred_words.append(top_idx.permute(1, 0, 2)) # (1, batch_size, K)

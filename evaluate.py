@@ -87,7 +87,8 @@ def evaluate_beam_search(model, generator, data_loader, opt, epoch=1):
         src_list, trg_list, _, trg_copy_target_list, src_oov_list, oov_list, src_str_list, trg_str_list = one2many_batch
 
         if torch.cuda.is_available():
-            src_list.cuda()
+            src_list = src_list.cuda()
+            src_oov_list = src_oov_list.cuda()
 
         # logging.info('======================  %d =========================' % (i + 1))
         # print("src size - %s" % str(src_list.size()))

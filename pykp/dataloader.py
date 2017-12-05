@@ -16,8 +16,11 @@ import re
 import sys
 import traceback
 import threading
-from torch._six import string_classes
 
+if sys.version_info[0] == 2:
+    string_classes = basestring
+else:
+    string_classes = (str, bytes)
 
 if sys.version_info[0] == 2:
     import Queue as queue

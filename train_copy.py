@@ -96,9 +96,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
         if isinstance(opt.gpuid, int):
             opt.gpuid = [opt.gpuid]
         logging.info('Running on GPU! devices=%s' % str(opt.gpuid))
-        model = model.cuda()
         model = nn.DataParallel(model, device_ids=opt.gpuid)
-        criterion.cuda()
     else:
         logging.info('Running on CPU!')
 
@@ -329,6 +327,8 @@ def init_optimizer_criterion(model, opt):
     optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
     # optimizer = torch.optim.Adadelta(model.parameters(), lr=0.1)
     # optimizer = torch.optim.RMSprop(model.parameters(), lr=0.1)
+    if torch.cuda.is_available():
+        criterion.cuda()
 
     return optimizer, criterion
 
@@ -377,6 +377,9 @@ def init_model(opt):
             max_unk_words=opt.max_unk_words,
             unk_word=opt.word2id[pykp.IO.UNK_WORD],
         )
+
+    if torch.cuda.is_available():
+        model = model.cuda()
 
     logging.info('======================  Model Parameters  =========================')
     if opt.train_from:
