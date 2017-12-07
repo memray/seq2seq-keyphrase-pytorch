@@ -18,6 +18,8 @@ parser.add_argument('-config', help="Read options from this file")
 
 parser.add_argument('-dataset', required=True,
                     help="Name of dataset")
+parser.add_argument('-save_data', required=True,
+                    help="Output file for the prepared data")
 
 '''
 parser.add_argument('-train_path', required=True,
@@ -26,8 +28,6 @@ parser.add_argument('-valid_path', required=True,
                     help="Path to the validation data")
 parser.add_argument('-test_path', required=True,
                     help="Path to the test data")
-parser.add_argument('-save_data', required=True,
-                    help="Output file for the prepared data")
 '''
 
 parser.add_argument('-src_vocab',
@@ -44,7 +44,7 @@ opt = parser.parse_args()
 opt.train_path = 'data/%s/%s_training.json'     % (opt.dataset, opt.dataset)
 opt.valid_path = 'data/%s/%s_validation.json'   % (opt.dataset, opt.dataset)
 opt.test_path  = 'data/%s/%s_testing.json'      % (opt.dataset, opt.dataset)
-opt.save_data  = 'data/%s-test/%s' % (opt.dataset, opt.dataset)
+opt.save_data  = 'data/%s/%s' % (opt.save_data, opt.dataset)
 
 def main():
     '''
@@ -80,6 +80,9 @@ def main():
     torch.save(train_one2many, open(opt.save_data + '.train.one2many.pt', 'wb'))
     len_train_one2many = len(train_one2many)
     train_one2many = None
+
+    # opt.vocab = 'data/kp20k/kp20k.vocab.pt'
+    # word2id, id2word, vocab = torch.load(opt.vocab, 'wb')
 
     '''
     Load and process validation data
@@ -147,6 +150,7 @@ def main():
 
     '''
     dump to disk
+    '''
     print("Dumping dict to disk: %s" % opt.save_data + '.vocab.pt')
     torch.save([word2id, id2word, vocab],
                open(opt.save_data + '.vocab.pt', 'wb'))
@@ -157,7 +161,6 @@ def main():
     torch.save(test_one2one, open(opt.save_data + '.test.one2one.pt', 'wb'))
     torch.save(test_one2many, open(opt.save_data + '.test.one2many.pt', 'wb'))
     print("Dumping done!")
-    '''
 
 if __name__ == "__main__":
     main()

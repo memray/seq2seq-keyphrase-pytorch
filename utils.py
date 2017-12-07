@@ -239,17 +239,22 @@ def plot_learning_curve(scores, curve_names, checkpoint_names, title, ylim=None,
     # print(train_scores)
     # print(test_scores)
     plt.grid()
-    means   = []
-    stds    = []
+    means   = {[(n, []) for n in curve_names]}
+    stds    = {[(n, []) for n in curve_names]}
 
     colors = "rgbcmykw"
 
     for i, (name, score) in enumerate(zip(curve_names, scores)):
+        # get the mean and std of score along the time step
         mean = np.mean(score, axis=1)
-        means.append(mean)
+        means[name] = mean
         std  = np.std(score, axis=1)
-        stds.append(std)
+        stds[name] = std
 
+        if name.lower().startwith('train'):
+            score_ = np.asarray(score) / 20.0
+            mean = np.mean(score_, axis=1)
+            std  = np.std(score_, axis=1)
         plt.fill_between(train_sizes, mean - std,
                          mean + std, alpha=0.1,
                          color=colors[i])
@@ -261,9 +266,9 @@ def plot_learning_curve(scores, curve_names, checkpoint_names, title, ylim=None,
     if save_path:
         plt.savefig(save_path + '.png', bbox_inches='tight')
 
-        csv_lines = []
-        for name, score in zip(checkpoint_names, *scores):
-            csv_line = name + ',' + ','.join(score)
+        csv_lines = ['time, ' + ','.join(curve_names)]
+        for t_id, time in enumerate(checkpoint_names):
+            csv_line = time + ',' + ','.join([means[c_name][t_id] for c_name in curve_names])
             csv_lines.append(csv_line)
 
         with open(save_path + '.csv', 'w') as result_csv:

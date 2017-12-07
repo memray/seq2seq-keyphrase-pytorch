@@ -144,7 +144,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         trg_o2o, _, _               = self._pad(list(itertools.chain(*[t for t in trg])))
         trg_target_o2o, _, _        = self._pad(list(itertools.chain(*[t for t in trg_target])))
         trg_copy_target_o2o, _, _   = self._pad(list(itertools.chain(*[t for t in trg_copy_target])))
-        oov_lists_o2o               = list(itertools.chain(*[t for t in oov_lists]))
+        oov_lists_o2o               = list(itertools.chain(*[[oov_lists[idx]]*len(t) for idx,t in enumerate(trg)]))
 
         assert (len(src) == len(src_o2m) == len(src_oov_o2m) == len(trg_copy_target_o2m) == len(oov_lists_o2m))
         assert (sum([len(t) for t in trg]) == len(src_o2o) == len(src_oov_o2o) == len(trg_copy_target_o2o) == len(oov_lists_o2o))
@@ -447,15 +447,23 @@ def build_dataset(src_trgs_pairs, word2id, id2word, opt, mode='one2one', include
                 examples.append(example)
 
         if mode == 'one2many' and len(examples) > 0:
-            example = {}
+            o2m_example = {}
             keys = examples[0].keys()
             for key in keys:
-                if key.startswith('src'):
-                    example[key] = examples[0][key]
+                if key.startswith('src') or key.startswith('oov'):
+                    o2m_example[key] = examples[0][key]
                 else:
-                    example[key] = [e[key] for e in examples]
+                    o2m_example[key] = [e[key] for e in examples]
+            if include_original:
+                assert len(o2m_example['src']) == len(o2m_example['src_oov']) == len(o2m_example['src_str'])
+                assert len(o2m_example['oov_dict']) == len(o2m_example['oov_list'])
+                assert len(o2m_example['trg']) == len(o2m_example['trg_copy']) == len(o2m_example['trg_str'])
+            else:
+                assert len(o2m_example['src']) == len(o2m_example['src_oov'])
+                assert len(o2m_example['oov_dict']) == len(o2m_example['oov_list'])
+                assert len(o2m_example['trg']) == len(o2m_example['trg_copy'])
 
-            return_examples.append(example)
+            return_examples.append(o2m_example)
 
     print('Find #(oov_target)/#(all) = %d/%d' % (oov_target, len(return_examples)))
     print('Find max_oov_len = %d' % (max_oov_len))

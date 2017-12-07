@@ -238,18 +238,24 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
                 # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
                 # valid_history_losses.append(valid_losses)
-                valid_f_scores, valid_score_dict  = evaluate_beam_search(generator, valid_data_loader, opt, title='Validating', epoch=epoch, save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]valid_result.csv' % (epoch, batch_i, total_batch))
-                test_f_scores, test_score_dict    = evaluate_beam_search(generator, test_data_loader, opt, title='Testing', epoch=epoch, save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]test_result.csv' % (epoch, batch_i, total_batch))
+                valid_score_dict  = evaluate_beam_search(generator, valid_data_loader, opt, title='valid', epoch=epoch, save_path=opt.exp_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                test_score_dict    = evaluate_beam_search(generator, test_data_loader, opt, title='test', epoch=epoch, save_path=opt.exp_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
 
                 checkpoint_names.append('epoch=%d,batch=%d,total_batch=%d' % (epoch, batch_i, total_batch))
                 train_history_losses.append(copy.copy(train_losses))
-                valid_history_losses.append(valid_f_scores)
-                test_history_losses.append(test_f_scores)
+                valid_history_losses.append(valid_score_dict)
+                test_history_losses.append(test_score_dict)
                 train_losses = []
 
+                scores = [train_history_losses]
+                curve_names = ['Training Error']
+                scores += [[result_dict[name] for result_dict in valid_history_losses] for name in opt.report_score_names]
+                curve_names += ['Valid - '+name for name in opt.report_score_names]
+                scores += [[result_dict[name] for result_dict in test_history_losses] for name in opt.report_score_names]
+                curve_names += ['Test - '+name for name in opt.report_score_names]
                 # Plot the learning curve
-                plot_learning_curve(scores=[train_history_losses, valid_history_losses, test_history_losses],
-                                    curve_names=['Training Error', 'Validation F-score', 'Test F-score'],
+                plot_learning_curve(scores=scores,
+                                    curve_names=curve_names,
                                     checkpoint_names=checkpoint_names,
                                     title='Training, Validation & Test',
                                     save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve.png' % (epoch, batch_i, total_batch))
@@ -325,6 +331,14 @@ def load_data_vocab(opt, load_train=True):
 
     valid_one2many_dataset = KeyphraseDataset(valid_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
     test_one2many_dataset  = KeyphraseDataset(test_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
+
+    for e_id, e in enumerate(test_one2many_dataset.examples):
+        with open(os.path.join('data', 'new_kp20k_for_theano_model', 'text', '%d.txt' % e_id), 'w') as t_file:
+            t_file.write(' '.join(e['src_str']))
+        with open(os.path.join('data', 'new_kp20k_for_theano_model', 'keyphrase', '%d.txt' % e_id), 'w') as t_file:
+            t_file.writelines([(' '.join(t))+'\n' for t in e['trg_str']])
+
+    exit()
 
     valid_one2many_loader  = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
     test_one2many_loader   = KeyphraseDataLoader(dataset=test_one2many_dataset, collate_fn=test_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
