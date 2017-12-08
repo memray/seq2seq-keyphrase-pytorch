@@ -122,9 +122,10 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
 
     if opt.train_from:
         state_path = opt.train_from.replace('.model', '.state')
+        logging.info('Loading training state from: %s' % state_path)
         if os.path.exists(state_path):
             (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_history_losses, valid_history_losses,
-     test_history_losses) = torch.load(open(state_path, 'rb'))
+                        test_history_losses) = torch.load(open(state_path, 'rb'))
             opt.start_epoch = epoch
 
     for epoch in range(opt.start_epoch , opt.epochs):
@@ -241,7 +242,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                 valid_score_dict  = evaluate_beam_search(generator, valid_data_loader, opt, title='valid', epoch=epoch, save_path=opt.exp_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
                 test_score_dict    = evaluate_beam_search(generator, test_data_loader, opt, title='test', epoch=epoch, save_path=opt.exp_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
 
-                checkpoint_names.append('epoch=%d,batch=%d,total_batch=%d' % (epoch, batch_i, total_batch))
+                checkpoint_names.append('epoch=%d-batch=%d-total_batch=%d' % (epoch, batch_i, total_batch))
                 train_history_losses.append(copy.copy(train_losses))
                 valid_history_losses.append(valid_score_dict)
                 test_history_losses.append(test_score_dict)
@@ -253,32 +254,21 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                 curve_names += ['Valid - '+name for name in opt.report_score_names]
                 scores += [[result_dict[name] for result_dict in test_history_losses] for name in opt.report_score_names]
                 curve_names += ['Test - '+name for name in opt.report_score_names]
+
+                scores = [np.asarray(s) for s in scores]
                 # Plot the learning curve
                 plot_learning_curve(scores=scores,
                                     curve_names=curve_names,
                                     checkpoint_names=checkpoint_names,
-                                    title='Training, Validation & Test',
+                                    title='Training Validation & Test',
                                     save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve.png' % (epoch, batch_i, total_batch))
 
                 '''
                 determine if early stop training
                 '''
-                valid_loss      = np.average(valid_history_losses[-1])
+                valid_loss      = np.average(valid_history_losses[-1][opt.report_score_names[0]])
                 is_best_loss    = valid_loss < best_loss
-                rate_of_change  = float(valid_loss - best_loss) / float(best_loss)
-
-                # only store the checkpoints that make better validation performances
-                if total_batch > 1 and epoch >= opt.start_checkpoint_at and (total_batch % opt.save_model_every == 0 or is_best_loss):
-                    # Save the checkpoint
-                    logging.info('Saving checkpoint to: %s' % os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d.error=%f' % (opt.exp, epoch, batch_i, total_batch, valid_loss) + '.model'))
-                    torch.save(
-                        model.state_dict(),
-                        open(os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
-                    )
-                    torch.save(
-                        (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_history_losses, valid_history_losses, test_history_losses),
-                        open(os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.state'), 'wb')
-                    )
+                rate_of_change  = float(valid_loss - best_loss) / float(best_loss) if float(best_loss) > 0 else 0.0
 
                 # valid error doesn't decrease
                 if rate_of_change >= 0:
@@ -294,6 +284,20 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                         stop_increasing, best_loss, valid_loss, rate_of_change * 100))
 
                 best_loss = min(valid_loss, best_loss)
+
+                # only store the checkpoints that make better validation performances
+                if total_batch > 1 and (total_batch % opt.save_model_every == 0 or is_best_loss): #epoch >= opt.start_checkpoint_at and
+                    # Save the checkpoint
+                    logging.info('Saving checkpoint to: %s' % os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d.error=%f' % (opt.exp, epoch, batch_i, total_batch, valid_loss) + '.model'))
+                    torch.save(
+                        model.state_dict(),
+                        open(os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
+                    )
+                    torch.save(
+                        (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_history_losses, valid_history_losses, test_history_losses),
+                        open(os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.state'), 'wb')
+                    )
+
                 if stop_increasing >= opt.early_stop_tolerance:
                     logging.info('Have not increased for %d epoches, early stop training' % stop_increasing)
                     early_stop_flag = True
@@ -332,13 +336,14 @@ def load_data_vocab(opt, load_train=True):
     valid_one2many_dataset = KeyphraseDataset(valid_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
     test_one2many_dataset  = KeyphraseDataset(test_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
 
+    '''
     for e_id, e in enumerate(test_one2many_dataset.examples):
         with open(os.path.join('data', 'new_kp20k_for_theano_model', 'text', '%d.txt' % e_id), 'w') as t_file:
             t_file.write(' '.join(e['src_str']))
         with open(os.path.join('data', 'new_kp20k_for_theano_model', 'keyphrase', '%d.txt' % e_id), 'w') as t_file:
             t_file.writelines([(' '.join(t))+'\n' for t in e['trg_str']])
-
     exit()
+    '''
 
     valid_one2many_loader  = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
     test_one2many_loader   = KeyphraseDataLoader(dataset=test_one2many_dataset, collate_fn=test_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
@@ -357,17 +362,25 @@ def load_data_vocab(opt, load_train=True):
     return train_one2many_loader, valid_one2many_loader, test_one2many_loader, word2id, id2word, vocab
 
 def init_optimizer_criterion(model, opt):
-    # mask the PAD <pad> when computing loss, BOS doesn't appear in targets
+    """
+    mask the PAD <pad> when computing loss, before we used weight matrix, but not handy for copy-model, change to ignore_index
+    :param model:
+    :param opt:
+    :return:
+    """
+    '''
     if not opt.copy_model:
         weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
     else:
         weight_mask = torch.ones(opt.vocab_size + opt.max_unk_words).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size + opt.max_unk_words)
     weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0
     criterion = torch.nn.NLLLoss(weight=weight_mask)
-
-    optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
     # optimizer = torch.optim.Adadelta(model.parameters(), lr=0.1)
     # optimizer = torch.optim.RMSprop(model.parameters(), lr=0.1)
+    '''
+    criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.IO.PAD_WORD])
+
+    optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
     if torch.cuda.is_available():
         criterion.cuda()
 
@@ -431,8 +444,9 @@ def init_model(opt):
             checkpoint = torch.load(
                 open(opt.train_from, 'rb'), map_location=lambda storage, loc: storage
             )
+        print(checkpoint.keys())
         # some compatible problems, keys are started with 'module.'
-        checkpoint = dict([(k[k.find('module.')+7:],v) for k,v in checkpoint.items()])
+        checkpoint = dict([(k[7:],v) if k.startswith('module.') else (k,v) for k,v in checkpoint.items()])
         model.load_state_dict(checkpoint)
 
     utils.tally_parameters(model)

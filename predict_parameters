@@ -1,5 +1,15 @@
+They are all:
+    -beam_size 16
+    -max_sent_length 5
+    -heap_size 64
+-beam_search_batch_size 16 will crash
+
 -train_from model/rnn.teacher_forcing/kp20k.bi-directional.20171128-011602/kp20k.epoch=3.batch=9700.total_batch=30000.model -data data/kp20k/kp20k -vocab data/kp20k/kp20k.vocab.pt -exp_path "exp/%s.%s" -exp "kp20k.bi-directional" -bidirectional -batch_size 16 -beam_search_batch_size 8 -batch_workers 4 -must_appear_in_src
+
+-train_from model/rnn.teacher_forcing/kp20k.uni-directional.20171128-011616/kp20k.epoch=3.batch=9700.total_batch=30000.model -data data/kp20k/kp20k -vocab data/kp20k/kp20k.vocab.pt -exp_path "exp/%s.%s" -exp "kp20k.uni-directional" -batch_size 16 -beam_search_batch_size 8 -batch_workers 4 -must_appear_in_src
 
 -train_from model/rnn.teacher_forcing/stackexchange.bi-directional.20171128-011616/stackexchange.epoch=5.batch=728.total_batch=10000.model -data data/stackexchange/stackexchange -vocab data/stackexchange/stackexchange.vocab.pt -exp_path "exp/%s.%s" -exp "stackexchange.bi-directional" -bidirectional -batch_size 16 -beam_search_batch_size 8 -batch_workers 4 -max_sent_length 4
 
--train_from model/rnn.teacher_forcing/stackexchange.uni-directional.20171128-011621/stackexchange.epoch=9.batch=728.total_batch=10000.model -data data/stackexchange/stackexchange -vocab data/stackexchange/stackexchange.vocab.pt -exp_path "exp/%s.%s" -exp "stackexchange.bi-directional" -batch_size 16 -beam_search_batch_size 8 -batch_workers 4 -max_sent_length 4  -must_appear_in_src
+-train_from model/rnn.teacher_forcing/stackexchange.uni-directional.20171128-011621/stackexchange.epoch=9.batch=728.total_batch=10000.model -data data/stackexchange/stackexchange -vocab data/stackexchange/stackexchange.vocab.pt -exp_path "exp/%s.%s" -exp "stackexchange.uni-directional" -batch_size 16 -beam_search_batch_size 8 -batch_workers 4 -max_sent_length 4  -must_appear_in_src
+
+-train_from model/prelim_copy/kp20k-copy.20171203-034153/kp20k-copy.epoch=3.batch=55088.total_batch=185000.model -data data/kp20k/kp20k -vocab data/kp20k/kp20k.vocab.pt -exp_path "exp/%s.%s" -exp "kp20k-copy.bi-directional" -copy_model -bidirectional -batch_size 16 -beam_search_batch_size 16 -batch_workers 4 -must_appear_in_src

@@ -253,7 +253,7 @@ def train_opts(parser):
                         help="Path of checkpoints.")
 
     # beam search setting
-    parser.add_argument('-beam_search_batch_size', type=int, default=8,
+    parser.add_argument('-beam_search_batch_size', type=int, default=16,
                         help='Maximum batch size')
     parser.add_argument('-beam_search_batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')
@@ -271,7 +271,7 @@ def predict_opts(parser):
     parser.add_argument('-num_oneword_seq', type=int, default=10000,
                         help="""Source sequence to decode (one line per
                         sequence)""")
-    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5,#oneword=-1', 'f_score@5,#oneword=1'],
+    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5#oneword=-1', 'f_score@5#oneword=1'],
                         help="""Default measure to report""")
     # parser.add_argument('-test_data', required=True,
     #                     help="""Source sequence to decode (one line per

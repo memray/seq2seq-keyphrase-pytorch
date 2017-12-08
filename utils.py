@@ -229,7 +229,7 @@ def plot_learning_curve(scores, curve_names, checkpoint_names, title, ylim=None,
         Defines minimum and maximum yvalues plotted.
     """
     train_sizes=np.linspace(1, len(scores[0]), len(scores[0]))
-    plt.figure(dpi=200)
+    plt.figure(dpi=500)
     plt.title(title)
     if ylim is not None:
         plt.ylim(*ylim)
@@ -239,22 +239,22 @@ def plot_learning_curve(scores, curve_names, checkpoint_names, title, ylim=None,
     # print(train_scores)
     # print(test_scores)
     plt.grid()
-    means   = {[(n, []) for n in curve_names]}
-    stds    = {[(n, []) for n in curve_names]}
+    means   = {}
+    stds    = {}
 
     colors = "rgbcmykw"
 
     for i, (name, score) in enumerate(zip(curve_names, scores)):
         # get the mean and std of score along the time step
-        mean = np.mean(score, axis=1)
+        mean = np.asarray([np.mean(s) for s in score])
         means[name] = mean
-        std  = np.std(score, axis=1)
+        std  = np.asarray([np.std(s) for s in score])
         stds[name] = std
 
-        if name.lower().startwith('train'):
-            score_ = np.asarray(score) / 20.0
-            mean = np.mean(score_, axis=1)
-            std  = np.std(score_, axis=1)
+        if name.lower().startswith('train'):
+            score_ = [np.asarray(s) / 20.0 for s in score]
+            mean = np.asarray([np.mean(s) for s in score_])
+            std  = np.asarray([np.std(s) for s in score_])
         plt.fill_between(train_sizes, mean - std,
                          mean + std, alpha=0.1,
                          color=colors[i])
@@ -268,11 +268,11 @@ def plot_learning_curve(scores, curve_names, checkpoint_names, title, ylim=None,
 
         csv_lines = ['time, ' + ','.join(curve_names)]
         for t_id, time in enumerate(checkpoint_names):
-            csv_line = time + ',' + ','.join([means[c_name][t_id] for c_name in curve_names])
+            csv_line = time + ',' + ','.join([str(means[c_name][t_id]) for c_name in curve_names])
             csv_lines.append(csv_line)
 
         with open(save_path + '.csv', 'w') as result_csv:
-            result_csv.writelines(csv_line)
+            result_csv.write('\n'.join(csv_lines))
 
     plt.close()
     return plt

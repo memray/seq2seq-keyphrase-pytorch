@@ -107,9 +107,11 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
     topk_range         = [5, 10]
     score_names        = ['precision', 'recall', 'f_score']
 
+    example_idx = 0
+
     for i, batch in enumerate(data_loader):
-        if i > 2:
-            break
+        # if i > 3:
+        #     break
 
         one2many_batch, one2one_batch = batch
         src_list, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
@@ -124,13 +126,10 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
         pred_seq_list = generator.beam_search(src_list, src_oov_map_list, opt.word2id)
 
-        example_idx = 0
-
         '''
         process each example
         '''
         for src, src_str, trg, trg_str, trg_copy, pred_seq, oov in zip(src_list, src_str_list, trg_list, trg_str_list, trg_copy_target_list, pred_seq_list, oov_list):
-            example_idx += 1
             print_out = ''
             print_out += '\nOrginal Source String: \n %s' % (' '.join(src_str))
             src = src.cpu().data.numpy() if torch.cuda.is_available() else src.data.numpy()
@@ -159,16 +158,6 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 else:
                     print_out += '\t\t[%.4f]\t%s \t %s \n' % (score, ' '.join(word), str(seq.sentence))
 
-            logging.info(print_out)
-
-            if save_path:
-                if not os.path.exists(os.path.join(save_path, title+'_detail')):
-                    os.makedirs(os.path.join(save_path, title+'_detail'))
-                with open(os.path.join(save_path, title+'_detail', str(example_idx)+'_print.txt'), 'w') as f_:
-                    f_.write(print_out)
-                with open(os.path.join(save_path, title+'_detail', str(example_idx)+'_prediction.txt'), 'w') as f_:
-                    f_.write(preds_out)
-
             '''
             Evaluate predictions w.r.t different filterings and metrics
             '''
@@ -183,11 +172,24 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 for topk in topk_range:
                     results = evalute(match_list, filtered_pred_seq, trg_str, topk=topk)
                     for k,v  in zip(score_names, results):
-                        if '%s@%d,#oneword=%d' % (k, topk, num_oneword_seq) not in score_dict:
-                            score_dict['%s@%d,#oneword=%d' % (k, topk, num_oneword_seq)] = []
-                        score_dict['%s@%d,#oneword=%d' % (k, topk, num_oneword_seq)].append(v)
+                        if '%s@%d#oneword=%d' % (k, topk, num_oneword_seq) not in score_dict:
+                            score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)] = []
+                        score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)].append(v)
 
-        progbar.update(epoch, i, [('f_score@5,#oneword=1', np.average(score_dict['f_score@5,#oneword=1'])), ('f_score@10,#oneword=1', np.average(score_dict['f_score@10,#oneword=1']))])
+                        print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
+
+            logging.info(print_out)
+
+            if save_path:
+                if not os.path.exists(os.path.join(save_path, title+'_detail')):
+                    os.makedirs(os.path.join(save_path, title+'_detail'))
+                with open(os.path.join(save_path, title+'_detail', str(example_idx)+'_print.txt'), 'w') as f_:
+                    f_.write(print_out)
+                with open(os.path.join(save_path, title+'_detail', str(example_idx)+'_prediction.txt'), 'w') as f_:
+                    f_.write(preds_out)
+            example_idx += 1
+
+        progbar.update(epoch, i, [('f_score@5#oneword=1', np.average(score_dict['f_score@5#oneword=1'])), ('f_score@10#oneword=1', np.average(score_dict['f_score@10#oneword=1']))])
 
     if save_path:
         with open(save_path + os.path.sep + title +'_result.csv', 'w') as result_csv:
@@ -196,7 +198,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 for topk in topk_range:
                     csv_line = '#oneword=%d-score@%d' % (num_oneword_seq, topk)
                     for k in score_names:
-                        csv_line += ',%f' % np.average(score_dict['%s@%d,#oneword=%d' % (k, topk, num_oneword_seq)])
+                        csv_line += ',%f' % np.average(score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)])
                     csv_lines.append(csv_line+'\n')
 
             result_csv.writelines(csv_lines)
