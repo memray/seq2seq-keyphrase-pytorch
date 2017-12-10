@@ -41,6 +41,15 @@ def main():
     if torch.cuda.is_available() and not opt.gpuid:
         opt.gpuid = 0
 
+    if hasattr(opt, 'copy_model') and opt.copy_model:
+        opt.exp += '.copy'
+
+    if hasattr(opt, 'bidirectional'):
+        if opt.bidirectional:
+            opt.exp += '.bi-directional'
+        else:
+            opt.exp += '.uni-directional'
+
     # fill time into the name
     if opt.exp_path.find('%s') > 0:
         opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
