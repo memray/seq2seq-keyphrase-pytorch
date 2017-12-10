@@ -110,8 +110,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
     example_idx = 0
 
     for i, batch in enumerate(data_loader):
-        # if i > 3:
-        #     break
+        if i > 3:
+            break
 
         one2many_batch, one2one_batch = batch
         src_list, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
@@ -124,7 +124,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         # print("src size - %s" % str(src_list.size()))
         # print("target size - %s" % len(trg_copy_target_list))
 
-        pred_seq_list = generator.beam_search(src_list, src_oov_map_list, opt.word2id)
+        pred_seq_list = generator.beam_search(src_list, src_oov_map_list, oov_list, opt.word2id)
 
         '''
         process each example
@@ -192,11 +192,12 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         progbar.update(epoch, i, [('f_score@5#oneword=1', np.average(score_dict['f_score@5#oneword=1'])), ('f_score@10#oneword=1', np.average(score_dict['f_score@10#oneword=1']))])
 
     if save_path:
+        # export scores. Each row is scores (precision, recall and f-score) of different way of filtering predictions (how many one-word predictions to keep)
         with open(save_path + os.path.sep + title +'_result.csv', 'w') as result_csv:
             csv_lines = []
             for num_oneword_seq in num_oneword_range:
                 for topk in topk_range:
-                    csv_line = '#oneword=%d-score@%d' % (num_oneword_seq, topk)
+                    csv_line = '#oneword=%d,@%d' % (num_oneword_seq, topk)
                     for k in score_names:
                         csv_line += ',%f' % np.average(score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)])
                     csv_lines.append(csv_line+'\n')

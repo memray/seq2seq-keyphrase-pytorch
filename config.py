@@ -232,7 +232,7 @@ def train_opts(parser):
 
     parser.add_argument('-run_valid_every', type=int, default=2000,
                         help="Run validation test at this interval (every run_valid_every epochs)")
-    parser.add_argument('-early_stop_tolerance', type=int, default=100,
+    parser.add_argument('-early_stop_tolerance', type=int, default=10,
                         help="Stop training if it doesn't improve any more for serveral epochs")
 
     timemark = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
@@ -262,8 +262,6 @@ def train_opts(parser):
                         help='Beam size')
     parser.add_argument('-max_sent_length', type=int, default=5,
                         help='Maximum sentence length.')
-    parser.add_argument('-heap_size', type=int, default=64,
-                        help='Maximum size of search queue.')
 
 def predict_opts(parser):
     parser.add_argument('-must_appear_in_src', action="store_true",
@@ -271,7 +269,7 @@ def predict_opts(parser):
     parser.add_argument('-num_oneword_seq', type=int, default=10000,
                         help="""Source sequence to decode (one line per
                         sequence)""")
-    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5#oneword=-1', 'f_score@5#oneword=1'],
+    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5#oneword=-1', 'f_score@5#oneword=1', 'f_score@10#oneword=-1', 'f_score@10#oneword=1'],
                         help="""Default measure to report""")
     # parser.add_argument('-test_data', required=True,
     #                     help="""Source sequence to decode (one line per

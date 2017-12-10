@@ -242,7 +242,8 @@ def plot_learning_curve(scores, curve_names, checkpoint_names, title, ylim=None,
     means   = {}
     stds    = {}
 
-    colors = "rgbcmykw"
+    # colors = "rgbcmykw"
+    colors = matplotlib.cm.rainbow(np.linspace(0, 1, len(curve_names)))
 
     for i, (name, score) in enumerate(zip(curve_names, scores)):
         # get the mean and std of score along the time step

@@ -327,12 +327,16 @@ class KeyphraseDataLoader(object):
     def __len__(self):
         return len(self.batch_sampler)
 
+    def one2one_number(self):
+        return sum(self.num_trgs)
 
 class One2ManyBatchSampler(object):
     """Wraps another sampler to yield a mini-batch of indices.
     Return batches of one2many pairs of which the sum of target sequences should not exceed the batch_size
     For example, if batch_size is 20 and a list of 7 examples whose number of targets are [7,5,7,6,9,7,12]
         then they are split into 4 batches: [7, 5], [7, 6], [9, 7], [12], sum of each is smaller than 20
+
+    Original implementation is lazy loading, which cannot give the final length. Modified to load at once
 
     Args:
         sampler (Sampler): Base sampler.
@@ -353,36 +357,34 @@ class One2ManyBatchSampler(object):
         self.num_trgs   = num_trgs
         self.batch_size = batch_size
         self.drop_last  = drop_last
-        self.final_num_batch  = None
 
-    def __iter__(self):
+        batches = []
         batch = []
-        self.final_num_batch  = 0
         for idx in self.sampler:
+            # number of targets sequences in current batch
             number_trgs = sum([self.num_trgs[id] for id in batch])
             if number_trgs + self.num_trgs[idx] < self.batch_size:
                 batch.append(idx)
             elif len(batch) == 0: # if the batch_size is very small, return a batch of only one data sample
                 batch.append(idx)
-                print('#(src)/#(trg) in batch %d=%d/%d \t\t %s' % (self.final_num_batch, len(batch), number_trgs, str(batch)))
-                yield batch
+                batches.append(batch)
+                # print('batch %d: #(src)=%d, #(trg)=%d \t\t %s' % (len(batches), len(batch), number_trgs, str(batch)))
                 batch = []
-                self.final_num_batch += 1
             else:
-                print('#(src)/#(trg) in batch %d=%d/%d \t\t %s' % (self.final_num_batch, len(batch), number_trgs, str(batch)))
-                yield batch
+                batches.append(batch)
+                # print('batch %d: #(src)=%d, #(trg)=%d \t\t %s' % (len(batches), len(batch), number_trgs, str(batch)))
                 batch = []
                 batch.append(idx)
-                self.final_num_batch += 1
 
         if len(batch) > 0 and not self.drop_last:
-            self.final_num_batch += 1
-            yield batch
+            batches.append(batch)
+
+        self.batches         = batches
+        self.final_num_batch = len(batches)
+
+    def __iter__(self):
+        return self.batches.__iter__()
 
     def __len__(self):
-        if self.final_num_batch:
-            return self.final_num_batch
-        if self.drop_last:
-            return len(self.sampler) // self.batch_size
-        else:
-            return (len(self.sampler) + self.batch_size - 1) // self.batch_size
+        return self.final_num_batch
+

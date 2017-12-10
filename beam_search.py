@@ -27,7 +27,7 @@ EOS = 0
 class Sequence(object):
     """Represents a complete or partial sequence."""
 
-    def __init__(self, batch_id, sentence, dec_hidden, context, src_oov, logprob, score, attention=None):
+    def __init__(self, batch_id, sentence, dec_hidden, context, src_oov, oov_list, logprob, score, attention=None):
         """Initializes the Sequence.
 
         Args:
@@ -43,6 +43,7 @@ class Sequence(object):
         self.dec_hidden = dec_hidden
         self.context    = context
         self.src_oov    = src_oov
+        self.oov_list   = oov_list
         self.logprob    = logprob
         self.score      = score
         self.attention  = attention
@@ -124,7 +125,6 @@ class SequenceGenerator(object):
                  return_attention=True,
                  length_normalization_factor=0.0,
                  length_normalization_const=5.,
-                 heap_size = 100,
                  ):
         """Initializes the generator.
 
@@ -147,7 +147,6 @@ class SequenceGenerator(object):
         self.length_normalization_factor = length_normalization_factor
         self.length_normalization_const = length_normalization_const
         self.return_attention = return_attention
-        self.heap_size = heap_size
 
     def sequence_to_batch(self, sequence_lists):
         '''
@@ -169,7 +168,7 @@ class SequenceGenerator(object):
         flattened_sequences = list(itertools.chain(*[seq.extract() for seq in sequence_lists]))
         batch_size = len(flattened_sequences)
 
-        # (batch_size, 1)
+        # if it's oov, replace it with <unk> (batch_size, 1)
         inputs = torch.cat([Variable(torch.LongTensor([seq.sentence[-1]] if seq.sentence[-1] < self.model.vocab_size else [self.model.unk_word])) for seq in flattened_sequences]).view(batch_size, -1)
 
         # (batch_size, trg_hidden_dim)
@@ -180,8 +179,9 @@ class SequenceGenerator(object):
         else:
             dec_hiddens = torch.cat([seq.state for seq in flattened_sequences])
 
-        contexts = torch.cat([seq.context for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].context.size())
-        src_oovs = torch.cat([seq.src_oov for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].src_oov.size())
+        contexts  = torch.cat([seq.context for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].context.size())
+        src_oovs  = torch.cat([seq.src_oov for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].src_oov.size())
+        oov_lists = [seq.oov_list for seq in flattened_sequences]
 
         if torch.cuda.is_available():
             inputs      = inputs.cuda()
@@ -192,9 +192,9 @@ class SequenceGenerator(object):
             contexts    = contexts.cuda()
             src_oovs    = src_oovs.cuda()
 
-        return seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, src_oovs
+        return seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, src_oovs, oov_lists
 
-    def beam_search(self, src_input, src_oov, word2id):
+    def beam_search(self, src_input, src_oov, oov_list, word2id):
         """Runs beam search sequence generation given input (padded word indexes)
 
         Args:
@@ -219,8 +219,8 @@ class SequenceGenerator(object):
         elif isinstance(dec_hiddens, list):
             dec_hiddens = dec_hiddens
 
-        partial_sequences   = [TopN_heap(self.heap_size) for _ in range(batch_size)]
-        complete_sequences  = [TopN_heap(self.heap_size) for _ in range(batch_size)]
+        partial_sequences   = [TopN_heap(self.beam_size) for _ in range(batch_size)]
+        complete_sequences  = [TopN_heap(self.beam_size) for _ in range(batch_size)]
 
         for batch_i in range(batch_size):
             seq = Sequence(
@@ -229,6 +229,7 @@ class SequenceGenerator(object):
                     dec_hidden= dec_hiddens[batch_i],
                     context   = src_context[batch_i],
                     src_oov   = src_oov[batch_i],
+                    oov_list  = oov_list[batch_i],
                     logprob   = 0,
                     score     = 0,
                     attention = [])
@@ -244,20 +245,23 @@ class SequenceGenerator(object):
                 # We have run out of partial candidates; often happens when beam_size is small
                 break
 
-            # convert sequences into new batches to feed model
-            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, src_oovs = self.sequence_to_batch(partial_sequences)
+            # flatten 2d sequences (batch_size, beam_size) into 1d batches (batch_size * beam_size) to feed model
+            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, src_oovs, oov_lists = self.sequence_to_batch(partial_sequences)
 
-            words, probs, new_dec_hiddens, attn_weights = self.model.generate(
-                trg_input = inputs,
-                dec_hidden = dec_hiddens,
+            # Run one-step generation. probs=(batch_size, 1, K), dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
+            probs, new_dec_hiddens, attn_weights = self.model.generate(
+                trg_input   = inputs,
+                dec_hidden  = dec_hiddens,
                 enc_context = contexts,
-                src_map = src_oovs,
-                k=self.beam_size+1,
-                max_len=1,
+                src_map     = src_oovs,
+                oov_list    = oov_lists,
+                # k           =self.beam_size+1,
+                max_len     =1,
                 return_attention=self.return_attention
             )
 
             # squeeze these outputs, (hyp_seq_size, trg_len=1, K+1) -> (hyp_seq_size, K+1)
+            probs, words = probs.data.topk(self.beam_size+1, dim=-1)
             words = words.squeeze(1)
             probs = probs.squeeze(1)
             # (hyp_seq_size, trg_len=1, src_len) -> (hyp_seq_size, src_len)
@@ -270,11 +274,12 @@ class SequenceGenerator(object):
             if isinstance(new_dec_hiddens, tuple):
                 new_dec_hiddens1 = new_dec_hiddens[0].squeeze(0)
                 new_dec_hiddens2 = new_dec_hiddens[1].squeeze(0)
-                new_dec_hiddens = [(new_dec_hiddens1[i], new_dec_hiddens2[i]) for i in range(num_partial_sequences)]
+                new_dec_hiddens  = [(new_dec_hiddens1[i], new_dec_hiddens2[i]) for i in range(num_partial_sequences)]
 
-            # For every partial_sequence (num_partial_sequences in total), find and trim to the most likely beam_size hypotheses
+            # For every partial_sequence (num_partial_sequences in total), find and trim to the best hypotheses (beam_size in total)
             for batch_i in range(batch_size):
-                new_partial_sequences = TopN_heap(self.heap_size)
+                num_new_hyp_in_batch = 0
+                new_partial_sequences = TopN_heap(self.beam_size)
 
                 for partial_id, partial_seq in enumerate(partial_sequences[batch_i].extract()):
                     num_new_hyp = 0
@@ -300,6 +305,7 @@ class SequenceGenerator(object):
                             dec_hidden  =   None,
                             context     =   partial_seq.context,
                             src_oov     =   partial_seq.src_oov,
+                            oov_list    =   partial_seq.oov_list,
                             logprob     =   copy.copy(partial_seq.logprob),
                             score       =   copy.copy(partial_seq.score),
                             attention   =   copy.copy(partial_seq.attention)
@@ -334,15 +340,18 @@ class SequenceGenerator(object):
                         else:
                             new_partial_sequences.push(new_partial_seq)
                             num_new_hyp += 1
+                            num_new_hyp_in_batch += 1
 
                     # print('Finished no.%d partial sequence' % partial_id)
                     # print('\t#(hypothese) = %d' % (len(new_partial_sequences)))
                     # print('\t#(completed) = %d' % (sum([len(c) for c in complete_sequences])))
-                    # pass
 
                 partial_sequences[batch_i] = new_partial_sequences
 
+                print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
+
             print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
+
             # print('Round=%d' % (current_len))
             # print('\t#(hypothese) = %d' % (sum([len(batch_heap) for batch_heap in partial_sequences])))
             # for b_i in range(batch_size):
