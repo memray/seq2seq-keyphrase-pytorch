@@ -48,6 +48,7 @@ class Sequence(object):
         self.score      = score
         self.attention  = attention
 
+    '''
     def __cmp__(self, other):
         """Compares Sequences by score."""
         assert isinstance(other, Sequence)
@@ -67,7 +68,7 @@ class Sequence(object):
     def __eq__(self, other):
         assert isinstance(other, Sequence)
         return self.score == other.score
-
+    '''
 
 class TopN_heap(object):
     """Maintains the top n elements of an incrementally provided set."""
@@ -88,9 +89,10 @@ class TopN_heap(object):
         """Pushes a new element."""
         assert self._data is not None
         if len(self._data) < self._n:
-            heapq.heappush(self._data, x)
+            heapq.heappush(self._data, (x.score, x))
         else:
-            heapq.heappushpop(self._data, x)
+            heapq.heappushpop(self._data, (x.score, x))
+        pass
 
     def extract(self, sort=False):
         """Extracts all elements from the TopN.
@@ -106,8 +108,8 @@ class TopN_heap(object):
         assert self._data is not None
         data = self._data
         if sort:
-            data.sort(reverse=True)
-        return data
+            data.sort(reverse=True, key=lambda t:t[0])
+        return [t[1] for t in data]
 
     def reset(self):
         """Returns the TopN to an empty state."""
@@ -230,8 +232,8 @@ class SequenceGenerator(object):
                     context   = src_context[batch_i],
                     src_oov   = src_oov[batch_i],
                     oov_list  = oov_list[batch_i],
-                    logprob   = 0,
-                    score     = 0,
+                    logprob   = 0.0,
+                    score     = 0.0,
                     attention = [])
             partial_sequences[batch_i].push(seq)
 
@@ -297,7 +299,13 @@ class SequenceGenerator(object):
                             new_sent = copy.copy(partial_seq.sentence)
                         else:
                             new_sent = []
+
                         new_sent.append(w)
+
+                        if w >= 50000 and len(partial_seq.oov_list)==0:
+                            print(new_sent)
+                            print(partial_seq.oov_list)
+                            pass
 
                         new_partial_seq = Sequence(
                             batch_id    =   partial_seq.batch_id,
@@ -311,7 +319,7 @@ class SequenceGenerator(object):
                             attention   =   copy.copy(partial_seq.attention)
                         )
 
-                        # we have generated self.beam_size new hypotheses, stop generating
+                        # we have generated self.beam_size new hypotheses for current hyp, stop generating
                         if num_new_hyp >= self.beam_size:
                             break
 
@@ -348,7 +356,7 @@ class SequenceGenerator(object):
 
                 partial_sequences[batch_i] = new_partial_sequences
 
-                print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
+                # print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
 
             print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
 
