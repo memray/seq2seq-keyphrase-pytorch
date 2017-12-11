@@ -111,7 +111,6 @@ class Progbar(object):
 
         self.logger = logging.getLogger()
 
-    @time_usage
     def update(self, current_epoch, current, values=[]):
         '''
         @param current: index of current step

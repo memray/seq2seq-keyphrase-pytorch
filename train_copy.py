@@ -49,7 +49,6 @@ def time_usage(func):
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
-@time_usage
 def _valid_error(data_loader, model, criterion, epoch, opt):
     progbar = Progbar(title='Validating', target=len(data_loader), batch_size=opt.batch_size,
                       total_examples=len(data_loader.dataset))

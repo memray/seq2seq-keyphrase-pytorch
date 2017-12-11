@@ -20,6 +20,7 @@ import pykp
 import numpy as np
 import collections
 import itertools
+import logging
 
 EOS = 0
 
@@ -301,8 +302,8 @@ class SequenceGenerator(object):
                         new_sent.append(w)
 
                         if w >= 50000 and len(partial_seq.oov_list)==0:
-                            print(new_sent)
-                            print(partial_seq.oov_list)
+                            # print(new_sent)
+                            # print(partial_seq.oov_list)
                             pass
 
                         new_partial_seq = Sequence(
@@ -359,8 +360,8 @@ class SequenceGenerator(object):
                 partial_sequences[batch_i] = new_partial_sequences
 
                 # print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
-
-            print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
+            logging.info('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
+            # print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
 
             # print('Round=%d' % (current_len))
             # print('\t#(hypothese) = %d' % (sum([len(batch_heap) for batch_heap in partial_sequences])))

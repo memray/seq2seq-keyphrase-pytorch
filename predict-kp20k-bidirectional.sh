@@ -2,8 +2,8 @@
 #SBATCH --cluster=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --partition=titanx
-#SBATCH --job-name=tdr_dag
-#SBATCH --output=predict_dag.out
+#SBATCH --job-name=predict_dag.beamsize
+#SBATCH --output=predict_dag.out.beamsize
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1

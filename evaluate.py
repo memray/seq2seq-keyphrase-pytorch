@@ -31,9 +31,9 @@ def process_predseqs(pred_seqs, src_str, oov, id2word, opt, must_appear_in_src=T
     stemmed_src_str     = stem_word_list(src_str)
 
     for seq in pred_seqs:
-        print('-' * 50)
-        print('seq.sentence: ' + str(seq.sentence))
-        print('oov: ' + str(oov))
+        # print('-' * 50)
+        # print('seq.sentence: ' + str(seq.sentence))
+        # print('oov: ' + str(oov))
 
         for x in seq.sentence[:-1]:
             if x >= opt.vocab_size and len(oov)==0:
@@ -41,7 +41,7 @@ def process_predseqs(pred_seqs, src_str, oov, id2word, opt, must_appear_in_src=T
 
         # convert to words and remove the EOS token
         processed_seq      = [id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence[:-1]]
-        print('processed_seq: ' + str(processed_seq))
+        logging.info('processed_seq: ' + str(processed_seq))
 
         # print('%s - %s' % (str(seq.sentence[:-1]), str(processed_seq)))
         stemmed_pred_seq   = stem_word_list(processed_seq)
@@ -130,8 +130,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             src_oov_map_list = src_oov_map_list.cuda()
 
         logging.info('======================  %d =========================' % (i + 1))
-        print("src size - %s" % str(src_list.size()))
-        print("target size - %s" % len(trg_copy_target_list))
+        # print("src size - %s" % str(src_list.size()))
+        # print("target size - %s" % len(trg_copy_target_list))
 
         pred_seq_list = generator.beam_search(src_list, src_oov_map_list, oov_list, opt.word2id)
 
@@ -147,7 +147,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             print_out += 'Real Target Input:  \n\t\t%s \n' % str([[opt.id2word[x] for x in t] for t in trg])
             print_out += 'Real Target Copy:   \n\t\t%s \n' % str([[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in t] for t in trg_copy])
             print_out += 'oov_list:   \n\t\t%s ' % str(oov)
-            print(print_out)
+            logging.info(print_out)
             # 1st round filtering
             processed_pred_seq, processed_pred_str_seqs, processed_pred_score = process_predseqs(pred_seq, src_str, oov, opt.id2word, opt, must_appear_in_src=opt.must_appear_in_src)
             match_list = get_match_result(true_seqs=trg_str, pred_seqs=processed_pred_str_seqs)
