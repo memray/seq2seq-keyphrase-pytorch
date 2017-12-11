@@ -119,8 +119,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
     example_idx = 0
 
     for i, batch in enumerate(data_loader):
-        if i > 3:
-            break
+        # if i > 3:
+        #     break
 
         one2many_batch, one2one_batch = batch
         src_list, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
