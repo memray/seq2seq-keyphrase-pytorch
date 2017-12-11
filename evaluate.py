@@ -32,8 +32,12 @@ def process_predseqs(pred_seqs, src_str, oov, id2word, opt, must_appear_in_src=T
     stemmed_src_str     = stem_word_list(src_str)
 
     for seq in pred_seqs:
+        print('seq.sentence: ' + str(seq.sentence))
+        print('oov: ' + str(oov))
         # convert to words and remove the EOS token
         processed_seq      = [id2word[x] if x < opt.vocab_size else oov[x-opt.vocab_size] for x in seq.sentence[:-1]]
+        print('processed_seq: ' + str(processed_seq))
+
         # print('%s - %s' % (str(seq.sentence[:-1]), str(processed_seq)))
         stemmed_pred_seq   = stem_word_list(processed_seq)
 
