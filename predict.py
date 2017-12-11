@@ -73,10 +73,14 @@ def main():
         generator = SequenceGenerator(model,
                                       eos_id=opt.word2id[pykp.IO.EOS_WORD],
                                       beam_size=opt.beam_size,
-                                      max_sequence_length=opt.max_sent_length,
+                                      max_sequence_length=opt.max_sent_length
                                   )
 
+        # import time
+        # start_time = time.time()
         evaluate_beam_search(generator, test_data_loader, opt, save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]test_result.csv' % (0, 0, 0))
+        # print("--- %s seconds --- Complete Beam Search" % (time.time() - start_time))
+
         # predict_greedy(model, test_data_loader, test_examples, opt)
 
     except Exception as e:
