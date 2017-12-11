@@ -203,7 +203,7 @@ class Progbar(object):
                 for k in self.unique_values:
                     info += ' - %s: %.4f' % (k, self.sum_values[k][0] / max(1, self.sum_values[k][1]))
                 # sys.stdout.write(info + "\n")
-                self.logger.info(info + "\n")
+                self.logger.critical(info + "\n")
 
     def add(self, n, values=[]):
         self.update(self.seen_so_far + n, values)
