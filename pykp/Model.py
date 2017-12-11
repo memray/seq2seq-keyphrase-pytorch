@@ -139,7 +139,7 @@ class SoftDotAttention(nn.Module):
         # Normalize energies to weights in range 0 to 1, (batch_size, src_len)
         # attn = torch.nn.functional.softmax(attn_energies.view(-1, encoder_outputs.size(1))) # correct attention, normalize after reshaping
         #  (batch_size, trg_len, src_len)
-        attn_weights = torch.nn.functional.softmax(attn_energies.view(-1, src_len)).view(batch_size, trg_len, src_len) # wrong attention, normalize before reshaping, but it's working
+        attn_weights = torch.nn.functional.softmax(attn_energies.view(-1, src_len), dim = 1).view(batch_size, trg_len, src_len) # wrong attention, normalize before reshaping, but it's working
 
         # reweighting context, attn (batch_size, trg_len, src_len) * encoder_outputs (batch_size, src_len, src_hidden_dim) = (batch_size, trg_len, src_hidden_dim)
         weighted_context = torch.bmm(attn_weights, encoder_outputs)
@@ -150,7 +150,7 @@ class SoftDotAttention(nn.Module):
         # (batch_size * trg_len, src_hidden_dim + trg_hidden_dim) -> (batch_size * trg_len, trg_hidden_dim)
         h_tilde = self.tanh(self.linear_out(h_tilde.view(-1, context_dim + trg_hidden_dim)))
 
-        # return h_tilde (batch_size, trg_len, trg_hidden_dim), attn (batch_size, trg_len, src_len)
+        # return h_tilde (batch_size, trg_len, trg_hidden_dim), attn (batch_size, trg_len, src_len) and energies (before softmax)
         return h_tilde.view(batch_size, trg_len, trg_hidden_dim), attn_weights, attn_energies
 
     # @time_usage
@@ -574,7 +574,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         '''
         # assert isinstance(input_list, list) or isinstance(input_list, tuple)
         # assert isinstance(input_list[0], list) or isinstance(input_list[0], tuple)
-        max_oov_number  = max([len(oov) for oov in oov_list])
         batch_size      = trg_input.size(0)
         src_len         = enc_context.size(1)
         trg_len         = trg_input.size(1)
@@ -618,7 +617,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                     copy_logit  = attn_logit
                 copy_weights.append(copy_weight.permute(1, 0, 2)) # (1, batch_size, src_len)
                 # merge the generative and copying probs (batch_size, 1, vocab_size + max_unk_word)
-                decoder_log_prob   = self.merge_copy_probs(decoder_logit, copy_logit, src_map, max_oov_number)
+                decoder_log_prob   = self.merge_copy_probs(decoder_logit, copy_logit, src_map, oov_list)
 
             # Prepare for the next iteration, get the top word, top_idx and next_index are (batch_size, K)
             top_1_v, top_1_idx  = decoder_log_prob.data.topk(1, dim=-1) # (batch_size, 1)
@@ -850,9 +849,13 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
 
         return merged_log_prob
 
-    def merge_copy_probs(self, decoder_logits, copy_logits, src_map, max_oov_number):
+    def merge_copy_probs(self, decoder_logits, copy_logits, src_map, oov_list):
         '''
         The function takes logits as inputs here because Gu's model applies softmax in the end, to normalize generative/copying together
+        The tricky part is, Gu's model merges the logits of generative and copying part instead of probabilities,
+            then simply initialize the entended part to zeros would be erroneous because many logits are large negative floats.
+        To the sentences that have oovs it's fine. But if some sentences in a batch don't have oovs but mixed with sentences have oovs, the extended oov part would be ranked highly after softmax (zero is larger than other negative values in logits).
+        Thus we have to carefully initialize the oov-extended part of no-oov sentences to negative infinite floats.
         :param decoder_logits: (batch_size, trg_seq_len, vocab_size)
         :param copy_logits:    (batch_size, trg_len, src_len) the pointing/copying logits of each target words
         :param src_map:        (batch_size, src_len)
@@ -862,23 +865,32 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
         batch_size, max_length, _ = decoder_logits.size()
         src_len = src_map.size(1)
 
+        # set max_oov_number to be the max number of oov
+        max_oov_number   = max([len(oovs) for oovs in oov_list])
+
         # flatten and extend size of decoder_probs from (vocab_size) to (vocab_size+max_oov_number)
         flattened_decoder_logits = decoder_logits.view(batch_size * max_length, self.vocab_size)
         if max_oov_number > 0:
+            '''
             extended_zeros           = Variable(torch.zeros(batch_size * max_length, max_oov_number))
             extended_zeros           = extended_zeros.cuda() if torch.cuda.is_available() else extended_zeros
             flattened_decoder_logits = torch.cat((flattened_decoder_logits, extended_zeros), dim=1)
+            '''
+            extended_logits           = Variable(torch.FloatTensor([[0.0]*len(oov)+[float('-inf')]*(max_oov_number-len(oov)) for oov in oov_list]))
+            extended_logits           = extended_logits.unsqueeze(1).expand(batch_size, max_length, max_oov_number).contiguous().view(batch_size * max_length, -1)
+            extended_logits           = extended_logits.cuda() if torch.cuda.is_available() else extended_logits
+            flattened_decoder_logits  = torch.cat((flattened_decoder_logits, extended_logits), dim=1)
 
         # add probs of copied words by scatter_add_(dim, index, src), index should be in the same shape with src. decoder_probs=(batch_size * trg_len, vocab_size+max_oov_number), copy_weights=(batch_size, trg_len, src_len)
         expanded_src_map = src_map.unsqueeze(1).expand(batch_size, max_length, src_len).contiguous().view(batch_size * max_length, -1)  # (batch_size, src_len) -> (batch_size * trg_len, src_len)
         # flattened_decoder_logits.scatter_add_(dim=1, index=expanded_src_map, src=copy_logits.view(batch_size * max_length, -1))
-        flattened_decoder_logits.scatter_add_(1, expanded_src_map, copy_logits.view(batch_size * max_length, -1))
+        flattened_decoder_logits = flattened_decoder_logits.scatter_add_(1, expanded_src_map, copy_logits.view(batch_size * max_length, -1))
 
         # apply log softmax to normalize, ensuring it meets the properties of probability, (batch_size * trg_len, src_len)
-        flattened_decoder_logits = torch.nn.functional.log_softmax(flattened_decoder_logits)
+        flattened_decoder_logits = torch.nn.functional.log_softmax(flattened_decoder_logits, dim = 1)
 
         # reshape to batch first before returning (batch_size, trg_len, src_len)
-        decoder_log_probs = flattened_decoder_logits.view(batch_size, max_length, self.vocab_size+max_oov_number)
+        decoder_log_probs = flattened_decoder_logits.view(batch_size, max_length, self.vocab_size + max_oov_number)
 
         return decoder_log_probs
 
@@ -895,9 +907,6 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
             attn_weights        : (batch_size, trg_seq_len, src_seq_len)
             copy_attn_weights   : (batch_size, trg_seq_len, src_seq_len)
         '''
-        # set max_oov_number to be the max number of oov
-        max_oov_number   = max([len(oovs) for oovs in oov_list])
-        
         batch_size      = trg_input.size(0)
         src_len         = enc_context.size(1)
         trg_len         = trg_input.size(1)
@@ -948,7 +957,7 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
                 copy_logits = attn_logits
 
             # merge the generative and copying probs, (batch_size, trg_len, vocab_size + max_oov_number)
-            decoder_log_probs   = self.merge_copy_probs(decoder_logits, copy_logits, src_map, max_oov_number) # (batch_size, trg_len, vocab_size + max_oov_number)
+            decoder_log_probs   = self.merge_copy_probs(decoder_logits, copy_logits, src_map, oov_list) # (batch_size, trg_len, vocab_size + max_oov_number)
             decoder_outputs     = decoder_outputs.permute(1, 0, 2) # (batch_size, trg_len, trg_hidden_dim)
 
         else:
@@ -991,7 +1000,7 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
                     copy_logit = attn_logit
 
                 # merge the generative and copying probs (batch_size, 1, vocab_size + max_oov_number)
-                decoder_log_prob   = self.merge_copy_probs(decoder_logit, copy_logit, src_map, max_oov_number)
+                decoder_log_prob   = self.merge_copy_probs(decoder_logit, copy_logit, src_map, oov_list)
 
                 '''
                 Find the next word

@@ -58,6 +58,7 @@ class Sequence(object):
             return -1
         else:
             return 1
+    '''
 
     # For Python 3 compatibility (__cmp__ is deprecated).
     def __lt__(self, other):
@@ -68,7 +69,6 @@ class Sequence(object):
     def __eq__(self, other):
         assert isinstance(other, Sequence)
         return self.score == other.score
-    '''
 
 class TopN_heap(object):
     """Maintains the top n elements of an incrementally provided set."""
@@ -89,10 +89,9 @@ class TopN_heap(object):
         """Pushes a new element."""
         assert self._data is not None
         if len(self._data) < self._n:
-            heapq.heappush(self._data, (x.score, x))
+            heapq.heappush(self._data, x)
         else:
-            heapq.heappushpop(self._data, (x.score, x))
-        pass
+            heapq.heappushpop(self._data, x)
 
     def extract(self, sort=False):
         """Extracts all elements from the TopN.
@@ -108,8 +107,8 @@ class TopN_heap(object):
         assert self._data is not None
         data = self._data
         if sort:
-            data.sort(reverse=True, key=lambda t:t[0])
-        return [t[1] for t in data]
+            data.sort(reverse=True)
+        return data
 
     def reset(self):
         """Returns the TopN to an empty state."""
@@ -251,7 +250,7 @@ class SequenceGenerator(object):
             seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, src_oovs, oov_lists = self.sequence_to_batch(partial_sequences)
 
             # Run one-step generation. probs=(batch_size, 1, K), dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
-            probs, new_dec_hiddens, attn_weights = self.model.generate(
+            log_probs, new_dec_hiddens, attn_weights = self.model.generate(
                 trg_input   = inputs,
                 dec_hidden  = dec_hiddens,
                 enc_context = contexts,
@@ -263,7 +262,7 @@ class SequenceGenerator(object):
             )
 
             # squeeze these outputs, (hyp_seq_size, trg_len=1, K+1) -> (hyp_seq_size, K+1)
-            probs, words = probs.data.topk(self.beam_size+1, dim=-1)
+            probs, words = log_probs.data.topk(self.beam_size+1, dim=-1)
             words = words.squeeze(1)
             probs = probs.squeeze(1)
             # (hyp_seq_size, trg_len=1, src_len) -> (hyp_seq_size, src_len)
@@ -299,7 +298,6 @@ class SequenceGenerator(object):
                             new_sent = copy.copy(partial_seq.sentence)
                         else:
                             new_sent = []
-
                         new_sent.append(w)
 
                         if w >= 50000 and len(partial_seq.oov_list)==0:
@@ -346,7 +344,11 @@ class SequenceGenerator(object):
                                 new_partial_seq.score /= length_penalty ** self.length_normalization_factor
                             complete_sequences[new_partial_seq.batch_id].push(new_partial_seq)
                         else:
+                            # print('Before pushing[%d]' % new_partial_sequences.size())
+                            # print(sorted([s.score for s in new_partial_sequences._data]))
                             new_partial_sequences.push(new_partial_seq)
+                            # print('After pushing[%d]' % new_partial_sequences.size())
+                            # print(sorted([s.score for s in new_partial_sequences._data]))
                             num_new_hyp += 1
                             num_new_hyp_in_batch += 1
 
