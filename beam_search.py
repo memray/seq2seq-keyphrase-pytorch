@@ -20,6 +20,7 @@ import pykp
 import numpy as np
 import collections
 import itertools
+import logging
 
 EOS = 0
 
