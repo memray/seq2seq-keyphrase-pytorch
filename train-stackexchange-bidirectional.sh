@@ -2,11 +2,12 @@
 #SBATCH --cluster=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --partition=titanx
-#SBATCH --job-name=tdr_dag
-#SBATCH --output=tdr_dag.out
+#SBATCH --job-name=train-stackexchange-bidirectional
+#SBATCH --output=slurm_output/train-stackexchange-bidirectional.out
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
+#SBATCH --mem=32GB
 
 # Load modules
 #module restore

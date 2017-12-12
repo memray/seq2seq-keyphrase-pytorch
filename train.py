@@ -487,8 +487,8 @@ def main():
     if hasattr(opt, 'bidirectional'):
         if opt.bidirectional:
             opt.exp += '.bi-directional'
-        else:
-            opt.exp += '.uni-directional'
+    else:
+        opt.exp += '.uni-directional'
 
     # fill time into the name
     if opt.exp_path.find('%s') > 0:
