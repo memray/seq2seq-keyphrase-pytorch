@@ -489,7 +489,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
             # (batch_size, trg_len, trg_hidden_size) -> (batch_size, trg_len, vocab_size)
             decoder_logits = self.decoder2vocab(h_tildes.view(-1, trg_hidden_dim))
-            decoder_log_probs  = torch.nn.functional.log_softmax(decoder_logits).view(batch_size, max_length, self.vocab_size)
+            decoder_log_probs  = torch.nn.functional.log_softmax(decoder_logits, dim=-1).view(batch_size, max_length, self.vocab_size)
 
             decoder_outputs  = decoder_outputs.permute(1, 0, 2)
 
@@ -518,7 +518,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
                 # (batch_size, trg_hidden_size) -> (batch_size, 1, vocab_size)
                 decoder_logit = self.decoder2vocab(h_tilde.view(-1, trg_hidden_dim))
-                decoder_log_prob  = torch.nn.functional.log_softmax(decoder_logit).view(batch_size, 1, self.vocab_size)
+                decoder_log_prob  = torch.nn.functional.log_softmax(decoder_logit, dim=-1).view(batch_size, 1, self.vocab_size)
 
                 # Prepare for the next iteration, get the top word, top_idx and next_index are (batch_size, K)
                 top_v, top_idx = decoder_log_prob.data.topk(1, dim=-1)
@@ -605,7 +605,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             decoder_logit = self.decoder2vocab(h_tilde.view(-1, trg_hidden_dim))
 
             if not hasattr(self, 'copy_model'):
-                decoder_log_prob  = torch.nn.functional.log_softmax(decoder_logit).view(batch_size, 1, self.vocab_size)
+                decoder_log_prob  = torch.nn.functional.log_softmax(decoder_logit, dim=-1).view(batch_size, 1, self.vocab_size)
             else:
                 decoder_logit = decoder_logit.view(batch_size, 1, self.vocab_size)
                 # copy_weights and copy_logits is (batch_size, trg_len, src_len)

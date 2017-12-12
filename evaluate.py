@@ -11,6 +11,7 @@ import os
 
 from torch.autograd import Variable
 
+import config
 import pykp
 from utils import Progbar
 
@@ -108,8 +109,10 @@ def post_process_predseqs(seqs, num_oneword_seq=1):
         return unzipped
 
 def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_path=None):
-    progbar = Progbar(title=title, target=len(data_loader), batch_size=data_loader.batch_size,
+    logging = config.init_logging(title, save_path + '/%s.log' % title)
+    progbar = Progbar(logger=logging, title=title, target=len(data_loader), batch_size=data_loader.batch_size,
                       total_examples=len(data_loader.dataset))
+
 
     score_dict = {} # {'precision@5':[],'recall@5':[],'f1score@5':[], 'precision@10':[],'recall@10':[],'f1score@10':[]}
     num_oneword_range  = [-1, 1, 2, 3]
@@ -119,8 +122,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
     example_idx = 0
 
     for i, batch in enumerate(data_loader):
-        # if i > 3:
-        #     break
+        if i > 3:
+            break
 
         one2many_batch, one2one_batch = batch
         src_list, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
@@ -129,7 +132,6 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             src_list = src_list.cuda()
             src_oov_map_list = src_oov_map_list.cuda()
 
-        logging.info('======================  %d =========================' % (i + 1))
         print("batch size - %s" % str(src_list.size(0)))
         # print("src size - %s" % str(src_list.size()))
         # print("target size - %s" % len(trg_copy_target_list))
@@ -140,6 +142,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         process each example in current batch
         '''
         for src, src_str, trg, trg_str, trg_copy, pred_seq, oov in zip(src_list, src_str_list, trg_list, trg_str_list, trg_copy_target_list, pred_seq_list, oov_list):
+            logging.info('======================  %d =========================' % (example_idx))
             print_out = ''
             print_out += '\nOrginal Source String: \n %s' % (' '.join(src_str))
             src = src.cpu().data.numpy() if torch.cuda.is_available() else src.data.numpy()

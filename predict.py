@@ -41,26 +41,27 @@ def main():
     if torch.cuda.is_available() and not opt.gpuid:
         opt.gpuid = 0
 
+    opt.exp = 'predict.' + opt.exp
     if hasattr(opt, 'copy_model') and opt.copy_model:
         opt.exp += '.copy'
 
     if hasattr(opt, 'bidirectional'):
         if opt.bidirectional:
             opt.exp += '.bi-directional'
-        else:
-            opt.exp += '.uni-directional'
+    else:
+        opt.exp += '.uni-directional'
 
     # fill time into the name
     if opt.exp_path.find('%s') > 0:
         opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
-        opt.save_path = opt.save_path % (opt.exp, opt.timemark)
+        opt.pred_path = opt.pred_path % (opt.exp, opt.timemark)
 
     if not os.path.exists(opt.exp_path):
         os.makedirs(opt.exp_path)
-    if not os.path.exists(opt.save_path):
-        os.makedirs(opt.save_path)
+    if not os.path.exists(opt.pred_path):
+        os.makedirs(opt.pred_path)
 
-    config.init_logging(opt.exp_path + '/output.log')
+    logging = config.init_logging('train', opt.exp_path + '/output.log')
 
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
@@ -78,7 +79,7 @@ def main():
 
         # import time
         # start_time = time.time()
-        evaluate_beam_search(generator, test_data_loader, opt, save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]test_result.csv' % (0, 0, 0))
+        evaluate_beam_search(generator, test_data_loader, opt, title='predict', save_path=opt.pred_path + '/[epoch=%d,batch=%d,total_batch=%d]test_result.csv' % (0, 0, 0))
         # print("--- %s seconds --- Complete Beam Search" % (time.time() - start_time))
 
         # predict_greedy(model, test_data_loader, test_examples, opt)

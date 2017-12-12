@@ -91,7 +91,21 @@ def _valid_error(data_loader, model, criterion, epoch, opt):
     return losses
 
 
-def train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, opt, logging):
+def get_loss_rl():
+    pred_seq_list = generator.beam_search(src_list, src_oov_map_list, oov_list, opt.word2id)
+
+    for src, src_str, trg, trg_str, trg_copy, pred_seq, oov in zip(src_list, src_str_list, trg_list,
+                                                                   trg_str_list, trg_copy_target_list,
+                                                                   pred_seq_list, oov_list):
+        # 1st round filtering
+        processed_pred_seq, processed_pred_str_seqs, processed_pred_score = process_predseqs(pred_seq, src_str,
+                                                                                             oov, opt.id2word,
+                                                                                             opt,
+                                                                                             must_appear_in_src=opt.must_appear_in_src)
+        match_list = get_match_result(true_seqs=trg_str, pred_seqs=processed_pred_str_seqs)
+
+
+def train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, opt):
     generator = SequenceGenerator(model,
                                   eos_id=opt.word2id[pykp.IO.EOS_WORD],
                                   beam_size=opt.beam_size,
@@ -133,7 +147,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
         if early_stop_flag:
             break
 
-        progbar = Progbar(logger=logging, title='Training', target=len(train_data_loader), batch_size=train_data_loader.batch_size,
+        progbar = Progbar(title='Training', target=len(train_data_loader), batch_size=train_data_loader.batch_size,
                           total_examples=len(train_data_loader.dataset))
 
         for batch_i, batch in enumerate(train_data_loader):
@@ -156,6 +170,9 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
 
             optimizer.zero_grad()
 
+            '''
+            Training with Maximum Likelihood (word-level error)
+            '''
             decoder_log_probs, _, _ = model.forward(src, trg, src_ext, oov_lists)
 
             # simply average losses of all the predicitons
@@ -163,19 +180,28 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
             start_time = time.time()
 
             if not opt.copy_model:
-                loss = criterion(
+                ml_loss = criterion(
                     decoder_log_probs.contiguous().view(-1, opt.vocab_size),
                     trg_target.contiguous().view(-1)
                 )
             else:
-                loss = criterion(
+                ml_loss = criterion(
                     decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
                     trg_copy_target.contiguous().view(-1)
                 )
-            print("--loss calculation- %s seconds ---" % (time.time() - start_time))
+
+            '''
+            Training with Reinforcement Learning (instance-level reward f-score)
+            '''
+            src_list, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
+
+            if torch.cuda.is_available():
+                src_list = src_list.cuda()
+                src_oov_map_list = src_oov_map_list.cuda()
+            rl_loss = get_loss_rl()
 
             start_time = time.time()
-            loss.backward()
+            ml_loss.backward()
             print("--backward- %s seconds ---" % (time.time() - start_time))
 
             if opt.max_grad_norm > 0:
@@ -185,14 +211,14 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
 
             optimizer.step()
 
-            train_losses.append(loss.data[0])
+            train_losses.append(ml_loss.data[0])
 
-            progbar.update(epoch, batch_i, [('train_loss', loss.data[0]), ('PPL', loss.data[0])])
+            progbar.update(epoch, batch_i, [('train_loss', ml_loss.data[0]), ('PPL', ml_loss.data[0])])
 
-            if batch_i % opt.report_every == 0:
+            if batch_i > 1 and batch_i % opt.report_every == 0:
                 logging.info('======================  %d  =========================' % (batch_i))
 
-                logging.info('Epoch : %d Minibatch : %d, Loss=%.5f' % (epoch, batch_i, np.mean(loss.data[0])))
+                logging.info('Epoch : %d Minibatch : %d, Loss=%.5f' % (epoch, batch_i, np.mean(ml_loss.data[0])))
                 sampled_size = 2
                 logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
@@ -242,8 +268,8 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
                 # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
                 # valid_history_losses.append(valid_losses)
-                valid_score_dict  = evaluate_beam_search(generator, valid_data_loader, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
-                test_score_dict   = evaluate_beam_search(generator, test_data_loader, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                valid_score_dict  = evaluate_beam_search(generator, valid_data_loader, opt, title='valid', epoch=epoch, save_path=opt.exp_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                test_score_dict   = evaluate_beam_search(generator, test_data_loader, opt, title='test', epoch=epoch, save_path=opt.exp_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
 
                 checkpoint_names.append('epoch=%d-batch=%d-total_batch=%d' % (epoch, batch_i, total_batch))
                 train_history_losses.append(copy.copy(train_losses))
@@ -291,14 +317,14 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                 # only store the checkpoints that make better validation performances
                 if total_batch > 1 and (total_batch % opt.save_model_every == 0 or is_best_loss): #epoch >= opt.start_checkpoint_at and
                     # Save the checkpoint
-                    logging.info('Saving checkpoint to: %s' % os.path.join(opt.model_path, '%s.epoch=%d.batch=%d.total_batch=%d.error=%f' % (opt.exp, epoch, batch_i, total_batch, valid_loss) + '.model'))
+                    logging.info('Saving checkpoint to: %s' % os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d.error=%f' % (opt.exp, epoch, batch_i, total_batch, valid_loss) + '.model'))
                     torch.save(
                         model.state_dict(),
-                        open(os.path.join(opt.model_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
+                        open(os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
                     )
                     torch.save(
                         (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_history_losses, valid_history_losses, test_history_losses),
-                        open(os.path.join(opt.model_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.state'), 'wb')
+                        open(os.path.join(opt.save_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.state'), 'wb')
                     )
 
                 if stop_increasing >= opt.early_stop_tolerance:
@@ -388,7 +414,7 @@ def init_optimizer_criterion(model, opt):
     # optimizer = torch.optim.Adadelta(model.parameters(), lr=0.1)
     # optimizer = torch.optim.RMSprop(model.parameters(), lr=0.1)
     '''
-    criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.IO.PAD_WORD])
+    criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.IO.PAD_WORD], reduce=False)
 
     optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
     if torch.cuda.is_available():
@@ -493,17 +519,14 @@ def main():
     # fill time into the name
     if opt.exp_path.find('%s') > 0:
         opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
-        opt.pred_path = opt.pred_path % (opt.exp, opt.timemark)
-        opt.model_path = opt.model_path % (opt.exp, opt.timemark)
+        opt.save_path = opt.save_path % (opt.exp, opt.timemark)
 
     if not os.path.exists(opt.exp_path):
         os.makedirs(opt.exp_path)
-    if not os.path.exists(opt.pred_path):
-        os.makedirs(opt.pred_path)
-    if not os.path.exists(opt.model_path):
-        os.makedirs(opt.model_path)
+    if not os.path.exists(opt.save_path):
+        os.makedirs(opt.save_path)
 
-    logging = config.init_logging('train', opt.exp_path + '/output.log')
+    config.init_logging(opt.exp_path + '/output.log')
 
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
@@ -512,7 +535,7 @@ def main():
         train_data_loader, valid_data_loader, test_data_loader, word2id, id2word, vocab = load_data_vocab(opt)
         model = init_model(opt)
         optimizer, criterion = init_optimizer_criterion(model, opt)
-        train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, opt, logging)
+        train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, opt)
     except Exception as e:
         logging.exception("message")
 

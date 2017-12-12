@@ -44,23 +44,6 @@ class LoggerWriter:
         # to work properly for me.
         self.level(sys.stderr)
 
-def init_logging(logfile_path):
-    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s',
-                                  datefmt='%m/%d/%Y %H:%M:%S'   )
-    fh = logging.FileHandler(logfile_path)
-    # ch = logging.StreamHandler()
-    ch = logging.StreamHandler(sys.stdout)
-
-    fh.setFormatter(formatter)
-    ch.setFormatter(formatter)
-    fh.setLevel(logging.INFO)
-    ch.setLevel(logging.INFO)
-    logging.getLogger().addHandler(ch)
-    logging.getLogger().addHandler(fh)
-    logging.getLogger().setLevel(logging.INFO)
-
-    return logging
-
 def tally_parameters(model):
     if logging.getLogger() == None:
         printer = print
@@ -87,10 +70,11 @@ def _print_progress(epoch_i, batch_i, num_batches):
     sys.stdout.flush()
 
 class Progbar(object):
-    def __init__(self, title, target, width=30, batch_size = None, total_examples = None, verbose=1):
+    def __init__(self, logger, title, target, width=30, batch_size = None, total_examples = None, verbose=1):
         '''
             @param target: total number of steps expected
         '''
+        self.logger = logger
         self.title = title
         self.width = width
         self.target = target
@@ -108,8 +92,6 @@ class Progbar(object):
         self.last_time  = self.start_time
         self.report_delay = 10
         self.last_report  = self.start_time
-
-        self.logger = logging.getLogger()
 
     def update(self, current_epoch, current, values=[]):
         '''

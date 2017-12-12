@@ -1,25 +1,34 @@
 import logging
+import os
 
 import sys
 
 import time
 
 
-def init_logging(logfile):
+def init_logging(logger_name, logfile):
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s',
                                   datefmt='%m/%d/%Y %H:%M:%S'   )
 
-    fh = logging.FileHandler(logfile)
-    # ch = logging.StreamHandler()
-    ch = logging.StreamHandler(sys.stdout)
+    print('Making log output file: %s' % logfile)
+    print(logfile[: logfile.rfind(os.sep)])
+    if not os.path.exists(logfile[: logfile.rfind(os.sep)]):
+        os.makedirs(logfile[: logfile.rfind(os.sep)])
 
+    fh = logging.FileHandler(logfile)
     fh.setFormatter(formatter)
-    ch.setFormatter(formatter)
-    # fh.setLevel(logging.INFO)
-    ch.setLevel(logging.INFO)
-    logging.getLogger().addHandler(ch)
-    logging.getLogger().addHandler(fh)
-    logging.getLogger().setLevel(logging.INFO)
+    fh.setLevel(logging.INFO)
+
+    # ch = logging.StreamHandler(sys.stdout)
+    # ch.setFormatter(formatter)
+    # ch.setLevel(logging.INFO)
+
+    logger = logging.getLogger(logger_name)
+    # logger.addHandler(ch)
+    logger.addHandler(fh)
+    logger.setLevel(logging.INFO)
+
+    return logger
 
 def model_opts(parser):
     """
@@ -248,8 +257,10 @@ def train_opts(parser):
     parser.add_argument('-exp', type=str, default="stackexchange",
                         help="Name of the experiment for logging.")
     parser.add_argument('-exp_path', type=str, default="exp/%s.%s",
-                        help="Path of experiment output/log.")
-    parser.add_argument('-save_path', type=str, default="model/%s.%s",
+                        help="Path of experiment log/plot.")
+    parser.add_argument('-pred_path', type=str, default="pred/%s.%s",
+                        help="Path of outputs of predictions.")
+    parser.add_argument('-model_path', type=str, default="model/%s.%s",
                         help="Path of checkpoints.")
 
     # beam search setting
