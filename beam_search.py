@@ -300,10 +300,10 @@ class SequenceGenerator(object):
                             new_sent = []
                         new_sent.append(w)
 
-                        if w >= 50000 and len(partial_seq.oov_list)==0:
-                            print(new_sent)
-                            print(partial_seq.oov_list)
-                            pass
+                        # if w >= 50000 and len(partial_seq.oov_list)==0:
+                        #     print(new_sent)
+                        #     print(partial_seq.oov_list)
+                        #     pass
 
                         new_partial_seq = Sequence(
                             batch_id    =   partial_seq.batch_id,
@@ -358,7 +358,17 @@ class SequenceGenerator(object):
 
                 partial_sequences[batch_i] = new_partial_sequences
 
-                # print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
+                print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
+                '''
+                # print-out for debug
+                print('Source with OOV: \n\t %s' % ' '.join([str(w) for w in partial_seq.src_oov.cpu().data.numpy().tolist()]))
+                print('OOV list: \n\t %s' % str(partial_seq.oov_list))
+
+                for seq_id, seq in enumerate(new_partial_sequences._data):
+                    print('%d, score=%.5f : %s' % (seq_id, seq.score, str(seq.sentence)))
+
+                print('*' * 50)
+                '''
 
             print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
 

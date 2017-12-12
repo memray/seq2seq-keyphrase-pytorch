@@ -31,17 +31,17 @@ def process_predseqs(pred_seqs, src_str, oov, id2word, opt, must_appear_in_src=T
     stemmed_src_str     = stem_word_list(src_str)
 
     for seq in pred_seqs:
-        print('-' * 50)
-        print('seq.sentence: ' + str(seq.sentence))
-        print('oov: ' + str(oov))
-
-        for x in seq.sentence[:-1]:
-            if x >= opt.vocab_size and len(oov)==0:
-                print('ERROR')
+        # print('-' * 50)
+        # print('seq.sentence: ' + str(seq.sentence))
+        # print('oov: ' + str(oov))
+        #
+        # for x in seq.sentence[:-1]:
+        #     if x >= opt.vocab_size and len(oov)==0:
+        #         print('ERROR')
 
         # convert to words and remove the EOS token
         processed_seq      = [id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence[:-1]]
-        print('processed_seq: ' + str(processed_seq))
+        # print('processed_seq: ' + str(processed_seq))
 
         # print('%s - %s' % (str(seq.sentence[:-1]), str(processed_seq)))
         stemmed_pred_seq   = stem_word_list(processed_seq)
@@ -108,7 +108,7 @@ def post_process_predseqs(seqs, num_oneword_seq=1):
         return unzipped
 
 def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_path=None):
-    progbar = Progbar(title=title, target=len(data_loader), batch_size=opt.batch_size,
+    progbar = Progbar(title=title, target=len(data_loader), batch_size=data_loader.batch_size,
                       total_examples=len(data_loader.dataset))
 
     score_dict = {} # {'precision@5':[],'recall@5':[],'f1score@5':[], 'precision@10':[],'recall@10':[],'f1score@10':[]}
@@ -119,8 +119,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
     example_idx = 0
 
     for i, batch in enumerate(data_loader):
-        if i > 3:
-            break
+        # if i > 3:
+        #     break
 
         one2many_batch, one2one_batch = batch
         src_list, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
@@ -130,13 +130,14 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             src_oov_map_list = src_oov_map_list.cuda()
 
         logging.info('======================  %d =========================' % (i + 1))
-        print("src size - %s" % str(src_list.size()))
-        print("target size - %s" % len(trg_copy_target_list))
+        print("batch size - %s" % str(src_list.size(0)))
+        # print("src size - %s" % str(src_list.size()))
+        # print("target size - %s" % len(trg_copy_target_list))
 
         pred_seq_list = generator.beam_search(src_list, src_oov_map_list, oov_list, opt.word2id)
 
         '''
-        process each example
+        process each example in current batch
         '''
         for src, src_str, trg, trg_str, trg_copy, pred_seq, oov in zip(src_list, src_str_list, trg_list, trg_str_list, trg_copy_target_list, pred_seq_list, oov_list):
             print_out = ''
@@ -146,7 +147,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             print_out += 'Real Target String [%d] \n\t\t%s \n' % (len(trg_str), trg_str)
             print_out += 'Real Target Input:  \n\t\t%s \n' % str([[opt.id2word[x] for x in t] for t in trg])
             print_out += 'Real Target Copy:   \n\t\t%s \n' % str([[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in t] for t in trg_copy])
-            print_out += 'oov_list:   \n\t\t%s ' % str(oov)
+            print_out += 'oov_list:   \n\t\t%s \n' % str(oov)
             print(print_out)
             # 1st round filtering
             processed_pred_seq, processed_pred_str_seqs, processed_pred_score = process_predseqs(pred_seq, src_str, oov, opt.id2word, opt, must_appear_in_src=opt.must_appear_in_src)
@@ -201,6 +202,11 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
         progbar.update(epoch, i, [('f_score@5#oneword=1', np.average(score_dict['f_score@5#oneword=1'])), ('f_score@10#oneword=1', np.average(score_dict['f_score@10#oneword=1']))])
 
+    print('#(f_score@5#oneword=-1)=%d, sum=%f'  % (len(score_dict['f_score@5#oneword=-1']), sum(score_dict['f_score@5#oneword=-1'])))
+    print('#(f_score@10#oneword=-1)=%d, sum=%f' % (len(score_dict['f_score@10#oneword=-1']), sum(score_dict['f_score@10#oneword=-1'])))
+    print('#(f_score@5#oneword=1)=%d, sum=%f'   % (len(score_dict['f_score@5#oneword=1']), sum(score_dict['f_score@5#oneword=1'])))
+    print('#(f_score@10#oneword=1)=%d, sum=%f'  % (len(score_dict['f_score@10#oneword=1']), sum(score_dict['f_score@10#oneword=1'])))
+
     if save_path:
         # export scores. Each row is scores (precision, recall and f-score) of different way of filtering predictions (how many one-word predictions to keep)
         with open(save_path + os.path.sep + title +'_result.csv', 'w') as result_csv:
@@ -233,7 +239,7 @@ def evaluate_greedy(model, data_loader, test_examples, opt):
         logging.info('Running on CPU!')
 
     logging.info('======================  Start Predicting  =========================')
-    progbar = Progbar(title='Testing', target=len(data_loader), batch_size=opt.batch_size,
+    progbar = Progbar(title='Testing', target=len(data_loader), batch_size=data_loader.batch_size,
                       total_examples=len(data_loader.dataset))
 
     '''

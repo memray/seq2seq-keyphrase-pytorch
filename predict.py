@@ -14,7 +14,7 @@ import torch.nn as nn
 from torch import cuda
 
 from beam_search import SequenceGenerator
-from train_copy import load_data_vocab, init_model, init_optimizer_criterion
+from train import load_data_vocab, init_model, init_optimizer_criterion
 from utils import Progbar, plot_learning_curve
 
 import pykp
