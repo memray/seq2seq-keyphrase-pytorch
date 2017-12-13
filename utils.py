@@ -233,17 +233,18 @@ def plot_learning_curve(scores, curve_names, checkpoint_names, title, ylim=None,
         std  = np.asarray([np.std(s) for s in score])
         stds[name] = std
 
-        if name.lower().startswith('train'):
+        if name.lower().startswith('training ml'):
             score_ = [np.asarray(s) / 20.0 for s in score]
             mean = np.asarray([np.mean(s) for s in score_])
             std  = np.asarray([np.std(s) for s in score_])
+
         plt.fill_between(train_sizes, mean - std,
                          mean + std, alpha=0.1,
                          color=colors[i])
         plt.plot(train_sizes, mean, 'o-', color=colors[i],
                  label=name)
 
-    plt.legend(loc="best")
+    plt.legend(loc="best", prop={'size': 6})
     # plt.show()
     if save_path:
         plt.savefig(save_path + '.png', bbox_inches='tight')

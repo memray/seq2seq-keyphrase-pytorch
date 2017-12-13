@@ -24,7 +24,7 @@ import torch.nn as nn
 from torch import cuda
 
 from beam_search import SequenceGenerator
-from evaluate import evaluate_beam_search
+from evaluate import evaluate_beam_search, process_predseqs, get_match_result
 from pykp.dataloader import KeyphraseDataLoader
 from utils import Progbar, plot_learning_curve
 
@@ -91,7 +91,170 @@ def _valid_error(data_loader, model, criterion, epoch, opt):
     return losses
 
 
-def train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, opt, logging):
+def train_ml(one2one_batch, model, optimizer, criterion, opt):
+    src, trg, trg_target, trg_copy_target, src_ext, oov_lists = one2one_batch
+    max_oov_number = max([len(oov) for oov in oov_lists])
+
+    print("src size - ", src.size())
+    print("target size - ", trg.size())
+
+    if torch.cuda.is_available():
+        src = src.cuda()
+        trg = trg.cuda()
+        trg_target = trg_target.cuda()
+        trg_copy_target = trg_copy_target.cuda()
+        src_ext = src_ext.cuda()
+
+    optimizer.zero_grad()
+
+    decoder_log_probs, _, _ = model.forward(src, trg, src_ext, oov_lists)
+
+    # simply average losses of all the predicitons
+    # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
+    start_time = time.time()
+
+    if not opt.copy_model:
+        loss = criterion(
+            decoder_log_probs.contiguous().view(-1, opt.vocab_size),
+            trg_target.contiguous().view(-1)
+        )
+    else:
+        loss = criterion(
+            decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
+            trg_copy_target.contiguous().view(-1)
+        )
+    print("--loss calculation- %s seconds ---" % (time.time() - start_time))
+
+    start_time = time.time()
+    loss.backward()
+    print("--backward- %s seconds ---" % (time.time() - start_time))
+
+    if opt.max_grad_norm > 0:
+        pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
+        after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
+        logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
+
+    optimizer.step()
+
+    return loss.data[0], decoder_log_probs
+
+
+def train_rl(one2many_batch, model, optimizer, generator, opt):
+    src_list, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list = one2many_batch
+
+    if torch.cuda.is_available():
+        src_list = src_list.cuda()
+        src_oov_map_list = src_oov_map_list.cuda()
+
+    # Baseline sequences for self-critic
+    baseline_seqs_list = generator.sample(src_list, src_oov_map_list, oov_list, opt.word2id, k=5, is_greedy=True)
+
+    # Sample number_batch*beam_size sequences
+    sampled_seqs_list = generator.sample(src_list, src_oov_map_list, oov_list, opt.word2id, k=opt.beam_size, is_greedy=False)
+
+    policy_loss = []
+    policy_rewards = []
+    # Compute their rewards and losses
+    for seq_i, (src, trg, trg_copy, sampled_seqs, baseline_seqs, oov) in enumerate(zip(src_list, trg_list, trg_copy_target_list, sampled_seqs_list, baseline_seqs_list, oov_list)):
+        # convert to string sequences
+        baseline_str_seqs   =  [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence] for seq in baseline_seqs]
+        sampled_str_seqs    =  [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence] for seq in sampled_seqs]
+
+        # pad trg seqs with EOS to the same length
+        trg_seqs            =  [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq] for seq in trg_copy]
+        trg_seqs            =  [seq + [pykp.IO.EOS_WORD] * (opt.max_sent_length - len(seq)) for seq in trg_seqs]
+
+        # compute the rewards and baseline
+        baselines           =  get_match_result(true_seqs=trg_seqs, pred_seqs=baseline_str_seqs, type='bleu')
+        baseline            =  np.average(baselines)
+        rewards             =  get_match_result(true_seqs=trg_seqs, pred_seqs=sampled_str_seqs, type='bleu')
+
+        print('*' * 20 + '  ' + str(seq_i) + '  ' + '*' * 20)
+        print('Target Sequences:\n\t\t %s' % str(trg_seqs))
+        print('Baseline Sequences:')
+        for pred_seq, reward in zip(baseline_str_seqs, baselines):
+            print('\t\t[%f] %s' % (reward, ' '.join(pred_seq)))
+        print('Predict Sequences:')
+        for pred_seq, reward in zip(sampled_str_seqs, rewards):
+            print('\t\t[%f] %s' % (reward, ' '.join(pred_seq)))
+
+        [policy_loss.append(-torch.cat(seq.logprobs, dim=0) * float(reward - baseline)) for seq, reward in zip(sampled_seqs, rewards)]
+        [policy_rewards.append(reward) for reward in rewards]
+
+    optimizer.zero_grad()
+    policy_loss = torch.cat(policy_loss).sum()
+    policy_loss.backward()
+
+    if opt.max_grad_norm > 0:
+        pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
+        after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
+        logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
+
+    optimizer.step()
+
+    return np.average(policy_rewards)
+
+def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt):
+    logging.info('======================  %d  =========================' % (batch_i))
+
+    logging.info('Epoch : %d Minibatch : %d, Loss=%.5f' % (epoch, batch_i, np.mean(loss_ml)))
+    sampled_size = 2
+    logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
+
+    src, trg, trg_target, trg_copy_target, src_ext, oov_lists = one2one_batch
+    if torch.cuda.is_available():
+        src = src.data.cpu().numpy()
+        decoder_log_probs = decoder_log_probs.data.cpu().numpy()
+        max_words_pred = decoder_log_probs.argmax(axis=-1)
+        trg_target = trg_target.data.cpu().numpy()
+        trg_copy_target = trg_copy_target.data.cpu().numpy()
+    else:
+        src = src.data.numpy()
+        decoder_log_probs = decoder_log_probs.data.numpy()
+        max_words_pred = decoder_log_probs.argmax(axis=-1)
+        trg_target = trg_target.data.numpy()
+        trg_copy_target = trg_copy_target.data.numpy()
+
+    sampled_trg_idx = np.random.random_integers(low=0, high=len(trg) - 1, size=sampled_size)
+    src = src[sampled_trg_idx]
+    oov_lists = [oov_lists[i] for i in sampled_trg_idx]
+    max_words_pred = [max_words_pred[i] for i in sampled_trg_idx]
+    decoder_log_probs = decoder_log_probs[sampled_trg_idx]
+    if not opt.copy_model:
+        trg_target = [trg_target[i] for i in
+                      sampled_trg_idx]  # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
+    else:
+        trg_target = [trg_copy_target[i] for i in sampled_trg_idx]
+
+    for i, (src_wi, pred_wi, trg_i, oov_i) in enumerate(
+            zip(src, max_words_pred, trg_target, oov_lists)):
+        nll_prob = -np.sum([decoder_log_probs[i][l][pred_wi[l]] for l in range(len(trg_i))])
+        find_copy = np.any([x >= opt.vocab_size for x in src_wi])
+        has_copy = np.any([x >= opt.vocab_size for x in trg_i])
+
+        sentence_source = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size] for x in
+                           src_wi]
+        sentence_pred = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size] for x in
+                         pred_wi]
+        sentence_real = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size] for x in
+                         trg_i]
+
+        sentence_source = sentence_source[:sentence_source.index(
+            '<pad>')] if '<pad>' in sentence_source else sentence_source
+        sentence_pred = sentence_pred[
+                        :sentence_pred.index('<pad>')] if '<pad>' in sentence_pred else sentence_pred
+        sentence_real = sentence_real[
+                        :sentence_real.index('<pad>')] if '<pad>' in sentence_real else sentence_real
+
+        logging.info('==================================================')
+        logging.info('Source: %s ' % (' '.join(sentence_source)))
+        logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob) + (
+            ' [FIND COPY]' if find_copy else ''))
+        logging.info('\t\tReal : %s ' % (' '.join(sentence_real)) + (
+            ' [HAS COPY]' + str(trg_i) if has_copy else ''))
+
+
+def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt, logging):
     generator = SequenceGenerator(model,
                                   eos_id=opt.word2id[pykp.IO.EOS_WORD],
                                   beam_size=opt.beam_size,
@@ -110,14 +273,16 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
     logging.info('======================  Start Training  =========================')
 
     checkpoint_names        = []
-    train_history_losses    = []
+    train_ml_history_losses = []
+    train_rl_history_losses = []
     valid_history_losses    = []
     test_history_losses     = []
     # best_loss = sys.float_info.max # for normal training/testing loss (likelihood)
     best_loss               = 0.0 # for f-score
     stop_increasing         = 0
 
-    train_losses = []
+    train_ml_losses = []
+    train_rl_losses = []
     total_batch = 0
     early_stop_flag = False
 
@@ -125,7 +290,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
         state_path = opt.train_from.replace('.model', '.state')
         logging.info('Loading training state from: %s' % state_path)
         if os.path.exists(state_path):
-            (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_history_losses, valid_history_losses,
+            (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_ml_history_losses, train_rl_history_losses, valid_history_losses,
                         test_history_losses) = torch.load(open(state_path, 'rb'))
             opt.start_epoch = epoch
 
@@ -141,102 +306,27 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
             batch_i += 1 # for the aesthetics of printing
             total_batch += 1
             one2many_batch, one2one_batch = batch
-            src, trg, trg_target, trg_copy_target, src_ext, oov_lists = one2one_batch
-            max_oov_number = max([len(oov) for oov in oov_lists])
+            report_loss = []
 
-            print("src size - ",src.size())
-            print("target size - ",trg.size())
+            # Training
+            if opt.train_ml:
+                loss_ml, decoder_log_probs = train_ml(one2one_batch, model, optimizer_ml, criterion, opt)
+                train_ml_losses.append(loss_ml)
+                report_loss.append(('train_ml_loss', loss_ml))
+                report_loss.append(('PPL', loss_ml))
 
-            if torch.cuda.is_available():
-                src = src.cuda()
-                trg = trg.cuda()
-                trg_target = trg_target.cuda()
-                trg_copy_target = trg_copy_target.cuda()
-                src_ext = src_ext.cuda()
+                # Brief report
+                if batch_i % opt.report_every == 0:
+                    brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
 
-            optimizer.zero_grad()
+            if opt.train_rl:
+                loss_rl = train_rl(one2many_batch, model, optimizer_rl, generator, opt)
+                train_rl_losses.append(loss_rl)
+                report_loss.append(('train_rl_loss', loss_rl))
 
-            decoder_log_probs, _, _ = model.forward(src, trg, src_ext, oov_lists)
+            progbar.update(epoch, batch_i, report_loss)
 
-            # simply average losses of all the predicitons
-            # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
-            start_time = time.time()
-
-            if not opt.copy_model:
-                loss = criterion(
-                    decoder_log_probs.contiguous().view(-1, opt.vocab_size),
-                    trg_target.contiguous().view(-1)
-                )
-            else:
-                loss = criterion(
-                    decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
-                    trg_copy_target.contiguous().view(-1)
-                )
-            print("--loss calculation- %s seconds ---" % (time.time() - start_time))
-
-            start_time = time.time()
-            loss.backward()
-            print("--backward- %s seconds ---" % (time.time() - start_time))
-
-            if opt.max_grad_norm > 0:
-                pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
-                after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
-                logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
-
-            optimizer.step()
-
-            train_losses.append(loss.data[0])
-
-            progbar.update(epoch, batch_i, [('train_loss', loss.data[0]), ('PPL', loss.data[0])])
-
-            if batch_i % opt.report_every == 0:
-                logging.info('======================  %d  =========================' % (batch_i))
-
-                logging.info('Epoch : %d Minibatch : %d, Loss=%.5f' % (epoch, batch_i, np.mean(loss.data[0])))
-                sampled_size = 2
-                logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
-
-                if torch.cuda.is_available():
-                    src                 = src.data.cpu().numpy()
-                    decoder_log_probs   = decoder_log_probs.data.cpu().numpy()
-                    max_words_pred      = decoder_log_probs.argmax(axis=-1)
-                    trg_target          = trg_target.data.cpu().numpy()
-                    trg_copy_target     = trg_copy_target.data.cpu().numpy()
-                else:
-                    src                 = src.data.numpy()
-                    decoder_log_probs   = decoder_log_probs.data.numpy()
-                    max_words_pred      = decoder_log_probs.argmax(axis=-1)
-                    trg_target          = trg_target.data.numpy()
-                    trg_copy_target     = trg_copy_target.data.numpy()
-
-                sampled_trg_idx     = np.random.random_integers(low=0, high=len(trg) - 1, size=sampled_size)
-                src                 = src[sampled_trg_idx]
-                oov_lists           = [oov_lists[i] for i in sampled_trg_idx]
-                max_words_pred      = [max_words_pred[i] for i in sampled_trg_idx]
-                decoder_log_probs   = decoder_log_probs[sampled_trg_idx]
-                if not opt.copy_model:
-                    trg_target      = [trg_target[i] for i in sampled_trg_idx] # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
-                else:
-                    trg_target      = [trg_copy_target[i] for i in sampled_trg_idx]
-
-                for i, (src_wi, pred_wi, trg_i, oov_i) in enumerate(zip(src, max_words_pred, trg_target, oov_lists)):
-                    nll_prob = -np.sum([decoder_log_probs[i][l][pred_wi[l]] for l in range(len(trg_i))])
-                    find_copy       = np.any([x >= opt.vocab_size for x in src_wi])
-                    has_copy        = np.any([x >= opt.vocab_size for x in trg_i])
-
-                    sentence_source = [opt.id2word[x] if x < opt.vocab_size else oov_i[x-opt.vocab_size] for x in src_wi]
-                    sentence_pred   = [opt.id2word[x] if x < opt.vocab_size else oov_i[x-opt.vocab_size] for x in pred_wi]
-                    sentence_real   = [opt.id2word[x] if x < opt.vocab_size else oov_i[x-opt.vocab_size] for x in trg_i]
-
-                    sentence_source = sentence_source[:sentence_source.index('<pad>')] if '<pad>' in sentence_source else sentence_source
-                    sentence_pred   = sentence_pred[:sentence_pred.index('<pad>')] if '<pad>' in sentence_pred else sentence_pred
-                    sentence_real   = sentence_real[:sentence_real.index('<pad>')] if '<pad>' in sentence_real else sentence_real
-
-                    logging.info('==================================================')
-                    logging.info('Source: %s '          % (' '.join(sentence_source)))
-                    logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob) + (' [FIND COPY]' if find_copy else ''))
-                    logging.info('\t\tReal : %s '       % (' '.join(sentence_real)) + (' [HAS COPY]' + str(trg_i) if has_copy else ''))
-
+            # Validate and save checkpoint
             if total_batch > 1 and total_batch % opt.run_valid_every == 0:
                 logging.info('*' * 50)
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
@@ -246,13 +336,24 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                 test_score_dict   = evaluate_beam_search(generator, test_data_loader, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
 
                 checkpoint_names.append('epoch=%d-batch=%d-total_batch=%d' % (epoch, batch_i, total_batch))
-                train_history_losses.append(copy.copy(train_losses))
+
+                curve_names = []
+                scores = []
+                if opt.train_ml:
+                    train_ml_history_losses.append(copy.copy(train_ml_losses))
+                    scores += [train_ml_history_losses]
+                    curve_names += ['Training ML Error']
+                    train_ml_losses = []
+
+                if opt.train_rl:
+                    train_rl_history_losses.append(copy.copy(train_rl_losses))
+                    scores += [train_rl_history_losses]
+                    curve_names += ['Training RL Reward']
+                    train_rl_losses = []
+
                 valid_history_losses.append(valid_score_dict)
                 test_history_losses.append(test_score_dict)
-                train_losses = []
 
-                scores = [train_history_losses]
-                curve_names = ['Training Error']
                 scores += [[result_dict[name] for result_dict in valid_history_losses] for name in opt.report_score_names]
                 curve_names += ['Valid-'+name for name in opt.report_score_names]
                 scores += [[result_dict[name] for result_dict in test_history_losses] for name in opt.report_score_names]
@@ -297,7 +398,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                         open(os.path.join(opt.model_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
                     )
                     torch.save(
-                        (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_history_losses, valid_history_losses, test_history_losses),
+                        (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_ml_history_losses, train_rl_history_losses, valid_history_losses, test_history_losses),
                         open(os.path.join(opt.model_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.state'), 'wb')
                     )
 
@@ -306,6 +407,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                     early_stop_flag = True
                     break
                 logging.info('*' * 50)
+
 
 def load_data_vocab(opt, load_train=True):
 
@@ -390,11 +492,20 @@ def init_optimizer_criterion(model, opt):
     '''
     criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.IO.PAD_WORD])
 
-    optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
+    if opt.train_ml:
+        optimizer_ml = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
+    else:
+        optimizer_ml = None
+
+    if opt.train_rl:
+        optimizer_rl = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate_rl)
+    else:
+        optimizer_rl = None
+
     if torch.cuda.is_available():
         criterion = criterion.cuda()
 
-    return optimizer, criterion
+    return optimizer_ml, optimizer_rl, criterion
 
 def init_model(opt):
     logging.info('======================  Model Parameters  =========================')
@@ -511,8 +622,8 @@ def main():
     try:
         train_data_loader, valid_data_loader, test_data_loader, word2id, id2word, vocab = load_data_vocab(opt)
         model = init_model(opt)
-        optimizer, criterion = init_optimizer_criterion(model, opt)
-        train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, opt, logging)
+        optimizer_ml, optimizer_rl, criterion = init_optimizer_criterion(model, opt)
+        train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt, logging)
     except Exception as e:
         logging.exception("message")
 

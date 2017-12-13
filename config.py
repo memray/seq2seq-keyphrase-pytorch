@@ -208,6 +208,17 @@ def train_opts(parser):
     parser.add_argument('-dropout', type=float, default=0.5,
                         help="Dropout probability; applied in LSTM stacks.")
 
+    # Learning options
+    parser.add_argument('-train_ml', action="store_true", default=False,
+                        help='Train with Maximum Likelihood or not')
+    parser.add_argument('-train_rl', action="store_true", default=False,
+                        help='Train with Reinforcement Learning or not')
+    parser.add_argument('-loss_scale', type=float, default=1.0,
+                        help='A scaling factor to merge the loss of ML and RL parts: L_mixed = γ * L_rl + (1 − γ) * L_ml'
+                             'The γ used by Metamind is 0.9984 in "A DEEP REINFORCED MODEL FOR ABSTRACTIVE SUMMARIZATION"'
+                             'The α used by Google is 0.017 in "Google Translation": O_Mixed(θ) = α ∗ O_ML(θ) + O_RL(θ)'
+                         )
+
     # Teacher Forcing and Scheduled Sampling
     parser.add_argument('-must_teacher_forcing', action="store_true",
                         help="Apply must_teacher_forcing or not")
@@ -221,6 +232,10 @@ def train_opts(parser):
     # learning rate
     parser.add_argument('-learning_rate', type=float, default=0.001,
                         help="""Starting learning rate.
+                        Recommended settings: sgd = 1, adagrad = 0.1,
+                        adadelta = 1, adam = 0.001""")
+    parser.add_argument('-learning_rate_rl', type=float, default=0.0001,
+                        help="""Starting learning rate for Reinforcement Learning.
                         Recommended settings: sgd = 1, adagrad = 0.1,
                         adadelta = 1, adam = 0.001""")
     parser.add_argument('-learning_rate_decay', type=float, default=0.5,

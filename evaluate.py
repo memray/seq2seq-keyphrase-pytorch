@@ -2,6 +2,7 @@ import math
 import logging
 import string
 
+import nltk
 import scipy
 import torch
 from nltk.stem.porter import *
@@ -14,6 +15,7 @@ from torch.autograd import Variable
 import config
 import pykp
 from utils import Progbar
+from pykp.metric.bleu import bleu
 
 stemmer = PorterStemmer()
 
@@ -298,11 +300,11 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
     micro_matches = []
 
     # do processing to baseline predictions
-    correctly_matched   = np.asarray([0.0] * len(pred_seqs), dtype='float32')
+    match_score   = np.asarray([0.0] * len(pred_seqs), dtype='float32')
     target_number       = len(true_seqs)
     predicted_number    = len(pred_seqs)
 
-    metric_dict = {'target_number': target_number, 'prediction_number': predicted_number, 'correct_number': correctly_matched}
+    metric_dict = {'target_number': target_number, 'prediction_number': predicted_number, 'correct_number': match_score}
 
     # convert target index into string
     if do_stem:
@@ -311,7 +313,7 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
 
     for pred_id, pred_seq in enumerate(pred_seqs):
         if type == 'exact':
-            correctly_matched[pred_id] = 0
+            match_score[pred_id] = 0
             for true_id, true_seq in enumerate(true_seqs):
                 match = True
                 if len(pred_seq) != len(true_seq):
@@ -323,7 +325,7 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
                         break
                 # if every word in pred_seq matches one true_seq exactly, match succeeds
                 if match:
-                    correctly_matched[pred_id] = 1
+                    match_score[pred_id] = 1
                     break
         elif type == 'partial':
             max_similarity = 0.
@@ -334,13 +336,13 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
                 jaccard = len(set.intersection(*[set(true_seq_set), set(pred_seq_set)])) / float(len(set.union(*[set(true_seq_set), set(pred_seq_set)])))
                 if jaccard > max_similarity:
                     max_similarity = jaccard
-            correctly_matched[pred_id] = jaccard
+            match_score[pred_id] = max_similarity
 
-        elif type == 'partial sequence':
+        elif type == 'bleu':
             # account for the match of subsequences, like n-gram-based (BLEU) or LCS-based
-            pass
+            match_score[pred_id] = bleu(pred_seq, true_seqs, [0.1, 0.5, 0.4])
 
-    return correctly_matched
+    return match_score
 
 def evalute(match_list, predicted_list, true_list, topk=5):
     if len(match_list) > topk:
