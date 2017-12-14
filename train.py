@@ -16,6 +16,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 import config
+import evaluate
 import utils
 import copy
 
@@ -123,6 +124,7 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
             decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
             trg_copy_target.contiguous().view(-1)
         )
+    loss = loss * (1 - opt.loss_scale)
     print("--loss calculation- %s seconds ---" % (time.time() - start_time))
 
     start_time = time.time()
@@ -150,7 +152,7 @@ def train_rl(one2many_batch, model, optimizer, generator, opt):
     baseline_seqs_list = generator.sample(src_list, src_oov_map_list, oov_list, opt.word2id, k=5, is_greedy=True)
 
     # Sample number_batch*beam_size sequences
-    sampled_seqs_list = generator.sample(src_list, src_oov_map_list, oov_list, opt.word2id, k=opt.beam_size, is_greedy=False)
+    sampled_seqs_list  = generator.sample(src_list, src_oov_map_list, oov_list, opt.word2id, k=5, is_greedy=False)
 
     policy_loss = []
     policy_rewards = []
@@ -158,17 +160,31 @@ def train_rl(one2many_batch, model, optimizer, generator, opt):
     for seq_i, (src, trg, trg_copy, sampled_seqs, baseline_seqs, oov) in enumerate(zip(src_list, trg_list, trg_copy_target_list, sampled_seqs_list, baseline_seqs_list, oov_list)):
         # convert to string sequences
         baseline_str_seqs   =  [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence] for seq in baseline_seqs]
+        baseline_str_seqs   =  [seq[:seq.index(pykp.IO.EOS_WORD)+1] if pykp.IO.EOS_WORD in seq else seq for seq in baseline_str_seqs]
         sampled_str_seqs    =  [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence] for seq in sampled_seqs]
+        sampled_str_seqs    =  [seq[:seq.index(pykp.IO.EOS_WORD)+1] if pykp.IO.EOS_WORD in seq else seq for seq in sampled_str_seqs]
 
         # pad trg seqs with EOS to the same length
         trg_seqs            =  [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq] for seq in trg_copy]
-        trg_seqs            =  [seq + [pykp.IO.EOS_WORD] * (opt.max_sent_length - len(seq)) for seq in trg_seqs]
+        # trg_seqs            =  [seq + [pykp.IO.EOS_WORD] * (opt.max_sent_length - len(seq)) for seq in trg_seqs]
 
-        # compute the rewards and baseline
-        baselines           =  get_match_result(true_seqs=trg_seqs, pred_seqs=baseline_str_seqs, type='bleu')
-        baseline            =  np.average(baselines)
-        rewards             =  get_match_result(true_seqs=trg_seqs, pred_seqs=sampled_str_seqs, type='bleu')
+        # local rewards (bleu)
+        bleu_baselines           =  get_match_result(true_seqs=trg_seqs, pred_seqs=baseline_str_seqs, type='bleu')
+        bleu_samples             =  get_match_result(true_seqs=trg_seqs, pred_seqs=sampled_str_seqs, type='bleu')
 
+        # global rewards
+        match_baselines          =  get_match_result(true_seqs=trg_seqs, pred_seqs=baseline_str_seqs, type='exact')
+        match_samples            =  get_match_result(true_seqs=trg_seqs, pred_seqs=sampled_str_seqs, type='exact')
+
+        _, _, fscore_baselines   =  evaluate.evaluate(match_baselines, baseline_str_seqs, trg_seqs, topk=5)
+        _, _, fscore_samples     =  evaluate.evaluate(match_samples, sampled_str_seqs, trg_seqs, topk=5)
+
+        # compute the final rewards
+        alpha                    = 0.0
+        baseline                 = alpha * np.average(bleu_baselines) + (1.0 - alpha) * fscore_baselines
+        rewards                  = alpha * np.asarray(bleu_samples)   + (1.0 - alpha) * fscore_samples
+
+        """
         print('*' * 20 + '  ' + str(seq_i) + '  ' + '*' * 20)
         print('Target Sequences:\n\t\t %s' % str(trg_seqs))
         print('Baseline Sequences:')
@@ -177,12 +193,13 @@ def train_rl(one2many_batch, model, optimizer, generator, opt):
         print('Predict Sequences:')
         for pred_seq, reward in zip(sampled_str_seqs, rewards):
             print('\t\t[%f] %s' % (reward, ' '.join(pred_seq)))
+        """
 
         [policy_loss.append(-torch.cat(seq.logprobs, dim=0) * float(reward - baseline)) for seq, reward in zip(sampled_seqs, rewards)]
         [policy_rewards.append(reward) for reward in rewards]
 
     optimizer.zero_grad()
-    policy_loss = torch.cat(policy_loss).sum()
+    policy_loss = torch.cat(policy_loss).sum() * (1 - opt.loss_scale)
     policy_loss.backward()
 
     if opt.max_grad_norm > 0:
@@ -283,10 +300,10 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
     train_ml_losses = []
     train_rl_losses = []
-    total_batch = 0
+    total_batch = -1
     early_stop_flag = False
 
-    if opt.train_from:
+    if False:#opt.train_from:
         state_path = opt.train_from.replace('.model', '.state')
         logging.info('Loading training state from: %s' % state_path)
         if os.path.exists(state_path):
@@ -303,7 +320,6 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
         for batch_i, batch in enumerate(train_data_loader):
             model.train()
-            batch_i += 1 # for the aesthetics of printing
             total_batch += 1
             one2many_batch, one2one_batch = batch
             report_loss = []
@@ -327,7 +343,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
             progbar.update(epoch, batch_i, report_loss)
 
             # Validate and save checkpoint
-            if total_batch > 1 and total_batch % opt.run_valid_every == 0:
+            if total_batch > -1 and total_batch % opt.run_valid_every == 0:
                 logging.info('*' * 50)
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
                 # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
@@ -431,7 +447,7 @@ def load_data_vocab(opt, load_train=True):
     if load_train:
         train_one2many = torch.load(opt.data + '.train.one2many.pt', 'wb')
         train_one2many_dataset = KeyphraseDataset(train_one2many, word2id=word2id, id2word=id2word, type='one2many')
-        train_one2many_loader  = KeyphraseDataLoader(dataset=train_one2many_dataset, collate_fn=train_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=True)
+        train_one2many_loader  = KeyphraseDataLoader(dataset=train_one2many_dataset, collate_fn=train_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.max_batch_example, max_batch_pair=opt.batch_size, pin_memory=True, shuffle=True)
         logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d' % (len(train_one2many_loader.dataset), train_one2many_loader.one2one_number(), len(train_one2many_loader)))
     else:
         train_one2many_loader = None
@@ -456,8 +472,8 @@ def load_data_vocab(opt, load_train=True):
     exit()
     """
 
-    valid_one2many_loader  = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
-    test_one2many_loader   = KeyphraseDataLoader(dataset=test_one2many_dataset, collate_fn=test_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
+    valid_one2many_loader  = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.max_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
+    test_one2many_loader   = KeyphraseDataLoader(dataset=test_one2many_dataset, collate_fn=test_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.max_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
 
     opt.word2id = word2id
     opt.id2word = id2word
@@ -565,7 +581,6 @@ def init_model(opt):
             checkpoint = torch.load(
                 open(opt.train_from, 'rb'), map_location=lambda storage, loc: storage
             )
-        print(checkpoint.keys())
         # some compatible problems, keys are started with 'module.'
         checkpoint = dict([(k[7:],v) if k.startswith('module.') else (k,v) for k,v in checkpoint.items()])
         model.load_state_dict(checkpoint)
@@ -588,16 +603,20 @@ def main():
     if opt.seed > 0:
         torch.manual_seed(opt.seed)
 
-    print(opt.gpuid)
     if torch.cuda.is_available() and not opt.gpuid:
         opt.gpuid = 0
+
+    if hasattr(opt, 'train_ml') and opt.train_ml:
+        opt.exp += '.ml'
+
+    if hasattr(opt, 'train_rl') and opt.train_rl:
+        opt.exp += '.rl'
 
     if hasattr(opt, 'copy_model') and opt.copy_model:
         opt.exp += '.copy'
 
-    if hasattr(opt, 'bidirectional'):
-        if opt.bidirectional:
-            opt.exp += '.bi-directional'
+    if hasattr(opt, 'bidirectional') and opt.bidirectional:
+        opt.exp += '.bi-directional'
     else:
         opt.exp += '.uni-directional'
 

@@ -355,7 +355,7 @@ def load_data_vocab(opt, load_train=True):
     if load_train:
         train_one2many = torch.load(opt.data + '.train.one2many.pt', 'wb')
         train_one2many_dataset = KeyphraseDataset(train_one2many, word2id=word2id, id2word=id2word, type='one2many')
-        train_one2many_loader  = KeyphraseDataLoader(dataset=train_one2many_dataset, collate_fn=train_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=True)
+        train_one2many_loader  = KeyphraseDataLoader(dataset=train_one2many_dataset, collate_fn=train_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_pair=opt.batch_size, pin_memory=True, shuffle=True)
         logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d' % (len(train_one2many_loader.dataset), train_one2many_loader.one2one_number(), len(train_one2many_loader)))
     else:
         train_one2many_loader = None
@@ -380,8 +380,8 @@ def load_data_vocab(opt, load_train=True):
     exit()
     """
 
-    valid_one2many_loader  = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
-    test_one2many_loader   = KeyphraseDataLoader(dataset=test_one2many_dataset, collate_fn=test_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, batch_size=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
+    valid_one2many_loader  = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
+    test_one2many_loader   = KeyphraseDataLoader(dataset=test_one2many_dataset, collate_fn=test_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
 
     opt.word2id = word2id
     opt.id2word = id2word

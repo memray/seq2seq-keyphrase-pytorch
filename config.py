@@ -213,7 +213,7 @@ def train_opts(parser):
                         help='Train with Maximum Likelihood or not')
     parser.add_argument('-train_rl', action="store_true", default=False,
                         help='Train with Reinforcement Learning or not')
-    parser.add_argument('-loss_scale', type=float, default=1.0,
+    parser.add_argument('-loss_scale', type=float, default=0.5,
                         help='A scaling factor to merge the loss of ML and RL parts: L_mixed = γ * L_rl + (1 − γ) * L_ml'
                              'The γ used by Metamind is 0.9984 in "A DEEP REINFORCED MODEL FOR ABSTRACTIVE SUMMARIZATION"'
                              'The α used by Google is 0.017 in "Google Translation": O_Mixed(θ) = α ∗ O_ML(θ) + O_RL(θ)'
@@ -279,7 +279,9 @@ def train_opts(parser):
                         help="Path of checkpoints.")
 
     # beam search setting
-    parser.add_argument('-beam_search_batch_size', type=int, default=16,
+    parser.add_argument('-max_batch_example', type=int, default=8,
+                        help='Maximum of examples for one batch')
+    parser.add_argument('-beam_search_batch_size', type=int, default=8,
                         help='Maximum batch size')
     parser.add_argument('-beam_search_batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')
@@ -295,8 +297,8 @@ def predict_opts(parser):
     parser.add_argument('-num_oneword_seq', type=int, default=10000,
                         help="""Source sequence to decode (one line per
                         sequence)""")
-    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5#oneword=-1', 'f_score@5#oneword=1', 'f_score@10#oneword=-1', 'f_score@10#oneword=1'],
-                        help="""Default measure to report""")
+    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@1#oneword=-1', 'f_score@3#oneword=-1', 'f_score@5#oneword=-1', 'f_score@10#oneword=-1'], help="""Default measure to report""")
+    # parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5#oneword=-1', 'f_score@10#oneword=-1', 'f_score@5#oneword=1', 'f_score@10#oneword=1'], help="""Default measure to report""")
     # parser.add_argument('-test_data', required=True,
     #                     help="""Source sequence to decode (one line per
     #                     sequence)""")

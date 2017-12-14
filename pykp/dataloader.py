@@ -290,19 +290,20 @@ class KeyphraseDataLoader(object):
             will be smaller. (default: False)
     """
 
-    def __init__(self, dataset, batch_size=1, shuffle=False, sampler=None, batch_sampler=None,
+    def __init__(self, dataset, max_batch_example=5, max_batch_pair=1, shuffle=False, sampler=None, batch_sampler=None,
                  num_workers=0, collate_fn=default_collate, pin_memory=False, drop_last=False):
         self.dataset     = dataset
         # used for generating one2many batches
-        self.num_trgs    = [len(e['trg']) for e in dataset.examples]
-        self.batch_size  = batch_size
-        self.num_workers = num_workers
-        self.collate_fn  = collate_fn
-        self.pin_memory  = pin_memory
-        self.drop_last   = drop_last
+        self.num_trgs           = [len(e['trg']) for e in dataset.examples]
+        self.batch_size         = max_batch_pair
+        self.max_example_number = max_batch_example
+        self.num_workers        = num_workers
+        self.collate_fn         = collate_fn
+        self.pin_memory         = pin_memory
+        self.drop_last          = drop_last
 
         if batch_sampler is not None:
-            if batch_size > 1 or shuffle or sampler is not None or drop_last:
+            if max_batch_pair > 1 or shuffle or sampler is not None or drop_last:
                 raise ValueError('batch_sampler is mutually exclusive with '
                                  'batch_size, shuffle, sampler, and drop_last')
 
@@ -316,7 +317,7 @@ class KeyphraseDataLoader(object):
                 else:
                     sampler = SequentialSampler(dataset)
 
-        batch_sampler = One2ManyBatchSampler(sampler, self.num_trgs, batch_size, drop_last)
+        batch_sampler = One2ManyBatchSampler(sampler, self.num_trgs, max_batch_example=max_batch_example, max_batch_pair=max_batch_pair, drop_last=drop_last)
 
         self.sampler = sampler
         self.batch_sampler = batch_sampler
@@ -352,18 +353,19 @@ class One2ManyBatchSampler(object):
         [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
     """
 
-    def __init__(self, sampler, num_trgs, batch_size, drop_last):
-        self.sampler    = sampler
-        self.num_trgs   = num_trgs
-        self.batch_size = batch_size
-        self.drop_last  = drop_last
+    def __init__(self, sampler, num_trgs, max_batch_example, max_batch_pair, drop_last):
+        self.sampler            = sampler
+        self.num_trgs           = num_trgs
+        self.max_batch_pair     = max_batch_pair
+        self.max_batch_example  = max_batch_example
+        self.drop_last          = drop_last
 
         batches = []
         batch = []
         for idx in self.sampler:
             # number of targets sequences in current batch
             number_trgs = sum([self.num_trgs[id] for id in batch])
-            if number_trgs + self.num_trgs[idx] < self.batch_size:
+            if len(batch) < self.max_batch_example and number_trgs + self.num_trgs[idx] < self.max_batch_pair:
                 batch.append(idx)
             elif len(batch) == 0: # if the batch_size is very small, return a batch of only one data sample
                 batch.append(idx)

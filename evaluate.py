@@ -118,14 +118,14 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
     score_dict = {} # {'precision@5':[],'recall@5':[],'f1score@5':[], 'precision@10':[],'recall@10':[],'f1score@10':[]}
     num_oneword_range  = [-1, 1, 2, 3]
-    topk_range         = [5, 10]
+    topk_range         = [1, 3, 5, 10]
     score_names        = ['precision', 'recall', 'f_score']
 
     example_idx = 0
 
     for i, batch in enumerate(data_loader):
-        if i > 3:
-            break
+        # if i > 3:
+        #     break
 
         one2many_batch, one2one_batch = batch
         src_list, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
@@ -186,7 +186,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 assert len(filtered_pred_seq) == len(filtered_pred_str_seqs) == len(match_list)
 
                 for topk in topk_range:
-                    results = evalute(match_list, filtered_pred_seq, trg_str, topk=topk)
+                    results = evaluate(match_list, filtered_pred_seq, trg_str, topk=topk)
                     for k,v  in zip(score_names, results):
                         if '%s@%d#oneword=%d' % (k, topk, num_oneword_seq) not in score_dict:
                             score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)] = []
@@ -340,11 +340,11 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
 
         elif type == 'bleu':
             # account for the match of subsequences, like n-gram-based (BLEU) or LCS-based
-            match_score[pred_id] = bleu(pred_seq, true_seqs, [0.1, 0.5, 0.4])
+            match_score[pred_id] = bleu(pred_seq, true_seqs, [0.1, 0.3, 0.6])
 
     return match_score
 
-def evalute(match_list, predicted_list, true_list, topk=5):
+def evaluate(match_list, predicted_list, true_list, topk=5):
     if len(match_list) > topk:
         match_list = match_list[:topk]
     if len(predicted_list) > topk:

@@ -178,7 +178,6 @@ class Progbar(object):
             if current >= self.target:
                 sys.stdout.write("\n")
 
-
         if self.verbose == 2:
             if current >= self.target:
                 info = '%ds' % (now - self.start)
@@ -187,6 +186,7 @@ class Progbar(object):
                 # sys.stdout.write(info + "\n")
                 self.logger.critical(info + "\n")
                 print(info + "\n")
+
     def add(self, n, values=[]):
         self.update(self.seen_so_far + n, values)
 

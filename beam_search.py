@@ -13,6 +13,7 @@ import copy
 import heapq
 from queue import PriorityQueue
 
+import sys
 import torch
 from torch.autograd import Variable
 
@@ -221,7 +222,7 @@ class SequenceGenerator(object):
             dec_hiddens = dec_hiddens
 
         partial_sequences   = [TopN_heap(self.beam_size) for _ in range(batch_size)]
-        complete_sequences  = [TopN_heap(self.beam_size) for _ in range(batch_size)]
+        complete_sequences  = [TopN_heap(sys.maxsize) for _ in range(batch_size)]
 
         for batch_i in range(batch_size):
             seq = Sequence(
@@ -464,7 +465,7 @@ class SequenceGenerator(object):
                     probs, words = log_probs.data.topk(k, dim=-1)
                 else:
                     # m.sample_n(k)
-                    words = torch.multinomial(exp_log_probs, k, True)
+                    words = torch.multinomial(exp_log_probs, k, replacement=False)
                     probs = torch.gather(log_probs, 1, words)
                     words = words.data
             else:
@@ -472,7 +473,7 @@ class SequenceGenerator(object):
                     probs, words = log_probs.data.topk(1, dim=-1)
                 else:
                     # words = m.sample_n(1)
-                    words = torch.multinomial(exp_log_probs, 1, True)
+                    words = torch.multinomial(exp_log_probs, 1, replacement=False)
                     probs = torch.gather(log_probs, 1, words)
                     words = words.data
 
@@ -563,7 +564,7 @@ class SequenceGenerator(object):
                 print('*' * 50)
                 '''
 
-            print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in sampled_sequences])))
+            # print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in sampled_sequences])))
 
             # print('Round=%d' % (current_len))
             # print('\t#(hypothese) = %d' % (sum([len(batch_heap) for batch_heap in partial_sequences])))
