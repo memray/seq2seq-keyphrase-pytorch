@@ -14,4 +14,4 @@
 # Run the job
 export EXP_NAME="rnn.scheduled_sampling"
 export DATA_NAME="kp20k"
-srun python -m train -data data/$DATA_NAME/$DATA_NAME.train_valid.pt -vocab data/$DATA_NAME/$DATA_NAME.vocab.pt -exp_path "exp/$EXP_NAME/%s.bi-directional.%s" -model_path "model/$EXP_NAME/%s.bi-directional.%s" -exp "$DATA_NAME" -batch_size 256 -bidirectional -run_valid_every 2000 -scheduled_sampling -scheduled_sampling_batches 200000
+srun python -m train -data data/$DATA_NAME/$DATA_NAME.train_valid.pt -vocab data/$DATA_NAME/$DATA_NAME.vocab.pt -exp_path "exp/$EXP_NAME/%s.bi-directional.%s" -model_path "model/$EXP_NAME/%s.bi-directional.%s" -exp "$DATA_NAME" -batch_size 256 -bidirectional -run_valid_every 2000 -scheduled_sampling -scheduled_sampling_batches 200000 -train_ml
