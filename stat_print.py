@@ -1,4 +1,4 @@
-import pykp.IO
+import pykp.io
 import argparse
 import codecs
 import json

@@ -4,6 +4,11 @@ model/*
 .model
 *.model
 
+data/
+/exp/
+/data.zip
+/pred/
+
 
 # PyCharm
 .idea/
@@ -110,6 +115,3 @@ ENV/
 # mypy
 .mypy_cache/
 .DS_Store
-data/
-/exp/
-/data.zip
