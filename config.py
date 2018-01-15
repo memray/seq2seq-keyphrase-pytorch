@@ -292,12 +292,12 @@ def train_opts(parser):
                         help='Maximum sentence length.')
 
 def predict_opts(parser):
-    parser.add_argument('-must_appear_in_src', action="store_true",
+    parser.add_argument('-must_appear_in_src', action="store_true", default="True",
                         help="""whether the predicted sequences must appear in the source text""")
     parser.add_argument('-num_oneword_seq', type=int, default=10000,
                         help="""Source sequence to decode (one line per
                         sequence)""")
-    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@1#oneword=-1', 'f_score@3#oneword=-1', 'f_score@5#oneword=-1', 'f_score@10#oneword=-1'], help="""Default measure to report""")
+    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5#oneword=-1', 'f_score@10#oneword=-1'], help="""Default measure to report""")
     # parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5#oneword=-1', 'f_score@10#oneword=-1', 'f_score@5#oneword=1', 'f_score@10#oneword=1'], help="""Default measure to report""")
     # parser.add_argument('-test_data', required=True,
     #                     help="""Source sequence to decode (one line per

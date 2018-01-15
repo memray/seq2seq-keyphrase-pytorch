@@ -29,8 +29,8 @@ from pykp.dataloader import KeyphraseDataLoader
 from utils import Progbar, plot_learning_curve
 
 import pykp
-from pykp.IO import KeyphraseDataset
-from pykp.Model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionCopy
+from pykp.io import KeyphraseDataset
+from pykp.model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionCopy
 
 import time
 
@@ -107,7 +107,7 @@ def get_loss_rl():
 
 def train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, opt):
     generator = SequenceGenerator(model,
-                                  eos_id=opt.word2id[pykp.IO.EOS_WORD],
+                                  eos_id=opt.word2id[pykp.io.EOS_WORD],
                                   beam_size=opt.beam_size,
                                   max_sequence_length=opt.max_sent_length
                                   )
@@ -414,7 +414,7 @@ def init_optimizer_criterion(model, opt):
     # optimizer = torch.optim.Adadelta(model.parameters(), lr=0.1)
     # optimizer = torch.optim.RMSprop(model.parameters(), lr=0.1)
     '''
-    criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.IO.PAD_WORD], reduce=False)
+    criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.io.PAD_WORD], reduce=False)
 
     optimizer = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
     if torch.cuda.is_available():
@@ -436,8 +436,8 @@ def init_model(opt):
             attention_mode='dot',
             batch_size=opt.batch_size,
             bidirectional=opt.bidirectional,
-            pad_token_src = opt.word2id[pykp.IO.PAD_WORD],
-            pad_token_trg = opt.word2id[pykp.IO.PAD_WORD],
+            pad_token_src = opt.word2id[pykp.io.PAD_WORD],
+            pad_token_trg = opt.word2id[pykp.io.PAD_WORD],
             nlayers_src=opt.enc_layers,
             nlayers_trg=opt.dec_layers,
             dropout=opt.dropout,
@@ -457,8 +457,8 @@ def init_model(opt):
             attention_mode='dot',
             batch_size=opt.batch_size,
             bidirectional=opt.bidirectional,
-            pad_token_src = opt.word2id[pykp.IO.PAD_WORD],
-            pad_token_trg = opt.word2id[pykp.IO.PAD_WORD],
+            pad_token_src = opt.word2id[pykp.io.PAD_WORD],
+            pad_token_trg = opt.word2id[pykp.io.PAD_WORD],
             nlayers_src=opt.enc_layers,
             nlayers_trg=opt.dec_layers,
             dropout=opt.dropout,
@@ -466,7 +466,7 @@ def init_model(opt):
             teacher_forcing_ratio=opt.teacher_forcing_ratio,
             scheduled_sampling=opt.scheduled_sampling,
             scheduled_sampling_batches=opt.scheduled_sampling_batches,
-            unk_word=opt.word2id[pykp.IO.UNK_WORD],
+            unk_word=opt.word2id[pykp.io.UNK_WORD],
         )
 
     if torch.cuda.is_available():

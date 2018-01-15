@@ -8,7 +8,7 @@ import re
 
 import torch
 import torchtext
-import pykp.IO
+import pykp.io
 
 import config
 
@@ -47,11 +47,11 @@ def main():
     '''
     Load and process training data
     '''
-    fields = pykp.IO.initialize_fields(opt)
+    fields = pykp.io.initialize_fields(opt)
     print("Building training...")
     # load keyphrase data from file, each data example is a pair of (src_str, [kp_1, kp_2 ... kp_m])
-    src_trgs_pairs = pykp.IO.load_json_data(opt.train_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';', lower = opt.lower)
-    train = pykp.IO.One2OneKPDatasetOpenNMT(
+    src_trgs_pairs = pykp.io.load_json_data(opt.train_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';', lower = opt.lower)
+    train = pykp.io.One2OneKPDatasetOpenNMT(
         src_trgs_pairs, fields,
         src_seq_length=opt.src_seq_length, 
         trg_seq_length=opt.trg_seq_length,
@@ -59,14 +59,14 @@ def main():
         trg_seq_length_trunc=opt.trg_seq_length_trunc,
         dynamic_dict=opt.dynamic_dict)
     print("Building Vocab...")
-    pykp.IO.build_vocab(train, opt)
+    pykp.io.build_vocab(train, opt)
 
     '''
     Load and process validation data
     '''
     print("Building validation...")
-    src_trgs_pairs = pykp.IO.load_json_data(opt.valid_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';', lower = opt.lower)
-    valid = pykp.IO.One2OneKPDatasetOpenNMT(
+    src_trgs_pairs = pykp.io.load_json_data(opt.valid_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';', lower = opt.lower)
+    valid = pykp.io.One2OneKPDatasetOpenNMT(
         src_trgs_pairs, fields,
         src_seq_length=opt.src_seq_length,
         trg_seq_length=opt.trg_seq_length,
@@ -79,7 +79,7 @@ def main():
     '''
     print("Dumping dict to disk: %s" % opt.save_data + '.vocab.pt')
     # Can't save fields, so remove/reconstruct at training time.
-    torch.save(pykp.IO.save_vocab(fields),
+    torch.save(pykp.io.save_vocab(fields),
                open(opt.save_data + '.vocab.pt', 'wb'))
     train.fields = []
     valid.fields = []

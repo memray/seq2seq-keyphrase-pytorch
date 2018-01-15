@@ -18,7 +18,7 @@ from train import load_data_vocab, init_model, init_optimizer_criterion
 from utils import Progbar, plot_learning_curve
 
 import pykp
-from pykp.IO import KeyphraseDatasetTorchText
+from pykp.io import KeyphraseDatasetTorchText
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -72,10 +72,10 @@ def main():
         # optimizer, criterion = init_optimizer_criterion(model, opt)
 
         generator = SequenceGenerator(model,
-                                      eos_id=opt.word2id[pykp.IO.EOS_WORD],
+                                      eos_id=opt.word2id[pykp.io.EOS_WORD],
                                       beam_size=opt.beam_size,
                                       max_sequence_length=opt.max_sent_length
-                                  )
+                                      )
 
         # import time
         # start_time = time.time()

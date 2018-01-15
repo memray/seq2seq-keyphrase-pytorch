@@ -196,7 +196,7 @@ class SequenceGenerator(object):
 
         return seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, src_oovs, oov_lists
 
-    def beam_search(self, src_input, src_oov, oov_list, word2id):
+    def beam_search(self, src_input, src_len, src_oov, oov_list, word2id):
         """Runs beam search sequence generation given input (padded word indexes)
 
         Args:
@@ -208,13 +208,13 @@ class SequenceGenerator(object):
         self.model.eval()
         batch_size = len(src_input)
 
-        src_context, (src_h, src_c) = self.model.encode(src_input)
+        src_context, (src_h, src_c) = self.model.encode(src_input, src_len)
 
         # prepare the init hidden vector, (batch_size, trg_seq_len, dec_hidden_dim)
         dec_hiddens = self.model.init_decoder_state(src_h, src_c)
 
         # each dec_hidden is (trg_seq_len, dec_hidden_dim)
-        initial_input = [word2id[pykp.IO.BOS_WORD]] * batch_size
+        initial_input = [word2id[pykp.io.BOS_WORD]] * batch_size
         if isinstance(dec_hiddens, tuple):
             dec_hiddens = (dec_hiddens[0].squeeze(0), dec_hiddens[1].squeeze(0))
             dec_hiddens = [(dec_hiddens[0][i], dec_hiddens[1][i]) for i in range(batch_size)]
@@ -396,7 +396,7 @@ class SequenceGenerator(object):
         return complete_sequences
 
 
-    def sample(self, src_input, src_oov, oov_list, word2id, k, is_greedy=False):
+    def sample(self, src_input, src_len, src_oov, oov_list, word2id, k, is_greedy=False):
         """
         Sample k sequeces for each src in src_input
 
@@ -408,13 +408,13 @@ class SequenceGenerator(object):
         self.model.eval()
         batch_size = len(src_input)
 
-        src_context, (src_h, src_c) = self.model.encode(src_input)
+        src_context, (src_h, src_c) = self.model.encode(src_input, src_len)
 
         # prepare the init hidden vector, (batch_size, trg_seq_len, dec_hidden_dim)
         dec_hiddens = self.model.init_decoder_state(src_h, src_c)
 
         # each dec_hidden is (trg_seq_len, dec_hidden_dim)
-        initial_input = [word2id[pykp.IO.BOS_WORD]] * batch_size
+        initial_input = [word2id[pykp.io.BOS_WORD]] * batch_size
         if isinstance(dec_hiddens, tuple):
             dec_hiddens = (dec_hiddens[0].squeeze(0), dec_hiddens[1].squeeze(0))
             dec_hiddens = [(dec_hiddens[0][i], dec_hiddens[1][i]) for i in range(batch_size)]

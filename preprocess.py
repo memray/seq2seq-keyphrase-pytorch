@@ -6,7 +6,7 @@ import argparse
 import torch
 
 import config
-import pykp.IO
+import pykp.io
 
 parser = argparse.ArgumentParser(
     description='preprocess.py',
@@ -53,28 +53,28 @@ def main():
     # load keyphrase data from file, each data example is a pair of (src_str, [kp_1, kp_2 ... kp_m])
 
     print("Loading training data...")
-    src_trgs_pairs = pykp.IO.load_json_data(opt.train_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
+    src_trgs_pairs = pykp.io.load_json_data(opt.train_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
     # src_trgs_pairs = pykp.IO.load_json_data(opt.train_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
     print("Processing training data...")
-    tokenized_train_pairs = pykp.IO.tokenize_filter_data(
+    tokenized_train_pairs = pykp.io.tokenize_filter_data(
         src_trgs_pairs,
-        tokenize = pykp.IO.copyseq_tokenize, opt=opt, valid_check=True)
+        tokenize = pykp.io.copyseq_tokenize, opt=opt, valid_check=True)
 
     print("Building Vocab...")
-    word2id, id2word, vocab = pykp.IO.build_vocab(tokenized_train_pairs, opt)
+    word2id, id2word, vocab = pykp.io.build_vocab(tokenized_train_pairs, opt)
 
     print('Vocab size = %d' % len(vocab))
 
     print("Building training...")
-    train_one2one = pykp.IO.build_dataset(tokenized_train_pairs, word2id, id2word, opt, mode='one2one')
+    train_one2one = pykp.io.build_dataset(tokenized_train_pairs, word2id, id2word, opt, mode='one2one')
     print('#pairs of train_one2one = %d' % len(train_one2one))
     print("Dumping train one2one to disk: %s" % (opt.save_data + '.train.one2one.pt'))
     torch.save(train_one2one, open(opt.save_data + '.train.one2one.pt', 'wb'))
     len_train_one2one = len(train_one2one)
     train_one2one = None
 
-    train_one2many = pykp.IO.build_dataset(tokenized_train_pairs, word2id, id2word, opt, mode='one2many')
+    train_one2many = pykp.io.build_dataset(tokenized_train_pairs, word2id, id2word, opt, mode='one2many')
     print('#pairs of train_one2many = %d' % len(train_one2many))
     print("Dumping train one2many to disk: %s" % (opt.save_data + '.train.one2many.pt'))
     torch.save(train_one2many, open(opt.save_data + '.train.one2many.pt', 'wb'))
@@ -88,35 +88,35 @@ def main():
     Load and process validation data
     '''
     print("Loading validation data...")
-    src_trgs_pairs = pykp.IO.load_json_data(opt.valid_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
+    src_trgs_pairs = pykp.io.load_json_data(opt.valid_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
     # src_trgs_pairs = pykp.IO.load_json_data(opt.valid_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
     print("Processing validation data...")
-    tokenized_valid_pairs = pykp.IO.tokenize_filter_data(
+    tokenized_valid_pairs = pykp.io.tokenize_filter_data(
         src_trgs_pairs,
-        tokenize=pykp.IO.copyseq_tokenize, opt=opt, valid_check=True)
+        tokenize=pykp.io.copyseq_tokenize, opt=opt, valid_check=True)
 
     print("Building validation...")
-    valid_one2one = pykp.IO.build_dataset(
+    valid_one2one = pykp.io.build_dataset(
         tokenized_valid_pairs, word2id, id2word, opt, mode='one2one', include_original=True)
-    valid_one2many = pykp.IO.build_dataset(
+    valid_one2many = pykp.io.build_dataset(
         tokenized_valid_pairs, word2id, id2word, opt, mode='one2many', include_original=True)
 
     '''
     Load and process test data
     '''
     print("Loading test data...")
-    src_trgs_pairs = pykp.IO.load_json_data(opt.test_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
+    src_trgs_pairs = pykp.io.load_json_data(opt.test_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
     # src_trgs_pairs = pykp.IO.load_json_data(opt.test_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
     print("Processing test data...")
-    tokenized_test_pairs = pykp.IO.tokenize_filter_data(
+    tokenized_test_pairs = pykp.io.tokenize_filter_data(
         src_trgs_pairs,
-        tokenize=pykp.IO.copyseq_tokenize, opt=opt, valid_check=True)
+        tokenize=pykp.io.copyseq_tokenize, opt=opt, valid_check=True)
     print("Building testing...")
-    test_one2one = pykp.IO.build_dataset(
+    test_one2one = pykp.io.build_dataset(
         tokenized_test_pairs, word2id, id2word, opt, mode='one2one', include_original=True)
-    test_one2many = pykp.IO.build_dataset(
+    test_one2many = pykp.io.build_dataset(
         tokenized_test_pairs, word2id, id2word, opt, mode='one2many', include_original=True)
 
     print('#pairs of train_one2one  = %d' % len_train_one2one)

@@ -25,13 +25,13 @@ import torch.nn as nn
 from torch import cuda
 
 from beam_search import SequenceGenerator
-from evaluate import evaluate_beam_search, process_predseqs, get_match_result
+from evaluate import evaluate_beam_search, get_match_result
 from pykp.dataloader import KeyphraseDataLoader
 from utils import Progbar, plot_learning_curve
 
 import pykp
-from pykp.IO import KeyphraseDataset
-from pykp.Model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionCopy
+from pykp.io import KeyphraseDataset
+from pykp.model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionCopy
 
 import time
 
@@ -93,7 +93,7 @@ def _valid_error(data_loader, model, criterion, epoch, opt):
 
 
 def train_ml(one2one_batch, model, optimizer, criterion, opt):
-    src, trg, trg_target, trg_copy_target, src_ext, oov_lists = one2one_batch
+    src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists = one2one_batch
     max_oov_number = max([len(oov) for oov in oov_lists])
 
     print("src size - ", src.size())
@@ -104,11 +104,11 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
         trg = trg.cuda()
         trg_target = trg_target.cuda()
         trg_copy_target = trg_copy_target.cuda()
-        src_ext = src_ext.cuda()
+        src_oov = src_oov.cuda()
 
     optimizer.zero_grad()
 
-    decoder_log_probs, _, _ = model.forward(src, trg, src_ext, oov_lists)
+    decoder_log_probs, _, _ = model.forward(src, src_len, trg, src_oov, oov_lists)
 
     # simply average losses of all the predicitons
     # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
@@ -142,17 +142,17 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
 
 
 def train_rl(one2many_batch, model, optimizer, generator, opt):
-    src_list, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list = one2many_batch
+    src_list, src_len, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list = one2many_batch
 
     if torch.cuda.is_available():
         src_list = src_list.cuda()
         src_oov_map_list = src_oov_map_list.cuda()
 
     # Baseline sequences for self-critic
-    baseline_seqs_list = generator.sample(src_list, src_oov_map_list, oov_list, opt.word2id, k=5, is_greedy=True)
+    baseline_seqs_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=5, is_greedy=True)
 
     # Sample number_batch*beam_size sequences
-    sampled_seqs_list  = generator.sample(src_list, src_oov_map_list, oov_list, opt.word2id, k=5, is_greedy=False)
+    sampled_seqs_list  = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=5, is_greedy=False)
 
     policy_loss = []
     policy_rewards = []
@@ -160,9 +160,9 @@ def train_rl(one2many_batch, model, optimizer, generator, opt):
     for seq_i, (src, trg, trg_copy, sampled_seqs, baseline_seqs, oov) in enumerate(zip(src_list, trg_list, trg_copy_target_list, sampled_seqs_list, baseline_seqs_list, oov_list)):
         # convert to string sequences
         baseline_str_seqs   =  [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence] for seq in baseline_seqs]
-        baseline_str_seqs   =  [seq[:seq.index(pykp.IO.EOS_WORD)+1] if pykp.IO.EOS_WORD in seq else seq for seq in baseline_str_seqs]
+        baseline_str_seqs   =  [seq[:seq.index(pykp.io.EOS_WORD) + 1] if pykp.io.EOS_WORD in seq else seq for seq in baseline_str_seqs]
         sampled_str_seqs    =  [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence] for seq in sampled_seqs]
-        sampled_str_seqs    =  [seq[:seq.index(pykp.IO.EOS_WORD)+1] if pykp.IO.EOS_WORD in seq else seq for seq in sampled_str_seqs]
+        sampled_str_seqs    =  [seq[:seq.index(pykp.io.EOS_WORD) + 1] if pykp.io.EOS_WORD in seq else seq for seq in sampled_str_seqs]
 
         # pad trg seqs with EOS to the same length
         trg_seqs            =  [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq] for seq in trg_copy]
@@ -218,7 +218,7 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
     sampled_size = 2
     logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
-    src, trg, trg_target, trg_copy_target, src_ext, oov_lists = one2one_batch
+    src, _, trg, trg_target, trg_copy_target, src_ext, oov_lists = one2one_batch
     if torch.cuda.is_available():
         src = src.data.cpu().numpy()
         decoder_log_probs = decoder_log_probs.data.cpu().numpy()
@@ -273,7 +273,7 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
 
 def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt, logging):
     generator = SequenceGenerator(model,
-                                  eos_id=opt.word2id[pykp.IO.EOS_WORD],
+                                  eos_id=opt.word2id[pykp.io.EOS_WORD],
                                   beam_size=opt.beam_size,
                                   max_sequence_length=opt.max_sent_length
                                   )
@@ -506,7 +506,7 @@ def init_optimizer_criterion(model, opt):
     # optimizer = torch.optim.Adadelta(model.parameters(), lr=0.1)
     # optimizer = torch.optim.RMSprop(model.parameters(), lr=0.1)
     '''
-    criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.IO.PAD_WORD])
+    criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.io.PAD_WORD])
 
     if opt.train_ml:
         optimizer_ml = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
@@ -537,8 +537,8 @@ def init_model(opt):
             attention_mode='dot',
             batch_size=opt.batch_size,
             bidirectional=opt.bidirectional,
-            pad_token_src = opt.word2id[pykp.IO.PAD_WORD],
-            pad_token_trg = opt.word2id[pykp.IO.PAD_WORD],
+            pad_token_src = opt.word2id[pykp.io.PAD_WORD],
+            pad_token_trg = opt.word2id[pykp.io.PAD_WORD],
             nlayers_src=opt.enc_layers,
             nlayers_trg=opt.dec_layers,
             dropout=opt.dropout,
@@ -558,8 +558,8 @@ def init_model(opt):
             attention_mode='dot',
             batch_size=opt.batch_size,
             bidirectional=opt.bidirectional,
-            pad_token_src = opt.word2id[pykp.IO.PAD_WORD],
-            pad_token_trg = opt.word2id[pykp.IO.PAD_WORD],
+            pad_token_src = opt.word2id[pykp.io.PAD_WORD],
+            pad_token_trg = opt.word2id[pykp.io.PAD_WORD],
             nlayers_src=opt.enc_layers,
             nlayers_trg=opt.dec_layers,
             dropout=opt.dropout,
@@ -567,7 +567,7 @@ def init_model(opt):
             teacher_forcing_ratio=opt.teacher_forcing_ratio,
             scheduled_sampling=opt.scheduled_sampling,
             scheduled_sampling_batches=opt.scheduled_sampling_batches,
-            unk_word=opt.word2id[pykp.IO.UNK_WORD],
+            unk_word=opt.word2id[pykp.io.UNK_WORD],
         )
 
     if torch.cuda.is_available():

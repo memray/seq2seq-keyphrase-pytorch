@@ -25,8 +25,8 @@ from torch import cuda
 from utils import Progbar, plot_learning_curve
 
 import pykp
-from pykp.IO import KeyphraseDatasetTorchText
-from pykp.Model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionOld, Seq2SeqLSTMAttentionCopy
+from pykp.io import KeyphraseDatasetTorchText
+from pykp.model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionOld, Seq2SeqLSTMAttentionCopy
 
 import time
 
@@ -304,16 +304,16 @@ def load_train_valid_data(opt):
 
     src_field = torchtext.data.Field(
         use_vocab = False,
-        init_token=word2id[pykp.IO.BOS_WORD],
-        eos_token=word2id[pykp.IO.EOS_WORD],
-        pad_token=word2id[pykp.IO.PAD_WORD],
+        init_token=word2id[pykp.io.BOS_WORD],
+        eos_token=word2id[pykp.io.EOS_WORD],
+        pad_token=word2id[pykp.io.PAD_WORD],
         batch_first = True
     )
     trg_field = torchtext.data.Field(
         use_vocab = False,
-        init_token=word2id[pykp.IO.BOS_WORD],
-        eos_token=word2id[pykp.IO.EOS_WORD],
-        pad_token=word2id[pykp.IO.PAD_WORD],
+        init_token=word2id[pykp.io.BOS_WORD],
+        eos_token=word2id[pykp.io.EOS_WORD],
+        pad_token=word2id[pykp.io.PAD_WORD],
         batch_first=True
     )
 
@@ -348,7 +348,7 @@ def load_train_valid_data(opt):
 def init_optimizer_criterion(model, opt):
     # mask the BOS <s> and PAD <pad> when computing loss
     weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
-    weight_mask[opt.word2id[pykp.IO.PAD_WORD]] = 0 # only mask off the PAD, because BOS doesn't appear in targets
+    weight_mask[opt.word2id[pykp.io.PAD_WORD]] = 0 # only mask off the PAD, because BOS doesn't appear in targets
     criterion = torch.nn.CrossEntropyLoss(weight=weight_mask)
     # criterion = torch.nn.CrossEntropyLoss()
 
@@ -368,8 +368,8 @@ def init_model(word2id, opt):
         attention_mode='dot',
         batch_size=opt.batch_size,
         bidirectional=opt.bidirectional,
-        pad_token_src = word2id[pykp.IO.PAD_WORD],
-        pad_token_trg = word2id[pykp.IO.PAD_WORD],
+        pad_token_src = word2id[pykp.io.PAD_WORD],
+        pad_token_trg = word2id[pykp.io.PAD_WORD],
         nlayers_src=opt.enc_layers,
         nlayers_trg=opt.dec_layers,
         dropout=opt.dropout,
