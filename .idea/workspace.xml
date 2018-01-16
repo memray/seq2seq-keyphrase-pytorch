@@ -5,12 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="2f4f0ceb-6fe8-47df-b950-5132ade5cfd4" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat1.sh" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/train-kp20k-bidirectional-copy-general1.sh" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/pykp/model.py" afterPath="$PROJECT_DIR$/pykp/model.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh" afterPath="$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/train-kp20k-bidirectional-copy-dot.sh" afterPath="$PROJECT_DIR$/train-kp20k-bidirectional-copy-dot.sh" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh" afterPath="$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh" />
     </list>
     <list id="8ca2e02f-7766-4a75-8d04-6d2af4014691" name="Failed commit: Default" comment="remove useless code and add pack_padded_sequence and pad_packed_sequence" />
@@ -42,22 +38,14 @@
   <component name="ExecutionTargetManager" SELECTED_TARGET="default_target" />
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="train.py" pinned="false" current-in-tab="false">
+      <file leaf-file-name="train.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/train.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="225">
-              <caret line="32" column="22" lean-forward="true" selection-start-line="32" selection-start-column="22" selection-end-line="32" selection-end-column="22" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="train-kp20k-bidirectional-copy-dot.sh" pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-dot.sh">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="360">
-              <caret line="20" column="0" lean-forward="true" selection-start-line="20" selection-start-column="0" selection-end-line="20" selection-end-column="0" />
-              <folding />
+            <state relative-caret-position="330">
+              <caret line="39" column="25" lean-forward="true" selection-start-line="39" selection-start-column="25" selection-end-line="39" selection-end-column="25" />
+              <folding>
+                <element signature="e#55#64#0" expanded="true" />
+              </folding>
             </state>
           </provider>
         </entry>
@@ -203,10 +191,10 @@
         <option value="$PROJECT_DIR$/train.py" />
         <option value="$PROJECT_DIR$/train.sbatch" />
         <option value="$PROJECT_DIR$/train.sh" />
-        <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh" />
-        <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh" />
         <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy-dot.sh" />
         <option value="$PROJECT_DIR$/pykp/model.py" />
+        <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh" />
+        <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh" />
       </list>
     </option>
   </component>
@@ -747,13 +735,6 @@
       <option name="presentableId" value="Default" />
       <updated>1506620785216</updated>
     </task>
-    <task id="LOCAL-00046" summary="remove loss mask">
-      <created>1510973087219</created>
-      <option name="number" value="00046" />
-      <option name="presentableId" value="LOCAL-00046" />
-      <option name="project" value="LOCAL" />
-      <updated>1510973087219</updated>
-    </task>
     <task id="LOCAL-00047" summary="enlarge number of epochs">
       <created>1510973291234</created>
       <option name="number" value="00047" />
@@ -1090,7 +1071,14 @@
       <option name="project" value="LOCAL" />
       <updated>1516085459066</updated>
     </task>
-    <option name="localTasksCounter" value="95" />
+    <task id="LOCAL-00095" summary="fix script">
+      <created>1516086952613</created>
+      <option name="number" value="00095" />
+      <option name="presentableId" value="LOCAL-00095" />
+      <option name="project" value="LOCAL" />
+      <updated>1516086952613</updated>
+    </task>
+    <option name="localTasksCounter" value="96" />
     <servers />
   </component>
   <component name="TodoView" selected-index="4">
@@ -1493,22 +1481,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="285">
-          <caret line="19" column="57" lean-forward="true" selection-start-line="19" selection-start-column="57" selection-end-line="19" selection-end-column="57" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="300">
-          <caret line="19" column="154" lean-forward="false" selection-start-line="19" selection-start-column="154" selection-end-line="19" selection-end-column="154" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat1.sh">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="30">
@@ -1533,19 +1505,37 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/train.py">
+    <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="225">
-          <caret line="32" column="22" lean-forward="true" selection-start-line="32" selection-start-column="22" selection-end-line="32" selection-end-column="22" />
+        <state relative-caret-position="285">
+          <caret line="19" column="385" lean-forward="false" selection-start-line="19" selection-start-column="385" selection-end-line="19" selection-end-column="385" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="330">
+          <caret line="19" column="363" lean-forward="false" selection-start-line="19" selection-start-column="363" selection-end-line="19" selection-end-column="363" />
           <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-dot.sh">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="360">
-          <caret line="20" column="0" lean-forward="true" selection-start-line="20" selection-start-column="0" selection-end-line="20" selection-end-column="0" />
+        <state relative-caret-position="135">
+          <caret line="9" column="25" lean-forward="true" selection-start-line="9" selection-start-column="25" selection-end-line="9" selection-end-column="25" />
           <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/train.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="330">
+          <caret line="39" column="25" lean-forward="true" selection-start-line="39" selection-start-column="25" selection-end-line="39" selection-end-column="25" />
+          <folding>
+            <element signature="e#55#64#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
