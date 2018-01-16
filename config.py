@@ -6,27 +6,28 @@ import sys
 import time
 
 
-def init_logging(logger_name, logfile):
+def init_logging(logger_name, log_file, stdout=False):
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s',
                                   datefmt='%m/%d/%Y %H:%M:%S'   )
 
-    print('Making log output file: %s' % logfile)
-    print(logfile[: logfile.rfind(os.sep)])
-    if not os.path.exists(logfile[: logfile.rfind(os.sep)]):
-        os.makedirs(logfile[: logfile.rfind(os.sep)])
+    print('Making log output file: %s' % log_file)
+    print(log_file[: log_file.rfind(os.sep)])
+    if not os.path.exists(log_file[: log_file.rfind(os.sep)]):
+        os.makedirs(log_file[: log_file.rfind(os.sep)])
 
-    fh = logging.FileHandler(logfile)
+    fh = logging.FileHandler(log_file)
     fh.setFormatter(formatter)
     fh.setLevel(logging.INFO)
 
-    # ch = logging.StreamHandler(sys.stdout)
-    # ch.setFormatter(formatter)
-    # ch.setLevel(logging.INFO)
-
     logger = logging.getLogger(logger_name)
-    # logger.addHandler(ch)
     logger.addHandler(fh)
     logger.setLevel(logging.INFO)
+
+    if stdout:
+        ch = logging.StreamHandler(sys.stdout)
+        ch.setFormatter(formatter)
+        ch.setLevel(logging.INFO)
+        logger.addHandler(ch)
 
     return logger
 
@@ -87,10 +88,10 @@ def model_opts(parser):
                         Do not select for no context gate.""")
 
     # Attention options
-    parser.add_argument('-global_attention', type=str, default='general',
-                        choices=['dot', 'general', 'mlp'],
+    parser.add_argument('-attention_mode', type=str, default='concat',
+                        choices=['dot', 'general', 'concat'],
                         help="""The attention type to use:
-                        dotprot or general (Luong) or MLP (Bahdanau)""")
+                        dot or general (Luong) or concat (Bahdanau)""")
 
     # Genenerator and loss options.
     parser.add_argument('-copy_model', action="store_true",
@@ -279,8 +280,8 @@ def train_opts(parser):
                         help="Path of checkpoints.")
 
     # beam search setting
-    parser.add_argument('-max_batch_example', type=int, default=8,
-                        help='Maximum of examples for one batch')
+    parser.add_argument('-beam_search_batch_example', type=int, default=8,
+                        help='Maximum of examples for one batch, should be disabled for training')
     parser.add_argument('-beam_search_batch_size', type=int, default=8,
                         help='Maximum batch size')
     parser.add_argument('-beam_search_batch_workers', type=int, default=4,

@@ -20,7 +20,7 @@ from pykp.metric.bleu import bleu
 stemmer = PorterStemmer()
 
 
-def process_predseqs(pred_seqs, src_str, oov, id2word, opt):
+def process_predseqs(pred_seqs, oov, id2word, opt):
     '''
     :param pred_seqs:
     :param src_str:
@@ -30,6 +30,7 @@ def process_predseqs(pred_seqs, src_str, oov, id2word, opt):
     :return:
     '''
     processed_seqs = []
+    if_valid       = []
 
     for seq in pred_seqs:
         # print('-' * 50)
@@ -57,14 +58,14 @@ def process_predseqs(pred_seqs, src_str, oov, id2word, opt):
         if keep_flag and any([w=='.' or w==',' for w in processed_seq]):
             keep_flag = False
 
-        if keep_flag:
-            processed_seqs.append((seq, processed_seq, seq.score))
+        if_valid.append(keep_flag)
+        processed_seqs.append((seq, processed_seq, seq.score))
 
     unzipped = list(zip(*(processed_seqs)))
     processed_seqs, processed_str_seqs, processed_scores = unzipped if len(processed_seqs) > 0 and len(unzipped) == 3 else ([],[],[])
 
-    assert len(processed_seqs) == len(processed_str_seqs) == len(processed_scores)
-    return processed_seqs, processed_str_seqs, processed_scores
+    assert len(processed_seqs) == len(processed_str_seqs) == len(processed_scores) == len(if_valid)
+    return if_valid, processed_seqs, processed_str_seqs, processed_scores
 
 def post_process_predseqs(seqs, num_oneword_seq=1):
     processed_seqs = []
@@ -161,36 +162,43 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             # print_out += 'Real Target String [%d] \n\t\t%s \n' % (len(trg_str_seqs), trg_str_seqs)
             # print_out += 'Real Target Input:  \n\t\t%s \n' % str([[opt.id2word[x] for x in t] for t in trg])
             # print_out += 'Real Target Copy:   \n\t\t%s \n' % str([[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in t] for t in trg_copy])
-            present_trg_str_index = if_present_duplicate_phrase(src_str, trg_str_seqs)
-            print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(present_trg_str_index), len(present_trg_str_index))
-            print_out += '\n'.join(['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in zip(trg_str_seqs, present_trg_str_index)])
+            trg_str_is_present = if_present_duplicate_phrase(src_str, trg_str_seqs)
+            print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(trg_str_is_present), len(trg_str_is_present))
+            print_out += '\n'.join(['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in zip(trg_str_seqs, trg_str_is_present)])
             print_out += '\noov_list:   \n\t\t%s \n' % str(oov)
 
-            # 1st round filtering
-            processed_pred_seqs, processed_pred_str_seqs, processed_pred_score = process_predseqs(pred_seq, src_str, oov, opt.id2word, opt)
-            # if filter out phrases that don't appear in text
+            # 1st filtering
+            pred_is_valid, processed_pred_seqs, processed_pred_str_seqs, processed_pred_score = process_predseqs(pred_seq, oov, opt.id2word, opt)
+            # 2nd filtering: if filter out phrases that don't appear in text, and keep unique ones after stemming
             if opt.must_appear_in_src:
-                present_pred_str_index  = if_present_duplicate_phrase(src_str, processed_pred_str_seqs)
+                pred_is_present     = if_present_duplicate_phrase(src_str, processed_pred_str_seqs)
+                trg_str_seqs        = np.asarray(trg_str_seqs)[trg_str_is_present]
+            else:
+                pred_is_present  = [True] * len(processed_pred_str_seqs)
 
-                trg_str_seqs            = np.asarray(trg_str_seqs)[present_trg_str_index]
-                processed_pred_seqs     = np.asarray(processed_pred_seqs)[present_pred_str_index]
-                processed_pred_str_seqs = np.asarray(processed_pred_str_seqs)[present_pred_str_index]
-                processed_pred_score    = np.asarray(processed_pred_score)[present_pred_str_index]
-
+            valid_and_present       = np.asarray(pred_is_valid) * np.asarray(pred_is_present)
             match_list = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_pred_str_seqs)
-            print_out += '[PREDICTION] #(retained)/#(retained&present)/#(all predictions)==%d/%d/%d\n' % (len(present_pred_str_index), sum(present_pred_str_index), len(pred_seq))
+            print_out += '[PREDICTION] #(valid)=%d, #(present)=%d, #(retained&present)=%d, #(all)=%d\n' % (sum(pred_is_valid), sum(pred_is_present), sum(valid_and_present), len(pred_seq))
             print_out += ''
             '''
             Print and export predictions
             '''
             preds_out = ''
 
-            for p_id, (seq, word, score, match) in enumerate(
-                    zip(processed_pred_seqs, processed_pred_str_seqs, processed_pred_score, match_list)):
+            for p_id, (seq, word, score, match, is_valid, is_present) in enumerate(
+                    zip(processed_pred_seqs, processed_pred_str_seqs, processed_pred_score, match_list, pred_is_valid, pred_is_present)):
                 # if p_id > 5:
                 #     break
 
                 preds_out += '%s\n' % (' '.join(word))
+                if is_present:
+                    print_phrase = '[%s]' % ' '.join(word)
+                else:
+                    print_phrase = ' '.join(word)
+
+                if is_valid:
+                    print_phrase = '*%s' % print_phrase
+
                 if match == 1.0:
                     correct_str = '[correct!]'
                 else:
@@ -200,7 +208,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 else:
                     copy_str = ''
 
-                print_out += '\t\t[%.4f]\t%s \t %s %s%s\n' % (-score, ' '.join(word), str(seq.sentence), correct_str, copy_str)
+                print_out += '\t\t[%.4f]\t%s \t %s %s%s\n' % (-score, print_phrase, str(seq.sentence), correct_str, copy_str)
 
             '''
             Evaluate predictions w.r.t different filterings and metrics
@@ -209,13 +217,17 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             topk_range         = [5, 10]
             score_names        = ['precision', 'recall', 'f_score']
 
+            processed_pred_seqs     = np.asarray(processed_pred_seqs)[valid_and_present]
+            processed_pred_str_seqs = np.asarray(processed_pred_str_seqs)[valid_and_present]
+            processed_pred_score    = np.asarray(processed_pred_score)[valid_and_present]
+
             for num_oneword_seq in num_oneword_range:
-                # 2nd round filtering (one-word phrases)
+                # 3rd round filtering (one-word phrases)
                 filtered_pred_seq, filtered_pred_str_seqs, filtered_pred_score = post_process_predseqs((processed_pred_seqs, processed_pred_str_seqs, processed_pred_score), num_oneword_seq)
 
                 match_list = get_match_result(true_seqs=trg_str_seqs, pred_seqs=filtered_pred_str_seqs)
 
-                assert len(filtered_pred_seq) == len(filtered_pred_str_seqs) == len(match_list)
+                assert len(filtered_pred_seq) == len(filtered_pred_str_seqs) == len(filtered_pred_score) == len(match_list)
 
                 for topk in topk_range:
                     results = evaluate(match_list, filtered_pred_seq, trg_str_seqs, topk=topk)

@@ -43,7 +43,7 @@ torchtext.vocab.Vocab.__setstate__ = __setstate__
 
 
 class KeyphraseDataset(torch.utils.data.Dataset):
-    def __init__(self, examples, word2id, id2word, type='one2one', include_original=False):
+    def __init__(self, examples, word2id, id2word, type='one2many', include_original=False):
         # keys of matter. `src_oov_map` is for mapping pointed word to dict, `oov_dict` is for determining the dim of predicted logit: dim=vocab_size+max_oov_dict_in_batch
         keys = ['src', 'trg', 'trg_copy', 'src_oov', 'oov_dict', 'oov_list']
         if include_original:

@@ -271,7 +271,7 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
             ' [HAS COPY]' + str(trg_i) if has_copy else ''))
 
 
-def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt, logging):
+def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt):
     generator = SequenceGenerator(model,
                                   eos_id=opt.word2id[pykp.io.EOS_WORD],
                                   beam_size=opt.beam_size,
@@ -316,7 +316,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
             break
 
         progbar = Progbar(logger=logging, title='Training', target=len(train_data_loader), batch_size=train_data_loader.batch_size,
-                          total_examples=len(train_data_loader.dataset))
+                          total_examples=len(train_data_loader.dataset.examples))
 
         for batch_i, batch in enumerate(train_data_loader):
             model.train()
@@ -343,7 +343,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
             progbar.update(epoch, batch_i, report_loss)
 
             # Validate and save checkpoint
-            if total_batch > -1 and total_batch % opt.run_valid_every == 0:
+            if total_batch > 1 and total_batch % opt.run_valid_every == 0:
                 logging.info('*' * 50)
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
                 # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
@@ -447,8 +447,8 @@ def load_data_vocab(opt, load_train=True):
     if load_train:
         train_one2many = torch.load(opt.data + '.train.one2many.pt', 'wb')
         train_one2many_dataset = KeyphraseDataset(train_one2many, word2id=word2id, id2word=id2word, type='one2many')
-        train_one2many_loader  = KeyphraseDataLoader(dataset=train_one2many_dataset, collate_fn=train_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.max_batch_example, max_batch_pair=opt.batch_size, pin_memory=True, shuffle=True)
-        logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d' % (len(train_one2many_loader.dataset), train_one2many_loader.one2one_number(), len(train_one2many_loader)))
+        train_one2many_loader  = KeyphraseDataLoader(dataset=train_one2many_dataset, collate_fn=train_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=1024, max_batch_pair=opt.batch_size, pin_memory=True, shuffle=True)
+        logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d, #(average examples/batch)=%.3f' % (len(train_one2many_loader.dataset), train_one2many_loader.one2one_number(), len(train_one2many_loader), train_one2many_loader.one2one_number()/len(train_one2many_loader)))
     else:
         train_one2many_loader = None
 
@@ -472,8 +472,8 @@ def load_data_vocab(opt, load_train=True):
     exit()
     """
 
-    valid_one2many_loader  = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.max_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
-    test_one2many_loader   = KeyphraseDataLoader(dataset=test_one2many_dataset, collate_fn=test_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.max_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
+    valid_one2many_loader  = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.beam_search_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
+    test_one2many_loader   = KeyphraseDataLoader(dataset=test_one2many_dataset, collate_fn=test_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.beam_search_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
 
     opt.word2id = word2id
     opt.id2word = id2word
@@ -534,7 +534,7 @@ def init_model(opt):
             src_hidden_dim=opt.rnn_size,
             trg_hidden_dim=opt.rnn_size,
             ctx_hidden_dim=opt.rnn_size,
-            attention_mode='dot',
+            attention_mode=opt.attention_mode,
             batch_size=opt.batch_size,
             bidirectional=opt.bidirectional,
             pad_token_src = opt.word2id[pykp.io.PAD_WORD],
@@ -555,7 +555,7 @@ def init_model(opt):
             src_hidden_dim=opt.rnn_size,
             trg_hidden_dim=opt.rnn_size,
             ctx_hidden_dim=opt.rnn_size,
-            attention_mode='dot',
+            attention_mode=opt.attention_mode,
             batch_size=opt.batch_size,
             bidirectional=opt.bidirectional,
             pad_token_src = opt.word2id[pykp.io.PAD_WORD],
@@ -633,7 +633,7 @@ def main():
     if not os.path.exists(opt.model_path):
         os.makedirs(opt.model_path)
 
-    logging = config.init_logging('train', opt.exp_path + '/output.log')
+    logging = config.init_logging(logger_name=None, log_file=opt.exp_path + '/output.log', stdout=True)
 
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
@@ -642,7 +642,7 @@ def main():
         train_data_loader, valid_data_loader, test_data_loader, word2id, id2word, vocab = load_data_vocab(opt)
         model = init_model(opt)
         optimizer_ml, optimizer_rl, criterion = init_optimizer_criterion(model, opt)
-        train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt, logging)
+        train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt)
     except Exception as e:
         logging.exception("message")
 

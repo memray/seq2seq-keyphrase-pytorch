@@ -28,9 +28,9 @@ def time_usage(func):
 
     return wrapper
 
-class AttentionExample(nn.Module):
+class Attention(nn.Module):
     def __init__(self, hidden_size, method='concat'):
-        super(AttentionExample, self).__init__()
+        super(Attention, self).__init__()
 
         self.method = method
         self.hidden_size = hidden_size
@@ -71,59 +71,42 @@ class AttentionExample(nn.Module):
             energy = self.other.dot(energy)
             return energy
 
-class Attention(nn.Module):
-    def __init__(self, enc_dim, trg_dim, method = 'general'):
-        super(Attention, self).__init__()
-        self.method = method
+class SoftDotAttention(nn.Module):
+    def __init__(self, enc_dim, trg_dim):
+        super(SoftDotAttention, self).__init__()
+        self.linear_in  = nn.Linear(trg_dim, trg_dim, bias=False)
+        self.linear_ctx = nn.Linear(enc_dim, trg_dim)
 
-        if self.method == 'general':
-            self.attn = nn.Linear(enc_dim, trg_dim)
-        elif self.method == 'concat':
-            self.attn = nn.Linear(enc_dim + trg_dim, trg_dim)
-            self.v = nn.Linear(trg_dim, 1)
-
+        self.attn = nn.Linear(enc_dim + trg_dim, trg_dim)
+        self.v = nn.Parameter(torch.FloatTensor(1, trg_dim))
         self.softmax = nn.Softmax()
 
-        # input size is enc_dim + trg_dim as it's a concatenation of both context vectors and target hidden state
-        # for Dot Attention, context vector has been converted to trg_dim first
-        self.linear_out = nn.Linear(enc_dim + trg_dim, trg_dim, bias=False) # the W_c in Eq. 5 Luong et al. 2016 [Effective Approaches to Attention-based Neural Machine Translation]
+        # input size is trg_dim * 2 as it's Dot Attention
+        self.linear_out = nn.Linear(trg_dim * 2, trg_dim, bias=False)
         self.tanh = nn.Tanh()
+        self.mask = None
+        self.method = 'concat'
 
-    def score(self, hiddens, encoder_outputs):
-        '''
-        :param hiddens: (batch, trg_len, trg_hidden_dim)
-        :param encoder_outputs: (batch, src_len, src_hidden_dim)
-        :return: energy score (batch, trg_len, src_len)
-        '''
+    def score(self, hidden, encoder_output):
         if self.method == 'dot':
-            # hidden (batch, trg_len, trg_hidden_dim) * encoder_outputs (batch, src_len, src_hidden_dim).transpose(1, 2) -> (batch, trg_len, src_len)
-            energies = torch.bmm(hiddens, encoder_outputs.transpose(1, 2)) # (batch, trg_len, src_len)
+            energy = hidden.dot(encoder_output)
+            return energy
+
         elif self.method == 'general':
-            energies = self.attn(encoder_outputs) # (batch, src_len, trg_hidden_dim)
-            # hidden (batch, trg_len, trg_hidden_dim) * encoder_outputs (batch, src_len, src_hidden_dim).transpose(1, 2) -> (batch, trg_len, src_len)
-            energies = torch.bmm(hiddens, energies.transpose(1, 2)) # (batch, trg_len, src_len)
+            energy = self.attn(encoder_output)
+            energy = hidden.dot(energy)
+            return energy
+
         elif self.method == 'concat':
-            energies = []
-            batch_size = encoder_outputs.size(0)
-            src_len    = encoder_outputs.size(1)
-            encoder_outputs_reshaped = encoder_outputs.contiguous().view(-1, encoder_outputs.size(2))
-            for trg_i in range(hiddens.size(1)):
-                expanded_hidden = hiddens[:, trg_i, :].unsqueeze(1).expand(-1, src_len, -1) # (batch, src_len, trg_hidden_dim)
-                expanded_hidden = expanded_hidden.contiguous().view(-1, expanded_hidden.size(2)) # (batch * src_len, trg_hidden_dim)
-                concated = torch.cat((expanded_hidden, encoder_outputs_reshaped), 1) # (batch_size * src_len, dec_hidden_dim + enc_hidden_dim)
-                energy = self.tanh(self.attn(concated)) # W_a * concated -> (batch_size * src_len, dec_hidden_dim)
-                energy = self.v(energy) # (batch_size * src_len, dec_hidden_dim) * (dec_hidden_dim, 1) -> (batch_size * src_len, 1)
-                energies.append(energy.view(batch_size, src_len).unsqueeze(0)) # (1, batch_size, src_len)
-
-            energies = torch.cat(energies, dim=0).permute(1, 0, 2) # (trg_len, batch_size, src_len) -> (batch_size, trg_len, src_len)
-
-        return energies.contiguous()
+            energy = self.attn(torch.cat((hidden, encoder_output), 1)) # [hidden=(batch_size, dec_hidden_dim), encoder_output=(batch_size, enc_hidden_dim)] -> (batch_size, dec_hidden_dim)
+            energy = torch.matmul(energy, self.v.t()) # return the energy of the k time step for all srcs in batch (batch_size, dec_hidden_dim) * (dec_hidden_dim, 1) -> (batch_size, 1)
+            return energy
 
     def forward(self, hidden, encoder_outputs):
         '''
         Compute the attention and h_tilde, inputs/outputs must be batch first
         :param hidden: (batch_size, trg_len, trg_hidden_dim)
-        :param encoder_outputs: (batch_size, src_len, trg_hidden_dim), if this is dot attention, you have to convert enc_dim to as same as trg_dim first
+        :param encoder_outputs: (batch_size, src_len, trg_hidden_dim) as this is dot attention, you have to convert enc_dim to trg_dim first
         :return:
             h_tilde (batch_size, trg_len, trg_hidden_dim)
             attn_weights (batch_size, trg_len, src_len)
@@ -150,12 +133,12 @@ class Attention(nn.Module):
         trg_hidden_dim  = hidden.size(2)
 
         # hidden (batch_size, trg_len, trg_hidden_dim) * encoder_outputs (batch, src_len, src_hidden_dim).transpose(1, 2) -> (batch, trg_len, src_len)
-        attn_energies = self.score(hidden, encoder_outputs)
+        attn_energies = torch.bmm(hidden, encoder_outputs.transpose(1, 2))
 
         # Normalize energies to weights in range 0 to 1, (batch_size, src_len)
         # attn = torch.nn.functional.softmax(attn_energies.view(-1, encoder_outputs.size(1))) # correct attention, normalize after reshaping
         #  (batch_size, trg_len, src_len)
-        attn_weights = torch.nn.functional.softmax(attn_energies.view(-1, src_len), dim = 1).view(batch_size, trg_len, src_len)
+        attn_weights = torch.nn.functional.softmax(attn_energies.view(-1, src_len), dim = 1).view(batch_size, trg_len, src_len) # wrong attention, normalize before reshaping, but it's working
 
         # reweighting context, attn (batch_size, trg_len, src_len) * encoder_outputs (batch_size, src_len, src_hidden_dim) = (batch_size, trg_len, src_hidden_dim)
         weighted_context = torch.bmm(attn_weights, encoder_outputs)
@@ -168,6 +151,7 @@ class Attention(nn.Module):
 
         # return h_tilde (batch_size, trg_len, trg_hidden_dim), attn (batch_size, trg_len, src_len) and energies (before softmax)
         return h_tilde.view(batch_size, trg_len, trg_hidden_dim), attn_weights, attn_energies
+
 
     def forward_(self, hidden, context):
         """
@@ -280,7 +264,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             dropout         = self.dropout
         )
 
-        self.attention_layer = Attention(self.src_hidden_dim * self.num_directions, trg_hidden_dim, attention_mode)
+        self.attention_layer = SoftDotAttention(self.src_hidden_dim * self.num_directions, trg_hidden_dim)
 
         self.encoder2decoder_hidden = nn.Linear(
             self.src_hidden_dim * self.num_directions,
@@ -409,8 +393,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
 
         # enc_context has to be reshaped before dot attention (batch_size, src_len, context_dim) -> (batch_size, src_len, trg_hidden_dim)
-        if self.attention_layer.method == 'dot':
-            enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
+        enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
 
         # maximum length to unroll
         max_length  = trg_input.size(1) - 1
@@ -531,8 +514,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         log_probs = []
 
         # enc_context has to be reshaped before dot attention (batch_size, src_len, context_dim) -> (batch_size, src_len, trg_hidden_dim)
-        if self.attention_layer.method == 'dot':
-            enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
+        enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
 
         for i in range(max_len):
             # print('TRG_INPUT: %s' % str(trg_input.size()))
@@ -652,7 +634,7 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
         self.unk_word  = unk_word
 
         if self.copy_model == 'Gu':
-            self.copy_attention_layer = Attention(self.src_hidden_dim * self.num_directions, trg_hidden_dim, method=attention_mode)
+            self.copy_attention_layer = SoftDotAttention(self.src_hidden_dim * self.num_directions, trg_hidden_dim)
         elif self.copy_model == 'See':
             self.copy_attention_layer = None
             self.copy_gate            = nn.Linear(trg_hidden_dim, vocab_size)
@@ -773,8 +755,7 @@ class Seq2SeqLSTMAttentionCopy(Seq2SeqLSTMAttention):
         init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
 
         # enc_context has to be reshaped before dot attention (batch_size, src_len, context_dim) -> (batch_size, src_len, trg_hidden_dim)
-        if self.attention_layer.method == 'dot':
-            enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
+        enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
 
         # maximum length to unroll
         max_length  = trg_input.size(1) - 1
