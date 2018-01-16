@@ -229,6 +229,8 @@ def train_opts(parser):
                         help="Apply scheduled sampling or not")
     parser.add_argument('-scheduled_sampling_batches', type=int, default=10000,
                         help="The maximum number of batches to apply scheduled sampling")
+    parser.add_argument('-input_feeding', action="store_true",
+                        help="Apply input feeding or not")
 
     # learning rate
     parser.add_argument('-learning_rate', type=float, default=0.001,

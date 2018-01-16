@@ -527,7 +527,7 @@ def init_model(opt):
     logging.info('======================  Model Parameters  =========================')
 
     if not opt.copy_model:
-        logging.info('Train a normal seq2seq model')
+        logging.info('Train a normal Seq2Seq model')
         model = Seq2SeqLSTMAttention(
             emb_dim=opt.word_vec_size,
             vocab_size=opt.vocab_size,
@@ -546,9 +546,10 @@ def init_model(opt):
             teacher_forcing_ratio=opt.teacher_forcing_ratio,
             scheduled_sampling=opt.scheduled_sampling,
             scheduled_sampling_batches=opt.scheduled_sampling_batches,
+            input_feeding=opt.input_feeding,
         )
     else:
-        logging.info('Train a seq2seq model with copy mechanism')
+        logging.info('Train a Seq2Seq model with Copy Mechanism')
         model = Seq2SeqLSTMAttentionCopy(
             emb_dim=opt.word_vec_size,
             vocab_size=opt.vocab_size,
@@ -567,6 +568,7 @@ def init_model(opt):
             teacher_forcing_ratio=opt.teacher_forcing_ratio,
             scheduled_sampling=opt.scheduled_sampling,
             scheduled_sampling_batches=opt.scheduled_sampling_batches,
+            input_feeding=opt.input_feeding,
             unk_word=opt.word2id[pykp.io.UNK_WORD],
         )
 

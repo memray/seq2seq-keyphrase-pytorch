@@ -258,7 +258,7 @@ class SequenceGenerator(object):
                 src_map     = src_oovs,
                 oov_list    = oov_lists,
                 # k           =self.beam_size+1,
-                max_len     =1,
+                max_len     = 1,
                 return_attention=self.return_attention
             )
 

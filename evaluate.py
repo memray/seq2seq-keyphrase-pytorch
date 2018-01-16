@@ -174,7 +174,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 pred_is_present     = if_present_duplicate_phrase(src_str, processed_pred_str_seqs)
                 trg_str_seqs        = np.asarray(trg_str_seqs)[trg_str_is_present]
             else:
-                pred_is_present  = [True] * len(processed_pred_str_seqs)
+                pred_is_present     = [True] * len(processed_pred_str_seqs)
 
             valid_and_present       = np.asarray(pred_is_valid) * np.asarray(pred_is_present)
             match_list = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_pred_str_seqs)
