@@ -86,7 +86,12 @@ class Attention(nn.Module):
 
         # input size is enc_dim + trg_dim as it's a concatenation of both context vectors and target hidden state
         # for Dot Attention, context vector has been converted to trg_dim first
-        self.linear_out = nn.Linear(enc_dim + trg_dim, trg_dim, bias=False) # the W_c in Eq. 5 Luong et al. 2016 [Effective Approaches to Attention-based Neural Machine Translation]
+
+        if self.method == 'dot':
+            self.linear_out = nn.Linear(2 * trg_dim, trg_dim, bias=False) # the W_c in Eq. 5 Luong et al. 2016 [Effective Approaches to Attention-based Neural Machine Translation]
+        else:
+            self.linear_out = nn.Linear(enc_dim + trg_dim, trg_dim, bias=False) # the W_c in Eq. 5 Luong et al. 2016 [Effective Approaches to Attention-based Neural Machine Translation]
+
         self.tanh = nn.Tanh()
 
     def score(self, hiddens, encoder_outputs):
