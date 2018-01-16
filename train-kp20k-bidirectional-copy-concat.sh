@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-export DATA_NAME="kp20k"
-export ATTENTION="concat"
-export EXP_NAME="rnn.teacher_forcing.copy.pack_padded_sequence.attn_$ATTENTION"
+export DATA_NAME="kp20k";
+export ATTENTION="concat";
+export EXP_NAME="attn_$ATTENTION.pack_padded_sequence.teacher_forcing.copy";
 
 echo "DATA_NAME=$DATA_NAME, ATTENTION=$ATTENTION, EXP_NAME=$EXP_NAME";
 

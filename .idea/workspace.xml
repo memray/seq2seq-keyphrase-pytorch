@@ -69,11 +69,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="train.sbatch" pinned="false" current-in-tab="false">
+      <file leaf-file-name="train.sbatch" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/train.sbatch">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="150">
-              <caret line="10" column="15" lean-forward="true" selection-start-line="10" selection-start-column="15" selection-end-line="10" selection-end-column="15" />
+            <state relative-caret-position="270">
+              <caret line="14" column="0" lean-forward="true" selection-start-line="14" selection-start-column="0" selection-end-line="14" selection-end-column="0" />
               <folding />
             </state>
           </provider>
@@ -82,18 +82,18 @@
       <file leaf-file-name="train-kp20k-bidirectional-copy-concat.sh" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="105">
-              <caret line="7" column="0" lean-forward="true" selection-start-line="7" selection-start-column="0" selection-end-line="9" selection-end-column="144" />
+            <state relative-caret-position="150">
+              <caret line="10" column="0" lean-forward="true" selection-start-line="10" selection-start-column="0" selection-end-line="10" selection-end-column="0" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="train-kp20k-bidirectional-copy-general.sh" pinned="false" current-in-tab="true">
+      <file leaf-file-name="train-kp20k-bidirectional-copy-general.sh" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="135">
-              <caret line="9" column="26" lean-forward="false" selection-start-line="9" selection-start-column="26" selection-end-line="9" selection-end-column="26" />
+            <state relative-caret-position="60">
+              <caret line="4" column="76" lean-forward="false" selection-start-line="4" selection-start-column="76" selection-end-line="4" selection-end-column="76" />
               <folding />
             </state>
           </provider>
@@ -173,7 +173,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/data/stackexchange/length_statistics.csv" />
         <option value="$PROJECT_DIR$/data/kp20k(no +*#&amp;)/statistics" />
         <option value="$PROJECT_DIR$/configse.py" />
         <option value="$PROJECT_DIR$/train-kp20k_no-puncs.sh" />
@@ -222,8 +221,9 @@
         <option value="$PROJECT_DIR$/train.py" />
         <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy-dot.sh" />
         <option value="$PROJECT_DIR$/train.sbatch" />
-        <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh" />
+        <option value="$PROJECT_DIR$/train.sh" />
         <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh" />
+        <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh" />
       </list>
     </option>
   </component>
@@ -764,13 +764,6 @@
       <option name="presentableId" value="Default" />
       <updated>1506620785216</updated>
     </task>
-    <task id="LOCAL-00044" summary="train on cluster">
-      <created>1510962641696</created>
-      <option name="number" value="00044" />
-      <option name="presentableId" value="LOCAL-00044" />
-      <option name="project" value="LOCAL" />
-      <updated>1510962641696</updated>
-    </task>
     <task id="LOCAL-00045" summary="fix a bug in beam search">
       <created>1510971520149</created>
       <option name="number" value="00045" />
@@ -1107,7 +1100,14 @@
       <option name="project" value="LOCAL" />
       <updated>1516084157581</updated>
     </task>
-    <option name="localTasksCounter" value="93" />
+    <task id="LOCAL-00093" summary="fix script">
+      <created>1516085003458</created>
+      <option name="number" value="00093" />
+      <option name="presentableId" value="LOCAL-00093" />
+      <option name="project" value="LOCAL" />
+      <updated>1516085003459</updated>
+    </task>
+    <option name="localTasksCounter" value="94" />
     <servers />
   </component>
   <component name="TodoView" selected-index="4">
@@ -1227,6 +1227,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="255">
           <caret line="16" column="334" lean-forward="false" selection-start-line="16" selection-start-column="334" selection-end-line="16" selection-end-column="334" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1234,6 +1235,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="270">
           <caret line="17" column="333" lean-forward="false" selection-start-line="17" selection-start-column="333" selection-end-line="17" selection-end-column="333" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1241,6 +1243,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="270">
           <caret line="17" column="331" lean-forward="false" selection-start-line="17" selection-start-column="331" selection-end-line="17" selection-end-column="331" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1248,6 +1251,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="270">
           <caret line="17" column="316" lean-forward="false" selection-start-line="17" selection-start-column="316" selection-end-line="17" selection-end-column="316" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1531,26 +1535,26 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/train.sbatch">
+    <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="150">
-          <caret line="10" column="15" lean-forward="true" selection-start-line="10" selection-start-column="15" selection-end-line="10" selection-end-column="15" />
+        <state relative-caret-position="60">
+          <caret line="4" column="76" lean-forward="false" selection-start-line="4" selection-start-column="76" selection-end-line="4" selection-end-column="76" />
           <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="105">
-          <caret line="7" column="0" lean-forward="true" selection-start-line="7" selection-start-column="0" selection-end-line="9" selection-end-column="144" />
+        <state relative-caret-position="150">
+          <caret line="10" column="0" lean-forward="true" selection-start-line="10" selection-start-column="0" selection-end-line="10" selection-end-column="0" />
           <folding />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh">
+    <entry file="file://$PROJECT_DIR$/train.sbatch">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="135">
-          <caret line="9" column="26" lean-forward="false" selection-start-line="9" selection-start-column="26" selection-end-line="9" selection-end-column="26" />
+        <state relative-caret-position="270">
+          <caret line="14" column="0" lean-forward="true" selection-start-line="14" selection-start-column="0" selection-end-line="14" selection-end-column="0" />
           <folding />
         </state>
       </provider>
