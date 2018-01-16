@@ -10,4 +10,5 @@ export ARGUMENT="-data data/$DATA_NAME -vocab data/$DATA_NAME.vocab.pt -exp_path
 
 echo $ARGUMENT
 
+echo "sbatch --export=EXP_NAME=$EXP_NAME,ARGUMENT=$ARGUMENT --job-name=$EXP_NAME --output=slurm_log/$EXP_NAME.out train.sbatch;"
 sbatch --export=EXP_NAME=$EXP_NAME,ARGUMENT=$ARGUMENT --job-name=$EXP_NAME --output=slurm_log/$EXP_NAME.out train.sbatch;
