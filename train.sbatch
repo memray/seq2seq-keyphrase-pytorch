@@ -11,7 +11,7 @@
 #module restore
 
 # Run the job
-COMMAND="python -m train $COMMAND"
+COMMAND="python -m train $ARGUMENT"
 
 echo $COMMAND
 srun $COMMAND
