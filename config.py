@@ -94,17 +94,19 @@ def model_opts(parser):
                         dot or general (Luong) or concat (Bahdanau)""")
 
     # Genenerator and loss options.
-    parser.add_argument('-copy_model', action="store_true",
+    parser.add_argument('-copy_attention', action="store_true",
                         help='Train a copy model.')
-    parser.add_argument('-copy_attn', action="store_true",
-                        help='Train copy attention layer.')
-    parser.add_argument('-copy_attn_force', action="store_true",
-                        help='When available, train to copy.')
+    parser.add_argument('-copy_mode', type=str, default='Gu',
+                        choices=['Gu', 'See'],
+                        help='Type of copy mechanism to use. Currently only Gu model is supported.')
     parser.add_argument('-coverage_attn', action="store_true",
                         help='Train a coverage attention layer.')
     parser.add_argument('-lambda_coverage', type=float, default=1,
                         help='Lambda value for coverage.')
 
+    # Cascading model options
+    parser.add_argument('-cascading_model', action="store_true",
+                        help='Train a copy model.')
 
 def preprocess_opts(parser):
     # Dictionary Options

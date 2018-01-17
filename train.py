@@ -31,7 +31,7 @@ from utils import Progbar, plot_learning_curve
 
 import pykp
 from pykp.io import KeyphraseDataset
-from pykp.model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionCopy
+from pykp.model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionCascading
 
 import time
 
@@ -75,7 +75,7 @@ def _valid_error(data_loader, model, criterion, epoch, opt):
 
         decoder_log_probs, _, _ = model.forward(src, trg, src_ext)
 
-        if not opt.copy_model:
+        if not opt.copy_attention:
             loss = criterion(
                 decoder_log_probs.contiguous().view(-1, opt.vocab_size),
                 trg_target.contiguous().view(-1)
@@ -114,7 +114,7 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
     # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
     start_time = time.time()
 
-    if not opt.copy_model:
+    if not opt.copy_attention:
         loss = criterion(
             decoder_log_probs.contiguous().view(-1, opt.vocab_size),
             trg_target.contiguous().view(-1)
@@ -237,7 +237,7 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
     oov_lists = [oov_lists[i] for i in sampled_trg_idx]
     max_words_pred = [max_words_pred[i] for i in sampled_trg_idx]
     decoder_log_probs = decoder_log_probs[sampled_trg_idx]
-    if not opt.copy_model:
+    if not opt.copy_attention:
         trg_target = [trg_target[i] for i in
                       sampled_trg_idx]  # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
     else:
@@ -495,7 +495,7 @@ def init_optimizer_criterion(model, opt):
     :return:
     """
     '''
-    if not opt.copy_model:
+    if not opt.copy_attention:
         weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
     else:
         weight_mask = torch.ones(opt.vocab_size + opt.max_unk_words).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size + opt.max_unk_words)
@@ -526,9 +526,8 @@ def init_optimizer_criterion(model, opt):
 def init_model(opt):
     logging.info('======================  Model Parameters  =========================')
 
-    if not opt.copy_model:
-        logging.info('Train a normal Seq2Seq model')
-        model = Seq2SeqLSTMAttention(
+    if opt.cascading_model:
+        model = Seq2SeqLSTMAttentionCascading(
             emb_dim=opt.word_vec_size,
             vocab_size=opt.vocab_size,
             src_hidden_dim=opt.rnn_size,
@@ -549,14 +548,19 @@ def init_model(opt):
             input_feeding=opt.input_feeding,
         )
     else:
-        logging.info('Train a Seq2Seq model with Copy Mechanism')
-        model = Seq2SeqLSTMAttentionCopy(
+        if opt.copy_attention:
+            logging.info('Train a Seq2Seq model with Copy Mechanism')
+        else:
+            logging.info('Train a normal Seq2Seq model')
+        model = Seq2SeqLSTMAttention(
             emb_dim=opt.word_vec_size,
             vocab_size=opt.vocab_size,
             src_hidden_dim=opt.rnn_size,
             trg_hidden_dim=opt.rnn_size,
             ctx_hidden_dim=opt.rnn_size,
             attention_mode=opt.attention_mode,
+            copy_attention=opt.copy_attention,
+            copy_mode=opt.copy_mode,
             batch_size=opt.batch_size,
             bidirectional=opt.bidirectional,
             pad_token_src = opt.word2id[pykp.io.PAD_WORD],
@@ -614,7 +618,7 @@ def main():
     if hasattr(opt, 'train_rl') and opt.train_rl:
         opt.exp += '.rl'
 
-    if hasattr(opt, 'copy_model') and opt.copy_model:
+    if hasattr(opt, 'copy_attention') and opt.copy_attention:
         opt.exp += '.copy'
 
     if hasattr(opt, 'bidirectional') and opt.bidirectional:

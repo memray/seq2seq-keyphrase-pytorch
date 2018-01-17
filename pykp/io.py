@@ -78,9 +78,10 @@ class KeyphraseDataset(torch.utils.data.Dataset):
     def _pad(self, x_raw):
         x_raw = np.asarray(x_raw)
         x_lens = [len(x_) for x_ in x_raw]
-        max_length = max(x_lens) + 1  # ensure at least one padding appears in the end
+        max_length = max(x_lens) # (deprecated) + 1 to ensure at least one padding appears in the end
+        # x_lens = [x_len + 1 for x_len in x_lens]
         x = np.array([np.concatenate((x_, [self.pad_id] * (max_length - len(x_)))) for x_ in x_raw])
-        x = Variable(torch.stack([torch.from_numpy(x_) for x_ in x], 0))
+        x = Variable(torch.stack([torch.from_numpy(x_) for x_ in x], 0)).type('torch.LongTensor')
         x_mask = np.array([[1] * x_len + [0] * (max_length - x_len) for x_len in x_lens])
         x_mask = Variable(torch.stack([torch.from_numpy(m_) for m_ in x_mask], 0))
 
