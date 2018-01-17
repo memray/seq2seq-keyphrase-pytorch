@@ -4,17 +4,12 @@
     <bookmark url="file://$PROJECT_DIR$/pykp/model.py" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="2f4f0ceb-6fe8-47df-b950-5132ade5cfd4" name="Default" comment="">
+    <list default="true" id="2f4f0ceb-6fe8-47df-b950-5132ade5cfd4" name="Default" comment="add and run input-feeding">
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.gitignore" afterPath="$PROJECT_DIR$/.gitignore" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/beam_search.py" afterPath="$PROJECT_DIR$/beam_search.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/config.py" afterPath="$PROJECT_DIR$/config.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/evaluate.py" afterPath="$PROJECT_DIR$/evaluate.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/pykp/model.py" afterPath="$PROJECT_DIR$/pykp/model.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh" afterPath="$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/train-kp20k-bidirectional-copy-dot.sh" afterPath="$PROJECT_DIR$/train-kp20k-bidirectional-copy-dot.sh" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh" afterPath="$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/train.py" afterPath="$PROJECT_DIR$/train.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/train.sbatch" afterPath="$PROJECT_DIR$/train.sbatch" />
     </list>
     <list id="8ca2e02f-7766-4a75-8d04-6d2af4014691" name="Failed commit: Default" comment="remove useless code and add pack_padded_sequence and pad_packed_sequence" />
     <ignored path="$PROJECT_DIR$/.idea/" />
@@ -34,7 +29,7 @@
     <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$train_copy.coverage" NAME="train_copy Coverage Results" MODIFIED="1513027900755" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$predict.coverage" NAME="predict Coverage Results" MODIFIED="1516043659622" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$train_copy_with_previous_model.coverage" NAME="train_copy with previous model Coverage Results" MODIFIED="1516052579671" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$train.coverage" NAME="train Coverage Results" MODIFIED="1516122854969" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$train.coverage" NAME="train Coverage Results" MODIFIED="1516213362131" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$IO.coverage" NAME="IO Coverage Results" MODIFIED="1510630922462" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/pykp" />
     <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$preprocess.coverage" NAME="preprocess Coverage Results" MODIFIED="1512547880600" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$Model.coverage" NAME="Model Coverage Results" MODIFIED="1510543093516" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/pykp" />
@@ -48,8 +43,8 @@
       <file leaf-file-name="train.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/train.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="290">
-              <caret line="561" column="58" lean-forward="true" selection-start-line="561" selection-start-column="58" selection-end-line="561" selection-end-column="58" />
+            <state relative-caret-position="-19">
+              <caret line="469" column="33" lean-forward="false" selection-start-line="469" selection-start-column="33" selection-end-line="469" selection-end-column="33" />
               <folding>
                 <element signature="e#55#64#0" expanded="true" />
               </folding>
@@ -57,11 +52,21 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="train-kp20k-bidirectional-copy-concat.sh" pinned="false" current-in-tab="false">
+      <file leaf-file-name="train-kp20k-bidirectional-copy-concat.sh" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="255">
-              <caret line="17" column="52" lean-forward="false" selection-start-line="17" selection-start-column="52" selection-end-line="17" selection-end-column="52" />
+            <state relative-caret-position="345">
+              <caret line="19" column="552" lean-forward="true" selection-start-line="19" selection-start-column="552" selection-end-line="19" selection-end-column="552" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name=".gitignore" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/.gitignore">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="60">
+              <caret line="4" column="6" lean-forward="true" selection-start-line="4" selection-start-column="6" selection-end-line="4" selection-end-column="6" />
               <folding />
             </state>
           </provider>
@@ -71,27 +76,27 @@
         <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-dot.sh">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="90">
-              <caret line="6" column="52" lean-forward="false" selection-start-line="6" selection-start-column="52" selection-end-line="6" selection-end-column="52" />
+              <caret line="6" column="68" lean-forward="false" selection-start-line="6" selection-start-column="68" selection-end-line="6" selection-end-column="68" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="train-kp20k-bidirectional-copy-general.sh" pinned="false" current-in-tab="true">
+      <file leaf-file-name="train-kp20k-bidirectional-copy-general.sh" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="120">
-              <caret line="8" column="27" lean-forward="true" selection-start-line="8" selection-start-column="27" selection-end-line="8" selection-end-column="27" />
+            <state relative-caret-position="90">
+              <caret line="6" column="31" lean-forward="false" selection-start-line="6" selection-start-column="31" selection-end-line="6" selection-end-column="31" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="beam_search.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/beam_search.py">
+      <file leaf-file-name="io.py" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/pykp/io.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="41">
-              <caret line="253" column="71" lean-forward="false" selection-start-line="253" selection-start-column="71" selection-end-line="253" selection-end-column="71" />
+            <state relative-caret-position="314">
+              <caret line="87" column="38" lean-forward="false" selection-start-line="87" selection-start-column="28" selection-end-line="87" selection-end-column="38" />
               <folding />
             </state>
           </provider>
@@ -100,28 +105,8 @@
       <file leaf-file-name="model.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pykp/model.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="474">
-              <caret line="485" column="29" lean-forward="false" selection-start-line="485" selection-start-column="29" selection-end-line="485" selection-end-column="29" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="rnn.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/../../anaconda3/lib/python3.6/site-packages/torch/nn/modules/rnn.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="508">
-              <caret line="370" column="8" lean-forward="false" selection-start-line="370" selection-start-column="8" selection-end-line="370" selection-end-column="8" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="module.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/../../anaconda3/lib/python3.6/site-packages/torch/nn/modules/module.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="179">
-              <caret line="344" column="0" lean-forward="false" selection-start-line="344" selection-start-column="0" selection-end-line="344" selection-end-column="0" />
+            <state relative-caret-position="213">
+              <caret line="394" column="0" lean-forward="true" selection-start-line="394" selection-start-column="0" selection-end-line="394" selection-end-column="0" />
               <folding />
             </state>
           </provider>
@@ -138,12 +123,6 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>Attention</find>
-      <find>_idx</find>
-      <find>dropout</find>
-      <find>model</find>
-      <find>model/</find>
-      <find>save_</find>
       <find>save_model_every</find>
       <find>pred_path</find>
       <find>path</find>
@@ -168,6 +147,12 @@
       <find>, method=attention_mode</find>
       <find>self.current_batch</find>
       <find>if self.input_feeding:</find>
+      <find>pad_packed_sequence</find>
+      <find>copy</find>
+      <find>self.attention_layer.method == 'dot'</find>
+      <find>copy_mo</find>
+      <find>copy_model</find>
+      <find>pack</find>
     </findStrings>
     <replaceStrings>
       <replace>tgr</replace>
@@ -183,6 +168,7 @@
       <replace>loss</replace>
       <replace>logprobs</replace>
       <replace>pykp.io</replace>
+      <replace>copy_attention</replace>
     </replaceStrings>
   </component>
   <component name="Git.Settings">
@@ -227,21 +213,21 @@
         <option value="$PROJECT_DIR$/train-kp20k-unidirectional.sh" />
         <option value="$PROJECT_DIR$/train-kp20k-multigpu.sh" />
         <option value="$USER_HOME$/Library/Logs/PyCharm2016.3/idea.log" />
-        <option value="$PROJECT_DIR$/.gitignore" />
         <option value="$PROJECT_DIR$/train-kp20k-bidirectional.sh" />
         <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy.sh" />
         <option value="$PROJECT_DIR$/train-kp20k-bidirectional-scheduled_sampling.sh" />
-        <option value="$PROJECT_DIR$/pykp/io.py" />
         <option value="$PROJECT_DIR$/train.sh" />
         <option value="$PROJECT_DIR$/train.sbatch" />
         <option value="$PROJECT_DIR$/evaluate.py" />
-        <option value="$PROJECT_DIR$/train.py" />
-        <option value="$PROJECT_DIR$/config.py" />
         <option value="$PROJECT_DIR$/beam_search.py" />
+        <option value="$PROJECT_DIR$/config.py" />
+        <option value="$PROJECT_DIR$/train.py" />
+        <option value="$PROJECT_DIR$/pykp/model.py" />
+        <option value="$PROJECT_DIR$/pykp/io.py" />
+        <option value="$PROJECT_DIR$/.gitignore" />
         <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh" />
         <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy-dot.sh" />
         <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh" />
-        <option value="$PROJECT_DIR$/pykp/model.py" />
       </list>
     </option>
   </component>
@@ -252,9 +238,8 @@
     <sorting>DEFINITION_ORDER</sorting>
   </component>
   <component name="ProjectFrameBounds">
-    <option name="x" value="-1920" />
-    <option name="width" value="1920" />
-    <option name="height" value="1080" />
+    <option name="width" value="1680" />
+    <option name="height" value="1050" />
   </component>
   <component name="ProjectLevelVcsManager">
     <ConfirmationsSetting value="2" id="Add" />
@@ -447,7 +432,7 @@
       <module name="seq2seq-keyphrase-pytorch" />
       <EXTENSION ID="PythonCoverageRunConfigurationExtension" enabled="false" sample_coverage="true" runner="coverage.py" />
       <option name="SCRIPT_NAME" value="$PROJECT_DIR$/train.py" />
-      <option name="PARAMETERS" value="-data data/kp20k-test/kp20k -vocab data/kp20k-test/kp20k.vocab.pt -exp_path &quot;exp/%s.%s&quot; -exp &quot;kp20k&quot; -save_model_every 50 -run_valid_every 20 -report_every 2 -train_ml -batch_size 64 -bidirectional -copy_model -input_feeding -attention_mode dot" />
+      <option name="PARAMETERS" value="-data data/kp20k-test/kp20k -vocab data/kp20k-test/kp20k.vocab.pt -exp_path &quot;exp/%s.%s&quot; -exp &quot;kp20k&quot; -save_model_every 50 -run_valid_every 20 -report_every 2 -train_ml -batch_size 32 -bidirectional -input_feeding -attention_mode concat -copy_attention -copy_mode Gu" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <method />
     </configuration>
@@ -783,27 +768,6 @@
       <option name="presentableId" value="Default" />
       <updated>1506620785216</updated>
     </task>
-    <task id="LOCAL-00048" summary="add train_from">
-      <created>1511032080092</created>
-      <option name="number" value="00048" />
-      <option name="presentableId" value="LOCAL-00048" />
-      <option name="project" value="LOCAL" />
-      <updated>1511032080092</updated>
-    </task>
-    <task id="LOCAL-00049" summary="fix training">
-      <created>1511051060863</created>
-      <option name="number" value="00049" />
-      <option name="presentableId" value="LOCAL-00049" />
-      <option name="project" value="LOCAL" />
-      <updated>1511051060863</updated>
-    </task>
-    <task id="LOCAL-00050" summary="gpu bug">
-      <created>1511051961308</created>
-      <option name="number" value="00050" />
-      <option name="presentableId" value="LOCAL-00050" />
-      <option name="project" value="LOCAL" />
-      <updated>1511051961309</updated>
-    </task>
     <task id="LOCAL-00051" summary="cluster bash">
       <created>1511054059400</created>
       <option name="number" value="00051" />
@@ -1126,7 +1090,28 @@
       <option name="project" value="LOCAL" />
       <updated>1516087249035</updated>
     </task>
-    <option name="localTasksCounter" value="97" />
+    <task id="LOCAL-00097" summary="add and run input-feeding">
+      <created>1516123155130</created>
+      <option name="number" value="00097" />
+      <option name="presentableId" value="LOCAL-00097" />
+      <option name="project" value="LOCAL" />
+      <updated>1516123155130</updated>
+    </task>
+    <task id="LOCAL-00098" summary="add and run input-feeding">
+      <created>1516214035967</created>
+      <option name="number" value="00098" />
+      <option name="presentableId" value="LOCAL-00098" />
+      <option name="project" value="LOCAL" />
+      <updated>1516214035968</updated>
+    </task>
+    <task id="LOCAL-00099" summary="add and run input-feeding">
+      <created>1516214086145</created>
+      <option name="number" value="00099" />
+      <option name="presentableId" value="LOCAL-00099" />
+      <option name="project" value="LOCAL" />
+      <updated>1516214086145</updated>
+    </task>
+    <option name="localTasksCounter" value="100" />
     <servers />
   </component>
   <component name="TodoView" selected-index="4">
@@ -1139,7 +1124,7 @@
     </todo-panel>
   </component>
   <component name="ToolWindowManager">
-    <frame x="-1920" y="0" width="1920" height="1080" extended-state="0" />
+    <frame x="0" y="0" width="1680" height="1050" extended-state="0" />
     <editor active="true" />
     <layout>
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32970297" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
@@ -1147,14 +1132,14 @@
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.409901" sideWeight="0.5042598" order="13" side_tool="true" content_ui="tabs" />
       <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.2920792" sideWeight="0.4946752" order="8" side_tool="false" content_ui="tabs" />
       <window_info id="Python Console" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32871288" sideWeight="0.5" order="9" side_tool="false" content_ui="tabs" />
-      <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.3841584" sideWeight="0.4941427" order="2" side_tool="false" content_ui="tabs" />
+      <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.38367346" sideWeight="0.4941427" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Execute Anonymous" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33960396" sideWeight="0.4978701" order="11" side_tool="false" content_ui="tabs" />
-      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.26517573" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.30402932" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="Database" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
       <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.24973376" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="Favorites" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="true" content_ui="tabs" />
-      <window_info id="Debug" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.409901" sideWeight="0.49574015" order="3" side_tool="false" content_ui="tabs" />
+      <window_info id="Debug" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.422449" sideWeight="0.49574015" order="3" side_tool="false" content_ui="tabs" />
       <window_info id="Salesforce" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="12" side_tool="false" content_ui="tabs" />
       <window_info id="Cvs" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
       <window_info id="Message" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="0" side_tool="false" content_ui="tabs" />
@@ -1174,7 +1159,6 @@
   <component name="VcsManagerConfiguration">
     <option name="OFFER_MOVE_TO_ANOTHER_CHANGELIST_ON_PARTIAL_COMMIT" value="false" />
     <option name="CHECK_NEW_TODO" value="false" />
-    <MESSAGE value="valid bug" />
     <MESSAGE value="more bacthes for scheduled sampling" />
     <MESSAGE value="fix bugs of scheduled sampling" />
     <MESSAGE value="update new data (clean dirty keyphrases)" />
@@ -1199,14 +1183,15 @@
     <MESSAGE value="reduce batch size" />
     <MESSAGE value="edit sh" />
     <MESSAGE value="fix script" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix script" />
+    <MESSAGE value="add and run input-feeding" />
+    <option name="LAST_COMMIT_MESSAGE" value="add and run input-feeding" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pykp/io.py</url>
-          <line>109</line>
+          <line>110</line>
           <option name="timeStamp" value="497" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -1215,9 +1200,14 @@
           <option name="timeStamp" value="544" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/pykp/model.py</url>
-          <line>869</line>
-          <option name="timeStamp" value="631" />
+          <url>file://$PROJECT_DIR$/../../anaconda3/lib/python3.6/site-packages/torch/autograd/__init__.py</url>
+          <line>98</line>
+          <option name="timeStamp" value="634" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/pykp/io.py</url>
+          <line>187</line>
+          <option name="timeStamp" value="637" />
         </line-breakpoint>
       </breakpoints>
       <breakpoints-dialog>
@@ -1230,29 +1220,30 @@
           </properties>
         </breakpoint>
       </default-breakpoints>
-      <option name="time" value="633" />
+      <option name="time" value="642" />
     </breakpoint-manager>
     <watches-manager>
       <configuration name="PythonConfigurationType">
-        <watch expression="(h_tilde.permute(1, 0, 2), dec_hidden[1])" language="Python" />
-        <watch expression="h_tilde.permute(1, 0, 2).size()" language="Python" />
-        <watch expression="dec_hidden[0].size()" language="Python" />
-        <watch expression="trg_input.size()" language="Python" />
-        <watch expression="trg_inputs[:, 0].size()" language="Python" />
-        <watch expression="trg_inputs[:, di + 1].size()" language="Python" />
-        <watch expression="trg_inputs[:, di + 1].unsqueeze(1).size()" language="Python" />
+        <watch expression="input_src.size()" language="Python" />
+        <watch expression="src_emb.size()" language="Python" />
+        <watch expression="src_emb" language="Python" />
+        <watch expression="self.embedding(input_src).size()" language="Python" />
+        <watch expression="src_h" language="Python" />
+        <watch expression="src_h.size()" language="Python" />
+        <watch expression="h_t.size()" language="Python" />
+        <watch expression="src_o2m" language="Python" />
+        <watch expression="src" language="Python" />
+        <watch expression="[len(s) for s in src]" language="Python" />
+        <watch expression="src_o2m_len" language="Python" />
+        <watch expression="[len(s) for s in list(itertools.chain(*[[src[idx]]*len(t) for idx,t in enumerate(trg)]))]" language="Python" />
+        <watch expression="src_o2o.data.numpy()" language="Python" />
+        <watch expression="src_o2o_len" language="Python" />
+        <watch expression="input_src_len" language="Python" />
+        <watch expression="Variable(torch.stack([torch.from_numpy(x_) for x_ in x], 0))" language="Python" />
       </configuration>
     </watches-manager>
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/train-stackexchange-bidirectional-copy.sh">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="270">
-          <caret line="17" column="333" lean-forward="false" selection-start-line="17" selection-start-column="333" selection-end-line="17" selection-end-column="333" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/train-stackexchange-bidirectional.sh">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="270">
@@ -1348,21 +1339,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/../../anaconda3/lib/python3.6/site-packages/torch/autograd/variable.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="197">
-          <caret line="147" column="0" lean-forward="false" selection-start-line="147" selection-start-column="0" selection-end-line="147" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/../../anaconda3/lib/python3.6/site-packages/torch/autograd/__init__.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="197">
-          <caret line="98" column="0" lean-forward="false" selection-start-line="98" selection-start-column="0" selection-end-line="98" selection-end-column="0" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/configse.py" />
     <entry file="file://$PROJECT_DIR$/stat_print.py">
       <provider selected="true" editor-type-id="text-editor">
@@ -1386,14 +1362,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="503">
           <caret line="5" column="0" lean-forward="true" selection-start-line="4" selection-start-column="2335824" selection-end-line="5" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/.gitignore">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="255">
-          <caret line="17" column="0" lean-forward="true" selection-start-line="17" selection-start-column="0" selection-end-line="17" selection-end-column="0" />
           <folding />
         </state>
       </provider>
@@ -1434,22 +1402,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="324">
           <caret line="1819" column="0" lean-forward="false" selection-start-line="1819" selection-start-column="0" selection-end-line="1819" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pykp/io.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="197">
-          <caret line="45" column="65" lean-forward="false" selection-start-line="45" selection-start-column="65" selection-end-line="45" selection-end-column="65" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pykp/dataloader.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="331">
-          <caret line="384" column="0" lean-forward="false" selection-start-line="384" selection-start-column="0" selection-end-line="384" selection-end-column="0" />
           <folding />
         </state>
       </provider>
@@ -1502,34 +1454,10 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/config.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="152">
-          <caret line="220" column="26" lean-forward="false" selection-start-line="220" selection-start-column="26" selection-end-line="220" selection-end-column="26" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/../../anaconda3/lib/python3.6/site-packages/torch/nn/modules/module.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="179">
-          <caret line="344" column="0" lean-forward="false" selection-start-line="344" selection-start-column="0" selection-end-line="344" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/../../anaconda3/lib/python3.6/site-packages/torch/nn/modules/rnn.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="508">
           <caret line="370" column="8" lean-forward="false" selection-start-line="370" selection-start-column="8" selection-end-line="370" selection-end-column="8" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/beam_search.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="41">
-          <caret line="253" column="71" lean-forward="false" selection-start-line="253" selection-start-column="71" selection-end-line="253" selection-end-column="71" />
           <folding />
         </state>
       </provider>
@@ -1550,28 +1478,100 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/pykp/model.py">
+    <entry file="file://$PROJECT_DIR$/beam_search.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="474">
-          <caret line="485" column="29" lean-forward="false" selection-start-line="485" selection-start-column="29" selection-end-line="485" selection-end-column="29" />
+        <state relative-caret-position="476">
+          <caret line="281" column="45" lean-forward="true" selection-start-line="281" selection-start-column="45" selection-end-line="281" selection-end-column="45" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/config.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="468">
+          <caret line="96" column="40" lean-forward="false" selection-start-line="96" selection-start-column="26" selection-end-line="96" selection-end-column="40" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/../../anaconda3/lib/python3.6/site-packages/torch/nn/modules/module.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="192">
+          <caret line="324" column="0" lean-forward="false" selection-start-line="324" selection-start-column="0" selection-end-line="324" selection-end-column="0" />
           <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/train.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="290">
-          <caret line="561" column="58" lean-forward="true" selection-start-line="561" selection-start-column="58" selection-end-line="561" selection-end-column="58" />
+        <state relative-caret-position="-19">
+          <caret line="469" column="33" lean-forward="false" selection-start-line="469" selection-start-column="33" selection-end-line="469" selection-end-column="33" />
           <folding>
             <element signature="e#55#64#0" expanded="true" />
           </folding>
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh">
+    <entry file="file://$PROJECT_DIR$/pykp/dataloader.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="255">
-          <caret line="17" column="52" lean-forward="false" selection-start-line="17" selection-start-column="52" selection-end-line="17" selection-end-column="52" />
+        <state relative-caret-position="189">
+          <caret line="260" column="29" lean-forward="false" selection-start-line="260" selection-start-column="29" selection-end-line="260" selection-end-column="29" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/../../anaconda3/lib/python3.6/multiprocessing/queues.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="471">
+          <caret line="354" column="0" lean-forward="false" selection-start-line="354" selection-start-column="0" selection-end-line="354" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pykp/io.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="314">
+          <caret line="87" column="38" lean-forward="false" selection-start-line="87" selection-start-column="28" selection-end-line="87" selection-end-column="38" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/../../anaconda3/lib/python3.6/site-packages/torch/autograd/__init__.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="249">
+          <caret line="98" column="17" lean-forward="false" selection-start-line="98" selection-start-column="8" selection-end-line="98" selection-end-column="17" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/../../anaconda3/lib/python3.6/site-packages/torch/autograd/variable.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-1005">
+          <caret line="12" column="6" lean-forward="false" selection-start-line="12" selection-start-column="6" selection-end-line="12" selection-end-column="6" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pykp/model.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="213">
+          <caret line="394" column="0" lean-forward="true" selection-start-line="394" selection-start-column="0" selection-end-line="394" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/.gitignore">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="60">
+          <caret line="4" column="6" lean-forward="true" selection-start-line="4" selection-start-column="6" selection-end-line="4" selection-end-column="6" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="90">
+          <caret line="6" column="31" lean-forward="false" selection-start-line="6" selection-start-column="31" selection-end-line="6" selection-end-column="31" />
           <folding />
         </state>
       </provider>
@@ -1579,15 +1579,15 @@
     <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-dot.sh">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="90">
-          <caret line="6" column="52" lean-forward="false" selection-start-line="6" selection-start-column="52" selection-end-line="6" selection-end-column="52" />
+          <caret line="6" column="68" lean-forward="false" selection-start-line="6" selection-start-column="68" selection-end-line="6" selection-end-column="68" />
           <folding />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh">
+    <entry file="file://$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="120">
-          <caret line="8" column="27" lean-forward="true" selection-start-line="8" selection-start-column="27" selection-end-line="8" selection-end-column="27" />
+        <state relative-caret-position="345">
+          <caret line="19" column="552" lean-forward="true" selection-start-line="19" selection-start-column="552" selection-end-line="19" selection-end-column="552" />
           <folding />
         </state>
       </provider>

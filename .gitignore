@@ -1,5 +1,6 @@
 # large files
 data/*
+slurm_output/*
 model/*
 .model
 *.model

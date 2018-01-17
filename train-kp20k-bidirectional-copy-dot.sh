@@ -4,7 +4,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --partition=titanx
 #SBATCH --job-name=attn_dot.input_feeding.copy
-#SBATCH --output=slurm_output/attn_dot.input_feeding.copy.out
+#SBATCH --output=/zfs1/pbrusilovsky/rum20/seq2seq-keyphrase-pytorch/slurm_output/attn_dot.input_feeding.copy.out
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
