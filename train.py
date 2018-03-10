@@ -2,7 +2,7 @@
 """
 Python File Template 
 """
-
+import json
 import os
 import sys
 import argparse
@@ -527,60 +527,21 @@ def init_model(opt):
     logging.info('======================  Model Parameters  =========================')
 
     if opt.cascading_model:
-        model = Seq2SeqLSTMAttentionCascading(
-            emb_dim=opt.word_vec_size,
-            vocab_size=opt.vocab_size,
-            src_hidden_dim=opt.rnn_size,
-            trg_hidden_dim=opt.rnn_size,
-            ctx_hidden_dim=opt.rnn_size,
-            attention_mode=opt.attention_mode,
-            batch_size=opt.batch_size,
-            bidirectional=opt.bidirectional,
-            pad_token_src = opt.word2id[pykp.io.PAD_WORD],
-            pad_token_trg = opt.word2id[pykp.io.PAD_WORD],
-            nlayers_src=opt.enc_layers,
-            nlayers_trg=opt.dec_layers,
-            dropout=opt.dropout,
-            must_teacher_forcing=opt.must_teacher_forcing,
-            teacher_forcing_ratio=opt.teacher_forcing_ratio,
-            scheduled_sampling=opt.scheduled_sampling,
-            scheduled_sampling_batches=opt.scheduled_sampling_batches,
-            input_feeding=opt.input_feeding,
-        )
+        model = Seq2SeqLSTMAttentionCascading(opt)
     else:
         if opt.copy_attention:
             logging.info('Train a Seq2Seq model with Copy Mechanism')
         else:
             logging.info('Train a normal Seq2Seq model')
-        model = Seq2SeqLSTMAttention(
-            emb_dim=opt.word_vec_size,
-            vocab_size=opt.vocab_size,
-            src_hidden_dim=opt.rnn_size,
-            trg_hidden_dim=opt.rnn_size,
-            ctx_hidden_dim=opt.rnn_size,
-            attention_mode=opt.attention_mode,
-            copy_attention=opt.copy_attention,
-            copy_mode=opt.copy_mode,
-            batch_size=opt.batch_size,
-            bidirectional=opt.bidirectional,
-            pad_token_src = opt.word2id[pykp.io.PAD_WORD],
-            pad_token_trg = opt.word2id[pykp.io.PAD_WORD],
-            nlayers_src=opt.enc_layers,
-            nlayers_trg=opt.dec_layers,
-            dropout=opt.dropout,
-            must_teacher_forcing=opt.must_teacher_forcing,
-            teacher_forcing_ratio=opt.teacher_forcing_ratio,
-            scheduled_sampling=opt.scheduled_sampling,
-            scheduled_sampling_batches=opt.scheduled_sampling_batches,
-            input_feeding=opt.input_feeding,
-            unk_word=opt.word2id[pykp.io.UNK_WORD],
-        )
-
-    if torch.cuda.is_available():
-        model = model.cuda()
+        model = Seq2SeqLSTMAttention(opt)
 
     if opt.train_from:
         logging.info("loading previous checkpoint from %s" % opt.train_from)
+        # load the saved the meta-model and override the current one
+        model = torch.load(
+            open(os.path.join(opt.model_path, opt.exp, '.initial.model'), 'wb')
+        )
+
         if torch.cuda.is_available():
             checkpoint = torch.load(open(opt.train_from, 'rb'))
         else:
@@ -590,22 +551,23 @@ def init_model(opt):
         # some compatible problems, keys are started with 'module.'
         checkpoint = dict([(k[7:],v) if k.startswith('module.') else (k,v) for k,v in checkpoint.items()])
         model.load_state_dict(checkpoint)
+    else:
+        # dump the meta-model
+        torch.save(
+            model.state_dict(),
+            open(os.path.join(opt.train_from[: opt.train_from.find('.epoch=')], 'initial.model'), 'wb')
+        )
+
+
+    if torch.cuda.is_available():
+        model = model.cuda()
 
     utils.tally_parameters(model)
 
     return model
 
-def main():
-    # load settings for training
-    parser = argparse.ArgumentParser(
-        description='train.py',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    config.preprocess_opts(parser)
-    config.model_opts(parser)
-    config.train_opts(parser)
-    config.predict_opts(parser)
-    opt = parser.parse_args()
 
+def process_opt(opt):
     if opt.seed > 0:
         torch.manual_seed(opt.seed)
 
@@ -638,6 +600,33 @@ def main():
         os.makedirs(opt.pred_path)
     if not os.path.exists(opt.model_path):
         os.makedirs(opt.model_path)
+
+    logging.info('EXP_PATH : ' + opt.exp_path)
+
+    # dump the setting (opt) to disk in order to reuse easily
+    if opt.train_from:
+        opt = torch.load(
+            open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'rb')
+        )
+    else:
+        torch.save(opt,
+            open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'wb')
+        )
+        json.dump(vars(opt), open(os.path.join(opt.model_path, opt.exp + '.initial.json'), 'w'))
+
+    return opt
+
+def main():
+    # load settings for training
+    parser = argparse.ArgumentParser(
+        description='train.py',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    config.preprocess_opts(parser)
+    config.model_opts(parser)
+    config.train_opts(parser)
+    config.predict_opts(parser)
+    opt = parser.parse_args()
+    opt = process_opt(opt)
 
     logging = config.init_logging(logger_name=None, log_file=opt.exp_path + '/output.log', stdout=True)
 

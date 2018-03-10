@@ -74,18 +74,16 @@ def model_opts(parser):
     # parser.add_argument('-residual',   action="store_true",
     #                     help="Add residual connections between RNN layers.")
 
+    parser.add_argument('-input_feeding', action="store_true",
+                        help="Apply input feeding or not. Feed the updated hidden vector (after attention)"
+                             "as new hidden vector to the decoder (Luong et al. 2015). "
+                             "Feed the context vector at each time step  after normal attention"
+                             "as additional input (via concatenation with the word"
+                             "embeddings) to the decoder.")
+
     parser.add_argument('-bidirectional',
                         action = "store_true",
                         help="whether the encoder is bidirectional")
-
-    parser.add_argument('-brnn_merge', default='concat',
-                        choices=['concat', 'sum'],
-                        help="Merge action for the bidir hidden states")
-
-    parser.add_argument('-context_gate', type=str, default=None,
-                        choices=['source', 'target', 'both'],
-                        help="""Type of context gate to use.
-                        Do not select for no context gate.""")
 
     # Attention options
     parser.add_argument('-attention_mode', type=str, default='concat',
@@ -96,13 +94,34 @@ def model_opts(parser):
     # Genenerator and loss options.
     parser.add_argument('-copy_attention', action="store_true",
                         help='Train a copy model.')
-    parser.add_argument('-copy_mode', type=str, default='Gu',
-                        choices=['Gu', 'See'],
-                        help='Type of copy mechanism to use. Currently only Gu model is supported.')
-    parser.add_argument('-coverage_attn', action="store_true",
-                        help='Train a coverage attention layer.')
-    parser.add_argument('-lambda_coverage', type=float, default=1,
-                        help='Lambda value for coverage.')
+
+    parser.add_argument('-copy_mode', type=str, default='concat',
+                        choices=['dot', 'general', 'concat'],
+                        help="""The attention type to use: dot or general (Luong) or concat (Bahdanau)""")
+
+    parser.add_argument('-copy_input_feeding', action="store_true",
+                        help="Feed the context vector at each time step after copy attention"
+                             "as additional input (via concatenation with the word"
+                             "embeddings) to the decoder.")
+
+    parser.add_argument('-reuse_copy_attn', action="store_true",
+                       help="Reuse standard attention for copy (see See et al.)")
+
+    parser.add_argument('-copy_gate', action="store_true",
+                        help="A gate controling the flow from generative model and copy model (see See et al.)")
+
+    # parser.add_argument('-coverage_attn', action="store_true",
+    #                     help='Train a coverage attention layer.')
+    # parser.add_argument('-lambda_coverage', type=float, default=1,
+    #                     help='Lambda value for coverage by Tu:2016:ACL.')
+
+    # parser.add_argument('-context_gate', type=str, default=None,
+    #                     choices=['source', 'target', 'both'],
+    #                     help="""Type of context gate to use.
+    #                     Do not select for no context gate by Tu:2017:TACL.""")
+
+    # group.add_argument('-lambda_coverage', type=float, default=1,
+    #                    help='Lambda value for coverage.')
 
     # Cascading model options
     parser.add_argument('-cascading_model', action="store_true",
@@ -231,8 +250,6 @@ def train_opts(parser):
                         help="Apply scheduled sampling or not")
     parser.add_argument('-scheduled_sampling_batches', type=int, default=10000,
                         help="The maximum number of batches to apply scheduled sampling")
-    parser.add_argument('-input_feeding', action="store_true",
-                        help="Apply input feeding or not")
 
     # learning rate
     parser.add_argument('-learning_rate', type=float, default=0.001,
@@ -260,9 +277,9 @@ def train_opts(parser):
                         help="""Number of warmup steps for custom decay.""")
 
     parser.add_argument('-run_valid_every', type=int, default=2000,
-                        help="Run validation test at this interval (every run_valid_every epochs)")
+                        help="Run validation test at this interval (every run_valid_every batches)")
     parser.add_argument('-early_stop_tolerance', type=int, default=10,
-                        help="Stop training if it doesn't improve any more for serveral epochs")
+                        help="Stop training if it doesn't improve any more for serveral rounds of validation")
 
     timemark = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
 

@@ -10,6 +10,8 @@ from torch.autograd import Variable
 import numpy as np
 import random
 
+import pykp
+
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
@@ -209,117 +211,111 @@ class Attention(nn.Module):
 class Seq2SeqLSTMAttention(nn.Module):
     """Container module with an encoder, deocder, embeddings."""
 
-    def __init__(
-        self,
-        emb_dim,
-        vocab_size,
-        src_hidden_dim,
-        trg_hidden_dim,
-        ctx_hidden_dim,
-        attention_mode,
-        copy_attention,
-        copy_mode,
-        batch_size,
-        pad_token_src,
-        pad_token_trg,
-        bidirectional=True,
-        nlayers_src=2,
-        nlayers_trg=2,
-        dropout=0.,
-        must_teacher_forcing=False,
-        teacher_forcing_ratio=0.,
-        scheduled_sampling=False,
-        scheduled_sampling_batches=2000,
-        input_feeding=False,
-        unk_word=None,
-    ):
+    def __init__(self, opt):
         """Initialize model."""
         super(Seq2SeqLSTMAttention, self).__init__()
-        self.vocab_size             = vocab_size
-        self.emb_dim                = emb_dim
-        self.num_directions         = 2 if bidirectional else 1
-        self.src_hidden_dim         = src_hidden_dim
-        self.trg_hidden_dim         = trg_hidden_dim
-        self.ctx_hidden_dim         = ctx_hidden_dim
-        self.pad_token_src          = pad_token_src
-        self.pad_token_trg          = pad_token_trg
-        self.attention_mode         = attention_mode
-        self.copy_attention         = copy_attention
-        self.copy_mode              = copy_mode
-        self.batch_size             = batch_size
-        self.bidirectional          = bidirectional
-        self.nlayers_src            = nlayers_src
-        self.dropout                = dropout
-        self.must_teacher_forcing   = must_teacher_forcing
-        self.teacher_forcing_ratio  = teacher_forcing_ratio
-        self.scheduled_sampling     = scheduled_sampling
-        self.scheduled_sampling_batches = scheduled_sampling_batches
-        self.scheduled_sampling_type= 'inverse_sigmoid' # decay curve type: linear or inverse_sigmoid
-        self.input_feeding          = input_feeding
-        self.unk_word               = unk_word
 
+        self.vocab_size             = opt.vocab_size
+        self.emb_dim                = opt.word_vec_size
+        self.num_directions         = 2 if opt.bidirectional else 1
+        self.src_hidden_dim         = opt.rnn_size
+        self.trg_hidden_dim         = opt.rnn_size
+        self.ctx_hidden_dim         = opt.rnn_size
+        self.batch_size             = opt.batch_size
+        self.bidirectional          = opt.bidirectional
+        self.nlayers_src            = opt.enc_layers
+        self.nlayers_trg            = opt.dec_layers
+        self.dropout                = opt.dropout
+
+        self.pad_token_src          = opt.word2id[pykp.io.PAD_WORD]
+        self.pad_token_trg          = opt.word2id[pykp.io.PAD_WORD]
+        self.unk_word               = opt.word2id[pykp.io.UNK_WORD]
+
+        self.attention_mode         = opt.attention_mode    # 'dot', 'general', 'concat'
+        self.input_feeding          = opt.input_feeding
+
+        self.copy_attention         = opt.copy_attention    # bool, enable copy attention or not
+        self.copy_mode              = opt.copy_mode         # some to `attention_mode`
+        self.copy_input_feeding     = opt.copy_input_feeding
+        self.reuse_copy_attn        = opt.reuse_copy_attn
+        self.copy_gate              = opt.copy_gate
+
+        self.must_teacher_forcing   = opt.must_teacher_forcing
+        self.teacher_forcing_ratio  = opt.teacher_forcing_ratio
+        self.scheduled_sampling     = opt.scheduled_sampling
+        self.scheduled_sampling_batches = opt.scheduled_sampling_batches
+        self.scheduled_sampling_type= 'inverse_sigmoid' # decay curve type: linear or inverse_sigmoid
         self.current_batch          = 0 # for scheduled sampling
 
-        if scheduled_sampling:
-            logging.info("Applying scheduled sampling with %s decay for the first %d batches" % (self.scheduled_sampling_type, self.scheduled_sampling_batches))
-        elif input_feeding:
+        # setup for input-feeding, add a bridge to compress the additional inputs. Note that input-feeding cannot work with teacher-forcing
+        self.dec_input_dim          = self.emb_dim # only input the previous word
+        if self.input_feeding:
             logging.info("Applying input feeding")
+            self.dec_input_dim      += self.trg_hidden_dim
+        if self.copy_input_feeding:
+            logging.info("Applying copy input feeding")
+            self.dec_input_dim      += self.trg_hidden_dim
+        if self.dec_input_dim == self.emb_dim:
+            self.dec_input_bridge   =  None
         else:
-            if self.must_teacher_forcing or self.teacher_forcing_ratio >= 1:
-                logging.info("Training with All Teacher Forcing")
-            elif self.teacher_forcing_ratio <= 0:
-                logging.info("Training with All Sampling")
-            else:
-                logging.info("Training with Teacher Forcing with static rate=%f" % self.teacher_forcing_ratio)
+            self.dec_input_bridge   =  nn.Linear(self.dec_input_dim, self.emb_dim)
+
+        if self.scheduled_sampling:
+            logging.info("Applying scheduled sampling with %s decay for the first %d batches" % (self.scheduled_sampling_type, self.scheduled_sampling_batches))
+        if self.must_teacher_forcing or self.teacher_forcing_ratio >= 1:
+            logging.info("Training with All Teacher Forcing")
+        elif self.teacher_forcing_ratio <= 0:
+            logging.info("Training with All Sampling")
+        else:
+            logging.info("Training with Teacher Forcing with static rate=%f" % self.teacher_forcing_ratio)
 
         self.embedding = nn.Embedding(
-            vocab_size,
-            emb_dim,
+            self.vocab_size,
+            self.emb_dim,
             self.pad_token_src
         )
 
         self.encoder = nn.LSTM(
-            input_size      = emb_dim,
+            input_size      = self.emb_dim,
             hidden_size     = self.src_hidden_dim,
-            num_layers      = nlayers_src,
-            bidirectional   = bidirectional,
+            num_layers      = self.nlayers_src,
+            bidirectional   = self.bidirectional,
             batch_first     = True,
             dropout         = self.dropout
         )
 
         self.decoder = nn.LSTM(
-            input_size      = emb_dim,
+            input_size      = self.emb_dim,
             hidden_size     = self.trg_hidden_dim,
-            num_layers      = nlayers_trg,
+            num_layers      = self.nlayers_trg,
             bidirectional   = False,
             batch_first     = False,
             dropout         = self.dropout
         )
 
-        self.attention_layer = Attention(self.src_hidden_dim * self.num_directions, trg_hidden_dim, method=attention_mode)
+        self.attention_layer = Attention(self.src_hidden_dim * self.num_directions, self.trg_hidden_dim, method=self.attention_mode)
 
         self.encoder2decoder_hidden = nn.Linear(
             self.src_hidden_dim * self.num_directions,
-            trg_hidden_dim
+            self.trg_hidden_dim
         )
 
         self.encoder2decoder_cell = nn.Linear(
             self.src_hidden_dim * self.num_directions,
-            trg_hidden_dim
+            self.trg_hidden_dim
         )
 
-        self.decoder2vocab = nn.Linear(trg_hidden_dim, vocab_size)
+        self.decoder2vocab = nn.Linear(self.trg_hidden_dim, self.vocab_size)
 
         # copy attention
         if self.copy_attention:
             assert self.copy_mode != None
-            assert self.copy_mode == 'Gu' or self.copy_mode == 'See'
             assert self.unk_word  != None
 
         # for Gu's model
-        self.copy_attention_layer = Attention(self.src_hidden_dim * self.num_directions, trg_hidden_dim, method=attention_mode)
+        self.copy_attention_layer = Attention(self.src_hidden_dim * self.num_directions, self.trg_hidden_dim, method=self.copy_mode)
         # for See's model
-        self.copy_gate            = nn.Linear(trg_hidden_dim, vocab_size)
+        self.copy_gate            = nn.Linear(self.trg_hidden_dim, self.vocab_size)
 
         self.init_weights()
 
@@ -350,8 +346,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             self.src_hidden_dim
         ), requires_grad=False)
 
-        if torch.cuda.is_available():
-            return h0_encoder.cuda(), c0_encoder.cuda()
+        if torch.cuda.is_available(): return h0_encoder.cuda(), c0_encoder.cuda()
 
         return h0_encoder, c0_encoder
 
@@ -411,6 +406,36 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return src_h, (h_t, c_t)
 
+    def merge_decode_inputs(self, trg_emb, h_tilde, copy_h_tilde):
+        '''
+        Input-feeding: merge the information of current word and attentional hidden vectors
+        :param trg_emb: (batch_size, 1, embed_dim)
+        :param h_tilde: (batch_size, 1, trg_hidden)
+        :param copy_h_tilde: (batch_size, 1, trg_hidden)
+        :return:
+        '''
+        trg_emb = trg_emb.permute(1, 0, 2) # (1, batch_size, embed_dim)
+        inputs  = trg_emb
+        if self.input_feeding:
+            h_tilde = h_tilde.permute(1, 0, 2) # (1, batch_size, trg_hidden)
+            inputs  = torch.cat((inputs, h_tilde), 2) # (1, batch_size, inputs_dim+trg_hidden)
+        if self.copy_input_feeding:
+            copy_h_tilde = copy_h_tilde.permute(1, 0, 2) # (1, batch_size, inputs_dim+trg_hidden)
+            inputs  = torch.cat((inputs, copy_h_tilde), 2)
+
+        if self.dec_input_bridge:
+            dec_input = nn.Tanh()(self.dec_input_bridge(inputs))
+        else:
+            dec_input = trg_emb
+
+        # if isinstance(dec_hidden, tuple):
+        #     dec_hidden = (h_tilde.permute(1, 0, 2), dec_hidden[1])
+        # else:
+        #     dec_hidden = h_tilde.permute(1, 0, 2)
+        # trg_input = trg_inputs[:, di + 1].unsqueeze(1)
+
+        return dec_input
+
     def decode(self, trg_inputs, src_map, oov_list, enc_context, enc_hidden, trg_mask, ctx_mask):
         '''
         :param
@@ -443,7 +468,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.current_batch += 1
         if self.do_teacher_forcing():
             '''
-            Normal RNN procedure
+            Teacher Forcing
+            (1) Feedforwarding RNN
             '''
             # truncate the last word, as there's no further word after it for decoder to predict
             trg_inputs = trg_inputs[:, :-1]
@@ -456,6 +482,9 @@ class Seq2SeqLSTMAttention(nn.Module):
             decoder_outputs, dec_hidden = self.decoder(
                 trg_emb, init_hidden
             )
+            '''
+            (2) Standard Attention
+            '''
             # Get the h_tilde (batch_size, trg_len, trg_hidden_dim) and attention weights (batch_size, trg_len, src_len)
             h_tildes, attn_weights, attn_logits = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context)
 
@@ -464,11 +493,11 @@ class Seq2SeqLSTMAttention(nn.Module):
             decoder_logits = self.decoder2vocab(h_tildes.view(-1, trg_hidden_dim)).view(batch_size, max_length, -1)
 
             '''
-            Copy Mechanism
+            (3) Copy Attention
             '''
             if self.copy_attention:
                 # copy_weights and copy_logits is (batch_size, trg_len, src_len)
-                if self.copy_attention_layer:
+                if not self.reuse_copy_attn:
                     _, copy_weights, copy_logits    = self.copy_attention_layer(decoder_outputs.permute(1, 0, 2), enc_context)
                 else:
                     copy_logits = attn_logits
@@ -481,7 +510,8 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         else:
             '''
-            Normal RNN procedure
+            Word Sampling
+            (1) Feedforwarding RNN
             '''
             # take the first word (should be BOS <s>) of each target sequence (batch_size, 1)
             trg_input = trg_inputs[:, 0].unsqueeze(1)
@@ -490,17 +520,24 @@ class Seq2SeqLSTMAttention(nn.Module):
             attn_weights   = []
             copy_weights   = []
             dec_hidden     = init_hidden
+            h_tilde        = Variable(torch.zeros(batch_size, 1, trg_hidden_dim)).cuda() if torch.cuda.is_available() else Variable(torch.zeros(batch_size, 1, trg_hidden_dim))
+            copy_h_tilde   = Variable(torch.zeros(batch_size, 1, trg_hidden_dim)).cuda() if torch.cuda.is_available() else Variable(torch.zeros(batch_size, 1, trg_hidden_dim))
 
             for di in range(max_length):
                 # initialize target embedding and reshape the targets to be time step first
                 trg_emb = self.embedding(trg_input) # (batch_size, 1, embed_dim)
-                trg_emb = trg_emb.permute(1, 0, 2) # (1, batch_size, embed_dim)
 
-                # this is trg_len first
+                # input-feeding, attentional vectors h˜t are concatenated with inputs at the next time steps
+                dec_input = self.merge_decode_inputs(trg_emb, h_tilde, copy_h_tilde)
+
+                # run RNN decoder with inputs (trg_len first)
                 decoder_output, dec_hidden = self.decoder(
-                    trg_emb, dec_hidden
+                    dec_input, dec_hidden
                 )
 
+                '''
+                (2) Standard Attention
+                '''
                 # Get the h_tilde (hidden after attention) and attention weights. h_tilde (batch_size,1,trg_hidden), attn_weight & attn_logit(batch_size,1,src_len)
                 h_tilde, attn_weight, attn_logit = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context)
 
@@ -509,15 +546,14 @@ class Seq2SeqLSTMAttention(nn.Module):
                 decoder_logit = self.decoder2vocab(h_tilde.view(-1, trg_hidden_dim)).view(batch_size, 1, -1)
 
                 '''
-                Copy Mechanism
+                (3) Copy Attention
                 '''
                 if self.copy_attention:
                     # copy_weights and copy_logits is (batch_size, trg_len, src_len)
-                    if self.copy_attention_layer:
+                    if not self.reuse_copy_attn:
                         copy_h_tilde, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context)
                     else:
-                        copy_weight = attn_weight
-                        copy_logit = attn_logit
+                        copy_h_tilde, copy_weight, copy_logit = h_tilde, attn_weight, attn_logit
 
                     # merge the generative and copying probs (batch_size, 1, vocab_size + max_oov_number)
                     decoder_log_prob   = self.merge_copy_probs(decoder_logit, copy_logit, src_map, oov_list)
@@ -528,22 +564,13 @@ class Seq2SeqLSTMAttention(nn.Module):
                 '''
                 Prepare for the next iteration
                 '''
-                # if input_feeding, use groundtruth words (di+1 is the next time step) and use h_tilde as the new hidden vector
-                if self.input_feeding:
-                    if isinstance(dec_hidden, tuple):
-                        dec_hidden = (h_tilde.permute(1, 0, 2), dec_hidden[1])
-                    else:
-                        dec_hidden = h_tilde.permute(1, 0, 2)
-                    trg_input = trg_inputs[:, di + 1].unsqueeze(1)
-
-                else:
-                    # find the top 1 predicted word
-                    top_v, top_idx = decoder_log_prob.data.topk(1, dim=-1)
-                    # if it's a oov, replace it with <unk>
-                    top_idx[top_idx >= self.vocab_size] = self.unk_word
-                    top_idx = Variable(top_idx.squeeze(2))
-                    # top_idx and next_index are (batch_size, 1)
-                    trg_input = top_idx.cuda() if torch.cuda.is_available() else top_idx
+                # find the top 1 predicted word
+                top_v, top_idx = decoder_log_prob.data.topk(1, dim=-1)
+                # if it's a oov, replace it with <unk>
+                top_idx[top_idx >= self.vocab_size] = self.unk_word
+                top_idx = Variable(top_idx.squeeze(2))
+                # top_idx and next_index are (batch_size, 1)
+                trg_input = top_idx.cuda() if torch.cuda.is_available() else top_idx
 
                 # permute to trg_len first, otherwise the cat operation would mess up things
                 decoder_log_probs.append(decoder_log_prob.permute(1, 0, 2))
@@ -643,7 +670,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 x = float(self.current_batch) / self.scheduled_sampling_batches * 10 if self.scheduled_sampling_batches > 0 else 0.0
                 teacher_forcing_ratio = 1. / (1. + np.exp(x - 5))
         elif self.input_feeding:
-            logging.info("Training batches with Input Feeding")
+            # logging.info("Training batches with input feeding, therefore teacher-forcing is forced to turn off")
             return False
         elif self.must_teacher_forcing:
             teacher_forcing_ratio = 1.0
@@ -683,6 +710,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         context_dim     = enc_context.size(2)
         trg_hidden_dim  = self.trg_hidden_dim
 
+        h_tilde = Variable(torch.zeros(batch_size, 1, trg_hidden_dim)).cuda() if torch.cuda.is_available() else Variable(torch.zeros(batch_size, 1, trg_hidden_dim))
+        copy_h_tilde = Variable(torch.zeros(batch_size, 1, trg_hidden_dim)).cuda() if torch.cuda.is_available() else Variable(torch.zeros(batch_size, 1, trg_hidden_dim))
         attn_weights = []
         copy_weights = []
         log_probs = []
@@ -697,9 +726,12 @@ class Seq2SeqLSTMAttention(nn.Module):
             trg_emb = self.embedding(trg_input)  # (batch_size, trg_len = 1, emb_dim)
             trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
 
+            # Input-feeding, attentional vectors h˜t are concatenated with inputs at the next time steps
+            dec_input = self.merge_decode_inputs(trg_emb, h_tilde, copy_h_tilde)
+
             # (seq_len, batch_size, hidden_size * num_directions)
             decoder_output, dec_hidden = self.decoder(
-                trg_emb, dec_hidden
+                dec_input, dec_hidden
             )
 
             # Get the h_tilde (hidden after attention) and attention weights
@@ -714,11 +746,10 @@ class Seq2SeqLSTMAttention(nn.Module):
             else:
                 decoder_logit = decoder_logit.view(batch_size, 1, self.vocab_size)
                 # copy_weights and copy_logits is (batch_size, trg_len, src_len)
-                if self.copy_attention_layer:
-                    _, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context)
+                if not self.reuse_copy_attn:
+                    copy_h_tilde, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context)
                 else:
-                    copy_weight = attn_weight
-                    copy_logit  = attn_logit
+                    copy_h_tilde, copy_weight, copy_logit = h_tilde, attn_weight, attn_logit
                 copy_weights.append(copy_weight.permute(1, 0, 2)) # (1, batch_size, src_len)
                 # merge the generative and copying probs (batch_size, 1, vocab_size + max_unk_word)
                 decoder_log_prob   = self.merge_copy_probs(decoder_logit, copy_logit, src_map, oov_list)
@@ -727,13 +758,6 @@ class Seq2SeqLSTMAttention(nn.Module):
             top_1_v, top_1_idx  = decoder_log_prob.data.topk(1, dim=-1) # (batch_size, 1)
             trg_input           = Variable(top_1_idx.squeeze(2))
             # trg_input           = Variable(top_1_idx).cuda() if torch.cuda.is_available() else Variable(top_1_idx) # (batch_size, 1)
-
-            # Input-feeding, use h_tilde as the new hidden vector
-            if self.input_feeding:
-                if isinstance(dec_hidden, tuple):
-                    dec_hidden = (h_tilde.permute(1, 0, 2), dec_hidden[1])
-                else:
-                    dec_hidden = h_tilde.permute(1, 0, 2)
 
             # append to return lists
             log_probs.append(decoder_log_prob.permute(1, 0, 2)) # (1, batch_size, vocab_size)
@@ -771,7 +795,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
     def forward_without_copy(self, input_src, input_src_len, input_trg, trg_mask=None, ctx_mask=None):
         '''
-        To be compatible with the Copy Model, we change the output of logits to log_probs
+        [Obsolete] To be compatible with the Copy Model, we change the output of logits to log_probs
         :param input_src: padded numeric source sequences
         :param input_src_len: (list of int) length of each sequence before padding (required for pack_padded_sequence)
         :param input_trg: padded numeric target sequences
@@ -789,7 +813,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
     def decode_without_copy(self, trg_inputs, enc_context, enc_hidden, trg_mask, ctx_mask):
         '''
-        Initial decoder state h0 (batch_size, trg_hidden_size), converted from h_t of encoder (batch_size, src_hidden_size * num_directions) through a linear layer
+        [Obsolete] Initial decoder state h0 (batch_size, trg_hidden_size), converted from h_t of encoder (batch_size, src_hidden_size * num_directions) through a linear layer
             No transformation for cell state c_t. Pass directly to decoder.
             Nov. 11st: update: change to pass c_t as well
             People also do that directly feed the end hidden state of encoder and initialize cell state as zeros
@@ -854,6 +878,8 @@ class Seq2SeqLSTMAttention(nn.Module):
                 trg_emb = self.embedding(trg_input) # (batch_size, trg_len, embed_dim)
                 trg_emb  = trg_emb.permute(1, 0, 2) # (trg_len, batch_size, embed_dim)
 
+                # input-feeding is not implemented
+
                 # this is trg_len first
                 decoder_output, dec_hidden = self.decoder(
                     trg_emb, dec_hidden
@@ -870,20 +896,11 @@ class Seq2SeqLSTMAttention(nn.Module):
                 '''
                 Prepare for the next iteration
                 '''
-                # if input_feeding, use groundtruth words (di+1 is the next time step) and use h_tilde as the new hidden vector
-                if self.input_feeding:
-                    if isinstance(dec_hidden, tuple):
-                        dec_hidden = (h_tilde.permute(1, 0, 2), dec_hidden[1])
-                    else:
-                        dec_hidden = h_tilde.permute(1, 0, 2)
-                    trg_input = trg_inputs[:, di + 1].unsqueeze(1)
-
-                else:
-                    # Prepare for the next iteration, get the top word, top_idx and next_index are (batch_size, K)
-                    top_v, top_idx = decoder_log_prob.data.topk(1, dim=-1)
-                    top_idx = Variable(top_idx.squeeze(2))
-                    # top_idx and next_index are (batch_size, 1)
-                    trg_input = top_idx.cuda() if torch.cuda.is_available() else top_idx
+                # Prepare for the next iteration, get the top word, top_idx and next_index are (batch_size, K)
+                top_v, top_idx = decoder_log_prob.data.topk(1, dim=-1)
+                top_idx = Variable(top_idx.squeeze(2))
+                # top_idx and next_index are (batch_size, 1)
+                trg_input = top_idx.cuda() if torch.cuda.is_available() else top_idx
 
                 # permute to trg_len first, otherwise the cat operation would mess up things
                 decoder_outputs.append(decoder_output)
@@ -899,45 +916,5 @@ class Seq2SeqLSTMAttention(nn.Module):
         return decoder_log_probs, decoder_outputs, attn_weights
 
 class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
-    def __init__(self,
-            emb_dim,
-            vocab_size,
-            src_hidden_dim,
-            trg_hidden_dim,
-            ctx_hidden_dim,
-            attention_mode,
-            batch_size,
-            pad_token_src,
-            pad_token_trg,
-            bidirectional=True,
-            nlayers_src=2,
-            nlayers_trg=2,
-            dropout=0.,
-            must_teacher_forcing=False,
-            teacher_forcing_ratio=0.,
-            scheduled_sampling=False,
-            scheduled_sampling_batches=2000,
-            # max_oov_number = 1000,
-            input_feeding=False,
-            unk_word = 3,
-        ):
-        super(Seq2SeqLSTMAttentionCascading, self).__init__(
-            emb_dim,
-            vocab_size,
-            src_hidden_dim,
-            trg_hidden_dim,
-            ctx_hidden_dim,
-            attention_mode,
-            batch_size,
-            pad_token_src,
-            pad_token_trg,
-            bidirectional=bidirectional,
-            nlayers_src=nlayers_src,
-            nlayers_trg=nlayers_trg,
-            dropout=dropout,
-            must_teacher_forcing=must_teacher_forcing,
-            teacher_forcing_ratio=teacher_forcing_ratio,
-            scheduled_sampling=scheduled_sampling,
-            scheduled_sampling_batches=scheduled_sampling_batches,
-            input_feeding = input_feeding,
-        )
+    def __init__(self, opt):
+        super(Seq2SeqLSTMAttentionCascading, self).__init__(opt)
