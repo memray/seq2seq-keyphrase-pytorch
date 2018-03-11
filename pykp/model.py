@@ -623,7 +623,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             then simply initialize the entended part to zeros would be erroneous because many logits are large negative floats.
         To the sentences that have oovs it's fine. But if some sentences in a batch don't have oovs but mixed with sentences have oovs, the extended oov part would be ranked highly after softmax (zero is larger than other negative values in logits).
         Thus we have to carefully initialize the oov-extended part of no-oov sentences to negative infinite floats.
-        Note that don't use expand() because it may cause exception ({RuntimeError}in-place operations can be only used on variables that don't share storage with any other variables, but detected that there are 2 objects sharing it). Has been replaced with repeat(). Still not work on '0.3.1.post2'
+        Note that it may cause exception on early versions like on '0.3.1.post2', but it works well on 0.4 ({RuntimeError}in-place operations can be only used on variables that don't share storage with any other variables, but detected that there are 2 objects sharing it)
         :param decoder_logits: (batch_size, trg_seq_len, vocab_size)
         :param copy_logits:    (batch_size, trg_len, src_len) the pointing/copying logits of each target words
         :param src_map:        (batch_size, src_len)
@@ -645,12 +645,12 @@ class Seq2SeqLSTMAttention(nn.Module):
             flattened_decoder_logits = torch.cat((flattened_decoder_logits, extended_zeros), dim=1)
             '''
             extended_logits           = Variable(torch.FloatTensor([[0.0]*len(oov)+[float('-inf')]*(max_oov_number-len(oov)) for oov in oov_list]))
-            extended_logits           = extended_logits.unsqueeze(1).repeat(batch_size, max_length, max_oov_number).contiguous().view(batch_size * max_length, -1)
+            extended_logits           = extended_logits.unsqueeze(1).expand(batch_size, max_length, max_oov_number).contiguous().view(batch_size * max_length, -1)
             extended_logits           = extended_logits.cuda() if torch.cuda.is_available() else extended_logits
             flattened_decoder_logits  = torch.cat((flattened_decoder_logits, extended_logits), dim=1)
 
         # add probs of copied words by scatter_add_(dim, index, src), index should be in the same shape with src. decoder_probs=(batch_size * trg_len, vocab_size+max_oov_number), copy_weights=(batch_size, trg_len, src_len)
-        expanded_src_map = src_map.clone().unsqueeze(1).repeat(batch_size, max_length, src_len).contiguous().view(batch_size * max_length, -1)  # (batch_size, src_len) -> (batch_size * trg_len, src_len)
+        expanded_src_map = src_map.unsqueeze(1).expand(batch_size, max_length, src_len).contiguous().view(batch_size * max_length, -1)  # (batch_size, src_len) -> (batch_size * trg_len, src_len)
         # flattened_decoder_logits.scatter_add_(dim=1, index=expanded_src_map, src=copy_logits.view(batch_size * max_length, -1))
         flattened_decoder_logits = flattened_decoder_logits.scatter_add_(1, expanded_src_map, copy_logits.view(batch_size * max_length, -1))
 
@@ -725,7 +725,6 @@ class Seq2SeqLSTMAttention(nn.Module):
             # print('TRG_INPUT: %s' % str(trg_input.size()))
             # print(trg_input.data.numpy())
             trg_emb = self.embedding(trg_input)  # (batch_size, trg_len = 1, emb_dim)
-            trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
 
             # Input-feeding, attentional vectors h˜t are concatenated with inputs at the next time steps
             dec_input = self.merge_decode_inputs(trg_emb, h_tilde, copy_h_tilde)
