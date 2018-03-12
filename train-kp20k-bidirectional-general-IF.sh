@@ -8,6 +8,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=64GB
+#SBATCH --time=6-00:00:00 # 6 days walltime in dd-hh:mm format
 
 # Load modules
 #module restore
