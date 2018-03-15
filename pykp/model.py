@@ -235,7 +235,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.input_feeding          = opt.input_feeding
 
         self.copy_attention         = opt.copy_attention    # bool, enable copy attention or not
-        self.copy_mode              = opt.copy_mode         # some to `attention_mode`
+        self.copy_mode              = opt.copy_mode         # same to `attention_mode`
         self.copy_input_feeding     = opt.copy_input_feeding
         self.reuse_copy_attn        = opt.reuse_copy_attn
         self.copy_gate              = opt.copy_gate
@@ -246,19 +246,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.scheduled_sampling_batches = opt.scheduled_sampling_batches
         self.scheduled_sampling_type= 'inverse_sigmoid' # decay curve type: linear or inverse_sigmoid
         self.current_batch          = 0 # for scheduled sampling
-
-        # setup for input-feeding, add a bridge to compress the additional inputs. Note that input-feeding cannot work with teacher-forcing
-        self.dec_input_dim          = self.emb_dim # only input the previous word
-        if self.input_feeding:
-            logging.info("Applying input feeding")
-            self.dec_input_dim      += self.trg_hidden_dim
-        if self.copy_input_feeding:
-            logging.info("Applying copy input feeding")
-            self.dec_input_dim      += self.trg_hidden_dim
-        if self.dec_input_dim == self.emb_dim:
-            self.dec_input_bridge   =  None
-        else:
-            self.dec_input_bridge   =  nn.Linear(self.dec_input_dim, self.emb_dim)
 
         if self.scheduled_sampling:
             logging.info("Applying scheduled sampling with %s decay for the first %d batches" % (self.scheduled_sampling_type, self.scheduled_sampling_batches))
@@ -309,13 +296,32 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # copy attention
         if self.copy_attention:
+            if self.copy_mode == None and self.attention_mode:
+                self.copy_mode = self.attention_mode
             assert self.copy_mode != None
             assert self.unk_word  != None
+            logging.info("Applying Copy Mechanism, type=%s" % self.copy_mode)
+            # for Gu's model
+            self.copy_attention_layer = Attention(self.src_hidden_dim * self.num_directions, self.trg_hidden_dim, method=self.copy_mode)
+            # for See's model
+            # self.copy_gate            = nn.Linear(self.trg_hidden_dim, self.vocab_size)
+        else:
+            self.copy_mode = None
+            self.copy_input_feeding = False
+            self.copy_attention_layer = None
 
-        # for Gu's model
-        self.copy_attention_layer = Attention(self.src_hidden_dim * self.num_directions, self.trg_hidden_dim, method=self.copy_mode)
-        # for See's model
-        self.copy_gate            = nn.Linear(self.trg_hidden_dim, self.vocab_size)
+        # setup for input-feeding, add a bridge to compress the additional inputs. Note that input-feeding cannot work with teacher-forcing
+        self.dec_input_dim          = self.emb_dim # only input the previous word
+        if self.input_feeding:
+            logging.info("Applying input feeding")
+            self.dec_input_dim      += self.trg_hidden_dim
+        if self.copy_input_feeding:
+            logging.info("Applying copy input feeding")
+            self.dec_input_dim      += self.trg_hidden_dim
+        if self.dec_input_dim == self.emb_dim:
+            self.dec_input_bridge   =  None
+        else:
+            self.dec_input_bridge   =  nn.Linear(self.dec_input_dim, self.emb_dim)
 
         self.init_weights()
 
