@@ -472,7 +472,8 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # Teacher Forcing
         self.current_batch += 1
-        if self.do_teacher_forcing():
+        do_word_wisely_training = True # because sequence-wise training is not compatible with input-feeding, so discard it
+        if not do_word_wisely_training:
             '''
             Teacher Forcing
             (1) Feedforwarding RNN
@@ -570,15 +571,20 @@ class Seq2SeqLSTMAttention(nn.Module):
                 '''
                 Prepare for the next iteration
                 '''
-                # find the top 1 predicted word
-                top_v, top_idx = decoder_log_prob.data.topk(1, dim=-1)
-                # if it's a oov, replace it with <unk>
-                top_idx[top_idx >= self.vocab_size] = self.unk_word
-                top_idx = Variable(top_idx.squeeze(2))
-                # top_idx and next_index are (batch_size, 1)
-                trg_input = top_idx.cuda() if torch.cuda.is_available() else top_idx
+                # prepare the next input word
+                if self.do_teacher_forcing():
+                    # truncate the last word, as there's no further word after it for decoder to predict
+                    trg_input = trg_inputs[:, di + 1].unsqueeze(1)
+                else:
+                    # find the top 1 predicted word
+                    top_v, top_idx = decoder_log_prob.data.topk(1, dim=-1)
+                    # if it's a oov, replace it with <unk>
+                    top_idx[top_idx >= self.vocab_size] = self.unk_word
+                    top_idx = Variable(top_idx.squeeze(2))
+                    # top_idx and next_index are (batch_size, 1)
+                    trg_input = top_idx.cuda() if torch.cuda.is_available() else top_idx
 
-                # permute to trg_len first, otherwise the cat operation would mess up things
+                # Save results of current step. Permute to trg_len first, otherwise the cat operation would mess up things
                 decoder_log_probs.append(decoder_log_prob.permute(1, 0, 2))
                 decoder_outputs.append(decoder_output)
                 attn_weights.append(attn_weight.permute(1, 0, 2))
@@ -676,9 +682,6 @@ class Seq2SeqLSTMAttention(nn.Module):
                 # apply function k/(k+e^(x/k-m)), default k=1 and m=5, scale x to [0, 2*m], to ensure the many initial rounds are trained with teacher forcing
                 x = float(self.current_batch) / self.scheduled_sampling_batches * 10 if self.scheduled_sampling_batches > 0 else 0.0
                 teacher_forcing_ratio = 1. / (1. + np.exp(x - 5))
-        elif self.input_feeding:
-            # logging.info("Training batches with input feeding, therefore teacher-forcing is forced to turn off")
-            return False
         elif self.must_teacher_forcing:
             teacher_forcing_ratio = 1.0
         else:
