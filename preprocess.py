@@ -53,8 +53,8 @@ def main():
     # load keyphrase data from file, each data example is a pair of (src_str, [kp_1, kp_2 ... kp_m])
 
     print("Loading training data...")
-    src_trgs_pairs = pykp.io.load_json_data(opt.train_path, name='kp20k', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
-    # src_trgs_pairs = pykp.IO.load_json_data(opt.train_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
+    # src_trgs_pairs = pykp.io.load_json_data(opt.train_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
+    src_trgs_pairs = pykp.io.load_json_data(opt.train_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
     print("Processing training data...")
     tokenized_train_pairs = pykp.io.tokenize_filter_data(
