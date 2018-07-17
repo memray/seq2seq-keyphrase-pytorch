@@ -212,7 +212,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 else:
                     copy_str = ''
 
-                print_out += '\t\t[%.4f]\t%s \t %s %s%s\n' % (-score, print_phrase, str(seq.sentence), correct_str, copy_str)
+                # print_out += '\t\t[%.4f]\t%s \t %s %s%s\n' % (-score, print_phrase, str(seq.sentence), correct_str, copy_str)
 
             '''
             Evaluate predictions w.r.t different filterings and metrics
