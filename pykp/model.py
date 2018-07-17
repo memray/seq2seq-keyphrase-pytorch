@@ -165,7 +165,7 @@ class Attention(nn.Module):
         attn_energies = self.score(hidden, encoder_outputs)
 
         # Normalize energies to weights in range 0 to 1, with consideration of masks
-        if not encoder_mask:
+        if encoder_mask is None:
             attn_weights = torch.nn.functional.softmax(attn_energies.view(-1, src_len), dim=1).view(batch_size, trg_len, src_len)  # (batch_size, trg_len, src_len)
         else:
             attn_weights = masked_softmax(attn_energies, encoder_mask.view(batch_size, 1, src_len), -1)  # (batch_size, trg_len, src_len)
@@ -509,7 +509,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             (2) Standard Attention
             '''
             # Get the h_tilde (batch_size, trg_len, trg_hidden_dim) and attention weights (batch_size, trg_len, src_len)
-            h_tildes, attn_weights, attn_logits = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, ctx_mask)
+            h_tildes, attn_weights, attn_logits = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
 
             # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde), (batch_size, trg_len, trg_hidden_size) -> (batch_size * trg_len, vocab_size)
             # h_tildes=(batch_size, trg_len, trg_hidden_size) -> decoder2vocab(h_tildes.view)=(batch_size * trg_len, vocab_size) -> decoder_logits=(batch_size, trg_len, vocab_size)
@@ -521,7 +521,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             if self.copy_attention:
                 # copy_weights and copy_logits is (batch_size, trg_len, src_len)
                 if not self.reuse_copy_attn:
-                    _, copy_weights, copy_logits = self.copy_attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, ctx_mask)
+                    _, copy_weights, copy_logits = self.copy_attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
                 else:
                     copy_logits = attn_logits
 
@@ -562,7 +562,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 (2) Standard Attention
                 '''
                 # Get the h_tilde (hidden after attention) and attention weights. h_tilde (batch_size,1,trg_hidden), attn_weight & attn_logit(batch_size,1,src_len)
-                h_tilde, attn_weight, attn_logit = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context, ctx_mask)
+                h_tilde, attn_weight, attn_logit = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
 
                 # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
                 # h_tilde=(batch_size, 1, trg_hidden_size) -> decoder2vocab(h_tilde.view)=(batch_size * 1, vocab_size) -> decoder_logit=(batch_size, 1, vocab_size)
@@ -574,7 +574,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 if self.copy_attention:
                     # copy_weights and copy_logits is (batch_size, trg_len, src_len)
                     if not self.reuse_copy_attn:
-                        copy_h_tilde, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context, ctx_mask)
+                        copy_h_tilde, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
                     else:
                         copy_h_tilde, copy_weight, copy_logit = h_tilde, attn_weight, attn_logit
 
@@ -760,7 +760,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             )
 
             # Get the h_tilde (hidden after attention) and attention weights
-            h_tilde, attn_weight, attn_logit = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context, ctx_mask)
+            h_tilde, attn_weight, attn_logit = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
 
             # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
             # (batch_size, trg_len, trg_hidden_size) -> (batch_size, 1, vocab_size)
@@ -772,7 +772,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 decoder_logit = decoder_logit.view(batch_size, 1, self.vocab_size)
                 # copy_weights and copy_logits is (batch_size, trg_len, src_len)
                 if not self.reuse_copy_attn:
-                    copy_h_tilde, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context, ctx_mask)
+                    copy_h_tilde, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
                 else:
                     copy_h_tilde, copy_weight, copy_logit = h_tilde, attn_weight, attn_logit
                 copy_weights.append(copy_weight.permute(1, 0, 2))  # (1, batch_size, src_len)
@@ -883,7 +883,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 trg_emb, init_hidden
             )
             # Get the h_tilde (hidden after attention) and attention weights, inputs/outputs must be batch first
-            h_tildes, attn_weights, _ = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, ctx_mask)
+            h_tildes, attn_weights, _ = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
 
             # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
             # (batch_size, trg_len, trg_hidden_size) -> (batch_size, trg_len, vocab_size)
@@ -913,7 +913,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 )
 
                 # Get the h_tilde (hidden after attention) and attention weights, both inputs and outputs are batch first
-                h_tilde, attn_weight, _ = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context, ctx_mask)
+                h_tilde, attn_weight, _ = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
 
                 # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
                 # (batch_size, trg_hidden_size) -> (batch_size, 1, vocab_size)
