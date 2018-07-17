@@ -11,6 +11,7 @@ import numpy as np
 import random
 
 import pykp
+from pykp.eric_layers import GetMask, masked_softmax
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -167,7 +168,7 @@ class Attention(nn.Module):
         if not encoder_mask:
             attn_weights = torch.nn.functional.softmax(attn_energies.view(-1, src_len), dim=1).view(batch_size, trg_len, src_len)  # (batch_size, trg_len, src_len)
         else:
-            attn_weights = pykp.eric_layers.masked_softmax(attn_energies, encoder_mask.view(batch_size, 1, src_len), -1)  # (batch_size, trg_len, src_len)
+            attn_weights = masked_softmax(attn_energies, encoder_mask.view(batch_size, 1, src_len), -1)  # (batch_size, trg_len, src_len)
 
         # reweighting context, attn (batch_size, trg_len, src_len) * encoder_outputs (batch_size, src_len, src_hidden_dim) = (batch_size, trg_len, src_hidden_dim)
         weighted_context = torch.bmm(attn_weights, encoder_outputs)
@@ -262,7 +263,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         else:
             logging.info("Training with Teacher Forcing with static rate=%f" % self.teacher_forcing_ratio)
 
-        self.get_mask = pykp.eric_layers.GetMask()
+        self.get_mask = GetMask(self.pad_token_src)
 
         self.embedding = nn.Embedding(
             self.vocab_size,
