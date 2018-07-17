@@ -30,7 +30,7 @@ def process_predseqs(pred_seqs, oov, id2word, opt):
     :return:
     '''
     processed_seqs = []
-    if_valid       = []
+    if_valid = []
 
     for seq in pred_seqs:
         # print('-' * 50)
@@ -42,7 +42,8 @@ def process_predseqs(pred_seqs, oov, id2word, opt):
         #         print('ERROR')
 
         # convert to words and remove the EOS token
-        processed_seq      = [id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence[:-1]]
+        seq_sentence_np = [int(x.cpu().data.numpy()) for x in seq.sentence]
+        processed_seq = [id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq_sentence_np[:-1]]
         # print('processed_seq: ' + str(processed_seq))
 
         # print('%s - %s' % (str(seq.sentence[:-1]), str(processed_seq)))
@@ -52,20 +53,21 @@ def process_predseqs(pred_seqs, oov, id2word, opt):
         if len(processed_seq) == 0:
             keep_flag = False
 
-        if keep_flag and any([w==pykp.io.UNK_WORD for w in processed_seq]):
+        if keep_flag and any([w == pykp.io.UNK_WORD for w in processed_seq]):
             keep_flag = False
 
-        if keep_flag and any([w=='.' or w==',' for w in processed_seq]):
+        if keep_flag and any([w == '.' or w == ',' for w in processed_seq]):
             keep_flag = False
 
         if_valid.append(keep_flag)
         processed_seqs.append((seq, processed_seq, seq.score))
 
     unzipped = list(zip(*(processed_seqs)))
-    processed_seqs, processed_str_seqs, processed_scores = unzipped if len(processed_seqs) > 0 and len(unzipped) == 3 else ([],[],[])
+    processed_seqs, processed_str_seqs, processed_scores = unzipped if len(processed_seqs) > 0 and len(unzipped) == 3 else ([], [], [])
 
     assert len(processed_seqs) == len(processed_str_seqs) == len(processed_scores) == len(if_valid)
     return if_valid, processed_seqs, processed_str_seqs, processed_scores
+
 
 def post_process_predseqs(seqs, num_oneword_seq=1):
     processed_seqs = []
@@ -92,13 +94,14 @@ def post_process_predseqs(seqs, num_oneword_seq=1):
     else:
         return unzipped
 
+
 def if_present_duplicate_phrase(src_str, phrase_seqs):
-    stemmed_src_str     = stem_word_list(src_str)
+    stemmed_src_str = stem_word_list(src_str)
     present_index = []
-    phrase_set    = set() # some phrases are duplicate after stemming, like "model" and "models" would be same after stemming, thus we ignore the following ones
+    phrase_set = set()  # some phrases are duplicate after stemming, like "model" and "models" would be same after stemming, thus we ignore the following ones
 
     for phrase_seq in phrase_seqs:
-        stemmed_pred_seq   = stem_word_list(phrase_seq)
+        stemmed_pred_seq = stem_word_list(phrase_seq)
 
         # check if it is duplicate
         if '_'.join(stemmed_pred_seq) in phrase_set:
@@ -124,6 +127,7 @@ def if_present_duplicate_phrase(src_str, phrase_seqs):
         phrase_set.add('_'.join(stemmed_pred_seq))
 
     return present_index
+
 
 def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_path=None):
     logging = config.init_logging(title, save_path + '/%s.log' % title)
@@ -171,12 +175,12 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             pred_is_valid, processed_pred_seqs, processed_pred_str_seqs, processed_pred_score = process_predseqs(pred_seq, oov, opt.id2word, opt)
             # 2nd filtering: if filter out phrases that don't appear in text, and keep unique ones after stemming
             if opt.must_appear_in_src:
-                pred_is_present     = if_present_duplicate_phrase(src_str, processed_pred_str_seqs)
-                trg_str_seqs        = np.asarray(trg_str_seqs)[trg_str_is_present]
+                pred_is_present = if_present_duplicate_phrase(src_str, processed_pred_str_seqs)
+                trg_str_seqs = np.asarray(trg_str_seqs)[trg_str_is_present]
             else:
-                pred_is_present     = [True] * len(processed_pred_str_seqs)
+                pred_is_present = [True] * len(processed_pred_str_seqs)
 
-            valid_and_present       = np.asarray(pred_is_valid) * np.asarray(pred_is_present)
+            valid_and_present = np.asarray(pred_is_valid) * np.asarray(pred_is_present)
             match_list = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_pred_str_seqs)
             print_out += '[PREDICTION] #(valid)=%d, #(present)=%d, #(retained&present)=%d, #(all)=%d\n' % (sum(pred_is_valid), sum(pred_is_present), sum(valid_and_present), len(pred_seq))
             print_out += ''
@@ -213,13 +217,13 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             '''
             Evaluate predictions w.r.t different filterings and metrics
             '''
-            num_oneword_range  = [-1, 1]
-            topk_range         = [5, 10]
-            score_names        = ['precision', 'recall', 'f_score']
+            num_oneword_range = [-1, 1]
+            topk_range = [5, 10]
+            score_names = ['precision', 'recall', 'f_score']
 
-            processed_pred_seqs     = np.asarray(processed_pred_seqs)[valid_and_present]
+            processed_pred_seqs = np.asarray(processed_pred_seqs)[valid_and_present]
             processed_pred_str_seqs = np.asarray(processed_pred_str_seqs)[valid_and_present]
-            processed_pred_score    = np.asarray(processed_pred_score)[valid_and_present]
+            processed_pred_score = np.asarray(processed_pred_score)[valid_and_present]
 
             for num_oneword_seq in num_oneword_range:
                 # 3rd round filtering (one-word phrases)
@@ -231,7 +235,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
                 for topk in topk_range:
                     results = evaluate(match_list, filtered_pred_seq, trg_str_seqs, topk=topk)
-                    for k,v  in zip(score_names, results):
+                    for k, v in zip(score_names, results):
                         if '%s@%d#oneword=%d' % (k, topk, num_oneword_seq) not in score_dict:
                             score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)] = []
                         score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)].append(v)
@@ -241,32 +245,32 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             logging.info(print_out)
 
             if save_path:
-                if not os.path.exists(os.path.join(save_path, title+'_detail')):
-                    os.makedirs(os.path.join(save_path, title+'_detail'))
-                with open(os.path.join(save_path, title+'_detail', str(example_idx)+'_print.txt'), 'w') as f_:
+                if not os.path.exists(os.path.join(save_path, title + '_detail')):
+                    os.makedirs(os.path.join(save_path, title + '_detail'))
+                with open(os.path.join(save_path, title + '_detail', str(example_idx) + '_print.txt'), 'w') as f_:
                     f_.write(print_out)
-                with open(os.path.join(save_path, title+'_detail', str(example_idx)+'_prediction.txt'), 'w') as f_:
+                with open(os.path.join(save_path, title + '_detail', str(example_idx) + '_prediction.txt'), 'w') as f_:
                     f_.write(preds_out)
 
             progbar.update(epoch, example_idx, [('f_score@5#oneword=-1', np.average(score_dict['f_score@5#oneword=-1'])), ('f_score@10#oneword=-1', np.average(score_dict['f_score@10#oneword=-1']))])
 
             example_idx += 1
 
-    print('#(f_score@5#oneword=-1)=%d, sum=%f'  % (len(score_dict['f_score@5#oneword=-1']), sum(score_dict['f_score@5#oneword=-1'])))
+    print('#(f_score@5#oneword=-1)=%d, sum=%f' % (len(score_dict['f_score@5#oneword=-1']), sum(score_dict['f_score@5#oneword=-1'])))
     print('#(f_score@10#oneword=-1)=%d, sum=%f' % (len(score_dict['f_score@10#oneword=-1']), sum(score_dict['f_score@10#oneword=-1'])))
-    print('#(f_score@5#oneword=1)=%d, sum=%f'   % (len(score_dict['f_score@5#oneword=1']), sum(score_dict['f_score@5#oneword=1'])))
-    print('#(f_score@10#oneword=1)=%d, sum=%f'  % (len(score_dict['f_score@10#oneword=1']), sum(score_dict['f_score@10#oneword=1'])))
+    print('#(f_score@5#oneword=1)=%d, sum=%f' % (len(score_dict['f_score@5#oneword=1']), sum(score_dict['f_score@5#oneword=1'])))
+    print('#(f_score@10#oneword=1)=%d, sum=%f' % (len(score_dict['f_score@10#oneword=1']), sum(score_dict['f_score@10#oneword=1'])))
 
     if save_path:
         # export scores. Each row is scores (precision, recall and f-score) of different way of filtering predictions (how many one-word predictions to keep)
-        with open(save_path + os.path.sep + title +'_result.csv', 'w') as result_csv:
+        with open(save_path + os.path.sep + title + '_result.csv', 'w') as result_csv:
             csv_lines = []
             for num_oneword_seq in num_oneword_range:
                 for topk in topk_range:
                     csv_line = '#oneword=%d,@%d' % (num_oneword_seq, topk)
                     for k in score_names:
                         csv_line += ',%f' % np.average(score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)])
-                    csv_lines.append(csv_line+'\n')
+                    csv_lines.append(csv_line + '\n')
 
             result_csv.writelines(csv_lines)
 
@@ -277,6 +281,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
     # logging.info("micro precision %.4f , micro recall %.4f, micro fscore %.4f " % (precision, recall, f_score))
 
     return score_dict
+
 
 def evaluate_greedy(model, data_loader, test_examples, opt):
     model.eval()
@@ -324,13 +329,15 @@ def evaluate_greedy(model, data_loader, test_examples, opt):
 def stem_word_list(word_list):
     return [stemmer.stem(w.strip().lower()) for w in word_list]
 
-def macro_averaged_score(precisionlist,recalllist):
+
+def macro_averaged_score(precisionlist, recalllist):
     precision = np.average(precisionlist)
     recall = np.average(recalllist)
-    f_score= 0
+    f_score = 0
     if(precision or recall):
-        f_score = round((2 * (precision * recall)) / (precision + recall),2)
-    return precision,recall,f_score
+        f_score = round((2 * (precision * recall)) / (precision + recall), 2)
+    return precision, recall, f_score
+
 
 def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
     '''
@@ -345,16 +352,16 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
     micro_matches = []
 
     # do processing to baseline predictions
-    match_score   = np.asarray([0.0] * len(pred_seqs), dtype='float32')
-    target_number       = len(true_seqs)
-    predicted_number    = len(pred_seqs)
+    match_score = np.asarray([0.0] * len(pred_seqs), dtype='float32')
+    target_number = len(true_seqs)
+    predicted_number = len(pred_seqs)
 
     metric_dict = {'target_number': target_number, 'prediction_number': predicted_number, 'correct_number': match_score}
 
     # convert target index into string
     if do_stem:
-        true_seqs   = [stem_word_list(seq) for seq in true_seqs]
-        pred_seqs   = [stem_word_list(seq) for seq in pred_seqs]
+        true_seqs = [stem_word_list(seq) for seq in true_seqs]
+        pred_seqs = [stem_word_list(seq) for seq in pred_seqs]
 
     for pred_id, pred_seq in enumerate(pred_seqs):
         if type == 'exact':
@@ -388,6 +395,7 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
             match_score[pred_id] = bleu(pred_seq, true_seqs, [0.1, 0.3, 0.6])
 
     return match_score
+
 
 def evaluate(match_list, predicted_list, true_list, topk=5):
     if len(match_list) > topk:
