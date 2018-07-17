@@ -30,7 +30,7 @@ from torch.distributions import Categorical
 class Sequence(object):
     """Represents a complete or partial sequence."""
 
-    def __init__(self, batch_id, sentence, dec_hidden, context, src_oov, oov_list, logprobs, score, attention=None):
+    def __init__(self, batch_id, sentence, dec_hidden, context, ctx_mask, src_oov, oov_list, logprobs, score, attention=None):
         """Initializes the Sequence.
 
         Args:
@@ -45,6 +45,7 @@ class Sequence(object):
         self.vocab = set(sentence)  # for filtering duplicates
         self.dec_hidden = dec_hidden
         self.context = context
+        self.ctx_mask = ctx_mask
         self.src_oov = src_oov
         self.oov_list = oov_list
         self.logprobs = logprobs
@@ -186,6 +187,7 @@ class SequenceGenerator(object):
             dec_hiddens = torch.cat([seq.state for seq in flattened_sequences])
 
         contexts = torch.cat([seq.context for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].context.size())
+        ctx_mask = torch.cat([seq.ctx_mask for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].ctx_mask.size())
         src_oovs = torch.cat([seq.src_oov for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].src_oov.size())
         oov_lists = [seq.oov_list for seq in flattened_sequences]
 
@@ -196,9 +198,10 @@ class SequenceGenerator(object):
             else:
                 dec_hiddens = dec_hiddens.cuda()
             contexts = contexts.cuda()
+            ctx_mask = ctx_mask.cuda()
             src_oovs = src_oovs.cuda()
 
-        return seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, src_oovs, oov_lists
+        return seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists
 
     def beam_search(self, src_input, src_len, src_oov, oov_list, word2id):
         """Runs beam search sequence generation given input (padded word indexes)
@@ -235,6 +238,7 @@ class SequenceGenerator(object):
                 sentence=[initial_input[batch_i]],
                 dec_hidden=dec_hiddens[batch_i],
                 context=src_context[batch_i],
+                ctx_mask=ctx_mask[batch_i],
                 src_oov=src_oov[batch_i],
                 oov_list=oov_list[batch_i],
                 logprobs=[],
@@ -253,7 +257,7 @@ class SequenceGenerator(object):
                 break
 
             # flatten 2d sequences (batch_size, beam_size) into 1d batches (batch_size * beam_size) to feed model
-            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, src_oovs, oov_lists = self.sequence_to_batch(partial_sequences)
+            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(partial_sequences)
 
             # Run one-step generation. probs=(batch_size, 1, K), dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
             log_probs, new_dec_hiddens, attn_weights = self.model.generate(
@@ -435,6 +439,7 @@ class SequenceGenerator(object):
                 sentence=[initial_input[batch_i]],
                 dec_hidden=dec_hiddens[batch_i],
                 context=src_context[batch_i],
+                ctx_mask=ctx_mask[batch_i],
                 src_oov=src_oov[batch_i],
                 oov_list=oov_list[batch_i],
                 logprobs=None,
@@ -447,7 +452,7 @@ class SequenceGenerator(object):
             num_partial_sequences = sum([len(batch_seqs) for batch_seqs in sampled_sequences])
 
             # flatten 2d sequences (batch_size, beam_size) into 1d batches (batch_size * beam_size) to feed model
-            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, src_oovs, oov_lists = self.sequence_to_batch(sampled_sequences)
+            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(sampled_sequences)
 
             # Run one-step generation. log_probs=(batch_size, 1, K), dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
             log_probs, new_dec_hiddens, attn_weights = self.model.generate(
