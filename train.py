@@ -35,6 +35,7 @@ from pykp.model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionCascading
 
 import time
 
+
 def time_usage(func):
     # argnames = func.func_code.co_varnames[:func.func_code.co_argcount]
     fname = func.__name__
@@ -47,8 +48,11 @@ def time_usage(func):
         return retval
 
     return wrapper
+
+
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
+
 
 @time_usage
 def _valid_error(data_loader, model, criterion, epoch, opt):
@@ -67,11 +71,11 @@ def _valid_error(data_loader, model, criterion, epoch, opt):
         src, trg, trg_target, trg_copy_target, src_ext, oov_lists = one2one_batch
 
         if torch.cuda.is_available():
-            src                = src.cuda()
-            trg                = trg.cuda()
-            trg_target         = trg_target.cuda()
-            trg_copy_target    = trg_copy_target.cuda()
-            src_ext            = src_ext.cuda()
+            src = src.cuda()
+            trg = trg.cuda()
+            trg_target = trg_target.cuda()
+            trg_copy_target = trg_copy_target.cuda()
+            src_ext = src_ext.cuda()
 
         decoder_log_probs, _, _ = model.forward(src, trg, src_ext)
 
@@ -152,37 +156,37 @@ def train_rl(one2many_batch, model, optimizer, generator, opt):
     baseline_seqs_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=5, is_greedy=True)
 
     # Sample number_batch*beam_size sequences
-    sampled_seqs_list  = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=5, is_greedy=False)
+    sampled_seqs_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=5, is_greedy=False)
 
     policy_loss = []
     policy_rewards = []
     # Compute their rewards and losses
     for seq_i, (src, trg, trg_copy, sampled_seqs, baseline_seqs, oov) in enumerate(zip(src_list, trg_list, trg_copy_target_list, sampled_seqs_list, baseline_seqs_list, oov_list)):
         # convert to string sequences
-        baseline_str_seqs   =  [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence] for seq in baseline_seqs]
-        baseline_str_seqs   =  [seq[:seq.index(pykp.io.EOS_WORD) + 1] if pykp.io.EOS_WORD in seq else seq for seq in baseline_str_seqs]
-        sampled_str_seqs    =  [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence] for seq in sampled_seqs]
-        sampled_str_seqs    =  [seq[:seq.index(pykp.io.EOS_WORD) + 1] if pykp.io.EOS_WORD in seq else seq for seq in sampled_str_seqs]
+        baseline_str_seqs = [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence] for seq in baseline_seqs]
+        baseline_str_seqs = [seq[:seq.index(pykp.io.EOS_WORD) + 1] if pykp.io.EOS_WORD in seq else seq for seq in baseline_str_seqs]
+        sampled_str_seqs = [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence] for seq in sampled_seqs]
+        sampled_str_seqs = [seq[:seq.index(pykp.io.EOS_WORD) + 1] if pykp.io.EOS_WORD in seq else seq for seq in sampled_str_seqs]
 
         # pad trg seqs with EOS to the same length
-        trg_seqs            =  [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq] for seq in trg_copy]
+        trg_seqs = [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq] for seq in trg_copy]
         # trg_seqs            =  [seq + [pykp.IO.EOS_WORD] * (opt.max_sent_length - len(seq)) for seq in trg_seqs]
 
         # local rewards (bleu)
-        bleu_baselines           =  get_match_result(true_seqs=trg_seqs, pred_seqs=baseline_str_seqs, type='bleu')
-        bleu_samples             =  get_match_result(true_seqs=trg_seqs, pred_seqs=sampled_str_seqs, type='bleu')
+        bleu_baselines = get_match_result(true_seqs=trg_seqs, pred_seqs=baseline_str_seqs, type='bleu')
+        bleu_samples = get_match_result(true_seqs=trg_seqs, pred_seqs=sampled_str_seqs, type='bleu')
 
         # global rewards
-        match_baselines          =  get_match_result(true_seqs=trg_seqs, pred_seqs=baseline_str_seqs, type='exact')
-        match_samples            =  get_match_result(true_seqs=trg_seqs, pred_seqs=sampled_str_seqs, type='exact')
+        match_baselines = get_match_result(true_seqs=trg_seqs, pred_seqs=baseline_str_seqs, type='exact')
+        match_samples = get_match_result(true_seqs=trg_seqs, pred_seqs=sampled_str_seqs, type='exact')
 
-        _, _, fscore_baselines   =  evaluate.evaluate(match_baselines, baseline_str_seqs, trg_seqs, topk=5)
-        _, _, fscore_samples     =  evaluate.evaluate(match_samples, sampled_str_seqs, trg_seqs, topk=5)
+        _, _, fscore_baselines = evaluate.evaluate(match_baselines, baseline_str_seqs, trg_seqs, topk=5)
+        _, _, fscore_samples = evaluate.evaluate(match_samples, sampled_str_seqs, trg_seqs, topk=5)
 
         # compute the final rewards
-        alpha                    = 0.0
-        baseline                 = alpha * np.average(bleu_baselines) + (1.0 - alpha) * fscore_baselines
-        rewards                  = alpha * np.asarray(bleu_samples)   + (1.0 - alpha) * fscore_samples
+        alpha = 0.0
+        baseline = alpha * np.average(bleu_baselines) + (1.0 - alpha) * fscore_baselines
+        rewards = alpha * np.asarray(bleu_samples) + (1.0 - alpha) * fscore_samples
 
         """
         print('*' * 20 + '  ' + str(seq_i) + '  ' + '*' * 20)
@@ -208,8 +212,8 @@ def train_rl(one2many_batch, model, optimizer, generator, opt):
         logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
 
     optimizer.step()
-
     return np.average(policy_rewards)
+
 
 def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt):
     logging.info('======================  %d  =========================' % (batch_i))
@@ -259,9 +263,9 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
         sentence_source = sentence_source[:sentence_source.index(
             '<pad>')] if '<pad>' in sentence_source else sentence_source
         sentence_pred = sentence_pred[
-                        :sentence_pred.index('<pad>')] if '<pad>' in sentence_pred else sentence_pred
+            :sentence_pred.index('<pad>')] if '<pad>' in sentence_pred else sentence_pred
         sentence_real = sentence_real[
-                        :sentence_real.index('<pad>')] if '<pad>' in sentence_real else sentence_real
+            :sentence_real.index('<pad>')] if '<pad>' in sentence_real else sentence_real
 
         logging.info('==================================================')
         logging.info('Source: %s ' % (' '.join(sentence_source)))
@@ -289,29 +293,29 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
     logging.info('======================  Start Training  =========================')
 
-    checkpoint_names        = []
+    checkpoint_names = []
     train_ml_history_losses = []
     train_rl_history_losses = []
-    valid_history_losses    = []
-    test_history_losses     = []
+    valid_history_losses = []
+    test_history_losses = []
     # best_loss = sys.float_info.max # for normal training/testing loss (likelihood)
-    best_loss               = 0.0 # for f-score
-    stop_increasing         = 0
+    best_loss = 0.0  # for f-score
+    stop_increasing = 0
 
     train_ml_losses = []
     train_rl_losses = []
     total_batch = -1
     early_stop_flag = False
 
-    if False:#opt.train_from:
+    if False:  # opt.train_from:
         state_path = opt.train_from.replace('.model', '.state')
         logging.info('Loading training state from: %s' % state_path)
         if os.path.exists(state_path):
             (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_ml_history_losses, train_rl_history_losses, valid_history_losses,
-                        test_history_losses) = torch.load(open(state_path, 'rb'))
+             test_history_losses) = torch.load(open(state_path, 'rb'))
             opt.start_epoch = epoch
 
-    for epoch in range(opt.start_epoch , opt.epochs):
+    for epoch in range(opt.start_epoch, opt.epochs):
         if early_stop_flag:
             break
 
@@ -348,8 +352,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
                 # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
                 # valid_history_losses.append(valid_losses)
-                valid_score_dict  = evaluate_beam_search(generator, valid_data_loader, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
-                test_score_dict   = evaluate_beam_search(generator, test_data_loader, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                valid_score_dict = evaluate_beam_search(generator, valid_data_loader, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                test_score_dict = evaluate_beam_search(generator, test_data_loader, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
 
                 checkpoint_names.append('epoch=%d-batch=%d-total_batch=%d' % (epoch, batch_i, total_batch))
 
@@ -371,9 +375,9 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 test_history_losses.append(test_score_dict)
 
                 scores += [[result_dict[name] for result_dict in valid_history_losses] for name in opt.report_score_names]
-                curve_names += ['Valid-'+name for name in opt.report_score_names]
+                curve_names += ['Valid-' + name for name in opt.report_score_names]
                 scores += [[result_dict[name] for result_dict in test_history_losses] for name in opt.report_score_names]
-                curve_names += ['Test-'+name for name in opt.report_score_names]
+                curve_names += ['Test-' + name for name in opt.report_score_names]
 
                 scores = [np.asarray(s) for s in scores]
                 # Plot the learning curve
@@ -386,9 +390,9 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 '''
                 determine if early stop training (whether f-score increased, before is if valid error decreased)
                 '''
-                valid_loss      = np.average(valid_history_losses[-1][opt.report_score_names[0]])
-                is_best_loss    = valid_loss > best_loss
-                rate_of_change  = float(valid_loss - best_loss) / float(best_loss) if float(best_loss) > 0 else 0.0
+                valid_loss = np.average(valid_history_losses[-1][opt.report_score_names[0]])
+                is_best_loss = valid_loss > best_loss
+                rate_of_change = float(valid_loss - best_loss) / float(best_loss) if float(best_loss) > 0 else 0.0
 
                 # valid error doesn't increase
                 if rate_of_change <= 0:
@@ -406,7 +410,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 best_loss = max(valid_loss, best_loss)
 
                 # only store the checkpoints that make better validation performances
-                if total_batch > 1 and (total_batch % opt.save_model_every == 0 or is_best_loss): #epoch >= opt.start_checkpoint_at and
+                if total_batch > 1 and (total_batch % opt.save_model_every == 0 or is_best_loss):  # epoch >= opt.start_checkpoint_at and
                     # Save the checkpoint
                     logging.info('Saving checkpoint to: %s' % os.path.join(opt.model_path, '%s.epoch=%d.batch=%d.total_batch=%d.error=%f' % (opt.exp, epoch, batch_i, total_batch, valid_loss) + '.model'))
                     torch.save(
@@ -447,20 +451,20 @@ def load_data_vocab(opt, load_train=True):
     if load_train:
         train_one2many = torch.load(opt.data + '.train.one2many.pt', 'wb')
         train_one2many_dataset = KeyphraseDataset(train_one2many, word2id=word2id, id2word=id2word, type='one2many')
-        train_one2many_loader  = KeyphraseDataLoader(dataset=train_one2many_dataset, collate_fn=train_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=1024, max_batch_pair=opt.batch_size, pin_memory=True, shuffle=True)
-        logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d, #(average examples/batch)=%.3f' % (len(train_one2many_loader.dataset), train_one2many_loader.one2one_number(), len(train_one2many_loader), train_one2many_loader.one2one_number()/len(train_one2many_loader)))
+        train_one2many_loader = KeyphraseDataLoader(dataset=train_one2many_dataset, collate_fn=train_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=1024, max_batch_pair=opt.batch_size, pin_memory=True, shuffle=True)
+        logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d, #(average examples/batch)=%.3f' % (len(train_one2many_loader.dataset), train_one2many_loader.one2one_number(), len(train_one2many_loader), train_one2many_loader.one2one_number() / len(train_one2many_loader)))
     else:
         train_one2many_loader = None
 
     valid_one2many = torch.load(opt.data + '.valid.one2many.pt', 'wb')
-    test_one2many  = torch.load(opt.data + '.test.one2many.pt', 'wb')
+    test_one2many = torch.load(opt.data + '.test.one2many.pt', 'wb')
 
     # !important. As it takes too long to do beam search, thus reduce the size of validation and test datasets
     valid_one2many = valid_one2many[:2000]
-    test_one2many  = test_one2many[:2000]
+    test_one2many = test_one2many[:2000]
 
     valid_one2many_dataset = KeyphraseDataset(valid_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
-    test_one2many_dataset  = KeyphraseDataset(test_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
+    test_one2many_dataset = KeyphraseDataset(test_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
 
     """
     # temporary code, exporting test data for Theano model
@@ -472,12 +476,12 @@ def load_data_vocab(opt, load_train=True):
     exit()
     """
 
-    valid_one2many_loader  = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.beam_search_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
-    test_one2many_loader   = KeyphraseDataLoader(dataset=test_one2many_dataset, collate_fn=test_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.beam_search_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
+    valid_one2many_loader = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.beam_search_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
+    test_one2many_loader = KeyphraseDataLoader(dataset=test_one2many_dataset, collate_fn=test_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.beam_search_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
 
     opt.word2id = word2id
     opt.id2word = id2word
-    opt.vocab   = vocab
+    opt.vocab = vocab
 
     logging.info('#(valid data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d' % (len(valid_one2many_loader.dataset), valid_one2many_loader.one2one_number(), len(valid_one2many_loader)))
     logging.info('#(test data size:  #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d' % (len(test_one2many_loader.dataset), test_one2many_loader.one2one_number(), len(test_one2many_loader)))
@@ -486,6 +490,7 @@ def load_data_vocab(opt, load_train=True):
     logging.info('#(vocab used)=%d' % opt.vocab_size)
 
     return train_one2many_loader, valid_one2many_loader, test_one2many_loader, word2id, id2word, vocab
+
 
 def init_optimizer_criterion(model, opt):
     """
@@ -523,6 +528,7 @@ def init_optimizer_criterion(model, opt):
 
     return optimizer_ml, optimizer_rl, criterion
 
+
 def init_model(opt):
     logging.info('======================  Model Parameters  =========================')
 
@@ -549,7 +555,7 @@ def init_model(opt):
                 open(opt.train_from, 'rb'), map_location=lambda storage, loc: storage
             )
         # some compatible problems, keys are started with 'module.'
-        checkpoint = dict([(k[7:],v) if k.startswith('module.') else (k,v) for k,v in checkpoint.items()])
+        checkpoint = dict([(k[7:], v) if k.startswith('module.') else (k, v) for k, v in checkpoint.items()])
         model.load_state_dict(checkpoint)
     else:
         # dump the meta-model
@@ -557,7 +563,6 @@ def init_model(opt):
             model.state_dict(),
             open(os.path.join(opt.train_from[: opt.train_from.find('.epoch=')], 'initial.model'), 'wb')
         )
-
 
     if torch.cuda.is_available():
         model = model.cuda()
@@ -610,11 +615,12 @@ def process_opt(opt):
         )
     else:
         torch.save(opt,
-            open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'wb')
-        )
+                   open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'wb')
+                   )
         json.dump(vars(opt), open(os.path.join(opt.model_path, opt.exp + '.initial.json'), 'w'))
 
     return opt
+
 
 def main():
     # load settings for training
@@ -640,6 +646,7 @@ def main():
         train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt)
     except Exception as e:
         logging.exception("message")
+
 
 if __name__ == '__main__':
     main()
