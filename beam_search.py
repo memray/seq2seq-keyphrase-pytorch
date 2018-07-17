@@ -18,6 +18,7 @@ import torch
 from torch.autograd import Variable
 
 import pykp
+from pykp.eric_layers import GetMask
 import numpy as np
 import collections
 import itertools
@@ -151,6 +152,7 @@ class SequenceGenerator(object):
         self.length_normalization_factor = length_normalization_factor
         self.length_normalization_const = length_normalization_const
         self.return_attention = return_attention
+        self.get_mask = GetMask()
 
     def sequence_to_batch(self, sequence_lists):
         '''
