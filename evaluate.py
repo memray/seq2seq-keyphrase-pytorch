@@ -158,7 +158,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         process each example in current batch
         '''
         for src, src_str, trg, trg_str_seqs, trg_copy, pred_seq, oov in zip(src_list, src_str_list, trg_list, trg_str_list, trg_copy_target_list, pred_seq_list, oov_list):
-            logging.info('======================  %d =========================' % (example_idx))
+            # logging.info('======================  %d =========================' % (example_idx))
             print_out = ''
             print_out += '[Source][%d]: %s \n' % (len(src_str), ' '.join(src_str))
             # src = src.cpu().data.numpy() if torch.cuda.is_available() else src.data.numpy()
@@ -242,7 +242,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
                         print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
 
-            logging.info(print_out)
+            # logging.info(print_out)
 
             if save_path:
                 if not os.path.exists(os.path.join(save_path, title + '_detail')):

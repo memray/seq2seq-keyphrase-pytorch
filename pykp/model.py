@@ -705,13 +705,13 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # flip a coin
         coin = random.random()
-        logging.info('coin = %f, tf_ratio = %f' % (coin, teacher_forcing_ratio))
+        # logging.info('coin = %f, tf_ratio = %f' % (coin, teacher_forcing_ratio))
 
         do_tf = coin < teacher_forcing_ratio
-        if do_tf:
-            logging.info("Training batches with Teacher Forcing")
-        else:
-            logging.info("Training batches with All Sampling")
+        # if do_tf:
+        #     logging.info("Training batches with Teacher Forcing")
+        # else:
+        #     logging.info("Training batches with All Sampling")
 
         return do_tf
 

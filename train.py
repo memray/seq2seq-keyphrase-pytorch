@@ -138,7 +138,7 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
     if opt.max_grad_norm > 0:
         pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
         after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
-        logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
+        # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
 
     optimizer.step()
 
@@ -209,7 +209,7 @@ def train_rl(one2many_batch, model, optimizer, generator, opt):
     if opt.max_grad_norm > 0:
         pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
         after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
-        logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
+        # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
 
     optimizer.step()
     return np.average(policy_rewards)
