@@ -168,6 +168,7 @@ class Attention(nn.Module):
         if encoder_mask is None:
             attn_weights = torch.nn.functional.softmax(attn_energies.view(-1, src_len), dim=1).view(batch_size, trg_len, src_len)  # (batch_size, trg_len, src_len)
         else:
+            attn_energies = attn_energies * encoder_mask.view(encoder_mask.size(0), 1, encoder_mask.size(1))  # (batch, trg_len, src_len)
             attn_weights = masked_softmax(attn_energies, encoder_mask.view(encoder_mask.size(0), 1, encoder_mask.size(1)), -1)  # (batch_size, trg_len, src_len)
 
         # reweighting context, attn (batch_size, trg_len, src_len) * encoder_outputs (batch_size, src_len, src_hidden_dim) = (batch_size, trg_len, src_hidden_dim)
