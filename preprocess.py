@@ -88,8 +88,8 @@ def main():
     Load and process validation data
     '''
     print("Loading validation data...")
-    src_trgs_pairs = pykp.io.load_json_data(opt.valid_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
-    # src_trgs_pairs = pykp.IO.load_json_data(opt.valid_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
+    # src_trgs_pairs = pykp.io.load_json_data(opt.valid_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
+    src_trgs_pairs = pykp.io.load_json_data(opt.valid_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
     print("Processing validation data...")
     tokenized_valid_pairs = pykp.io.tokenize_filter_data(
@@ -106,8 +106,8 @@ def main():
     Load and process test data
     '''
     print("Loading test data...")
-    src_trgs_pairs = pykp.io.load_json_data(opt.test_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
-    # src_trgs_pairs = pykp.IO.load_json_data(opt.test_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
+    # src_trgs_pairs = pykp.io.load_json_data(opt.test_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
+    src_trgs_pairs = pykp.io.load_json_data(opt.test_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
     print("Processing test data...")
     tokenized_test_pairs = pykp.io.tokenize_filter_data(
