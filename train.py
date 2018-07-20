@@ -27,6 +27,7 @@ from torch import cuda
 from beam_search import SequenceGenerator
 from evaluate import evaluate_beam_search, get_match_result
 from pykp.dataloader import KeyphraseDataLoader
+from pykp.eric_layers import StandardNLL, GetMask
 from utils import Progbar, plot_learning_curve
 
 import pykp
@@ -114,20 +115,28 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
 
     decoder_log_probs, _, _ = model.forward(src, src_len, trg, src_oov, oov_lists)
 
+
     # simply average losses of all the predicitons
     # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
     start_time = time.time()
 
-    if not opt.copy_attention:
-        loss = criterion(
-            decoder_log_probs.contiguous().view(-1, opt.vocab_size),
-            trg_target.contiguous().view(-1)
-        )
+    if opt.loss_mask:
+        trg_mask = self.get_mask(trg)  # same size as trg
+        groundtruth = trg_copy_target if opt.copy_attention else trg_target
+        groundtruth = groundtruth.contiguous()
+        loss_batch = criterion(decoder_log_probs, groundtruth, trg_mask)
+        loss = torch.mean(loss_batch)
     else:
-        loss = criterion(
-            decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
-            trg_copy_target.contiguous().view(-1)
-        )
+        if not opt.copy_attention:
+            loss = criterion(
+                decoder_log_probs.contiguous().view(-1, opt.vocab_size),
+                trg_target.contiguous().view(-1)
+            )
+        else:
+            loss = criterion(
+                decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
+                trg_copy_target.contiguous().view(-1)
+            )
     loss = loss * (1 - opt.loss_scale)
     print("--loss calculation- %s seconds ---" % (time.time() - start_time))
 
@@ -512,7 +521,11 @@ def init_optimizer_criterion(model, opt):
     # optimizer = torch.optim.Adadelta(model.parameters(), lr=0.1)
     # optimizer = torch.optim.RMSprop(model.parameters(), lr=0.1)
     '''
-    criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.io.PAD_WORD])
+    if opt.loss_mask == 0:
+        criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.io.PAD_WORD])
+    else:
+        criterion = StandardNLL()
+
 
     if opt.train_ml:
         optimizer_ml = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)

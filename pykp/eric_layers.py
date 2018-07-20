@@ -37,3 +37,21 @@ def masked_log_softmax(x, m=None, axis=-1):
     Log softmax with mask (optional), might be numerically unstable?
     '''
     return torch.log(masked_softmax(x, m, axis))
+
+
+class StandardNLL(torch.nn.modules.loss._Loss):
+    """
+    Shape:
+        log_prob:   batch x time x class
+        y_true:     batch x time
+        mask:       batch x time
+        output:     batch
+    """
+
+    def forward(self, log_prob, y_true, mask):
+        mask = mask.float()
+        log_P = torch.gather(log_prob.view(-1, log_prob.size(2)), 1, y_true.contiguous().view(-1, 1))  # batch*time x 1
+        log_P = log_P.view(y_true.size(0), y_true.size(1))  # batch x time
+        log_P = log_P * mask  # batch x time
+        sum_log_P = torch.sum(log_P, dim=1) / torch.sum(mask, dim=1)  # batch
+        return -sum_log_P

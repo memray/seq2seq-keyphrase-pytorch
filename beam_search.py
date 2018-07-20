@@ -215,7 +215,7 @@ class SequenceGenerator(object):
         self.model.eval()
         batch_size = len(src_input)
 
-        ctx_mask = self.get_mask(src_input)  # same size as input_src
+        src_mask = self.get_mask(src_input)  # same size as input_src
         src_context, (src_h, src_c) = self.model.encode(src_input, src_len)
 
         # prepare the init hidden vector, (batch_size, trg_seq_len, dec_hidden_dim)
@@ -238,7 +238,7 @@ class SequenceGenerator(object):
                 sentence=[initial_input[batch_i]],
                 dec_hidden=dec_hiddens[batch_i],
                 context=src_context[batch_i],
-                ctx_mask=ctx_mask[batch_i],
+                ctx_mask=src_mask[batch_i],
                 src_oov=src_oov[batch_i],
                 oov_list=oov_list[batch_i],
                 logprobs=[],
@@ -418,7 +418,7 @@ class SequenceGenerator(object):
         self.model.eval()
         batch_size = len(src_input)
 
-        ctx_mask = self.get_mask(src_input)  # same size as input_src
+        src_mask = self.get_mask(src_input)  # same size as input_src
         src_context, (src_h, src_c) = self.model.encode(src_input, src_len)
 
         # prepare the init hidden vector, (batch_size, trg_seq_len, dec_hidden_dim)
@@ -440,7 +440,7 @@ class SequenceGenerator(object):
                 sentence=[initial_input[batch_i]],
                 dec_hidden=dec_hiddens[batch_i],
                 context=src_context[batch_i],
-                ctx_mask=ctx_mask[batch_i],
+                ctx_mask=src_mask[batch_i],
                 src_oov=src_oov[batch_i],
                 oov_list=oov_list[batch_i],
                 logprobs=None,
