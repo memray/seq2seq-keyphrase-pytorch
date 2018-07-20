@@ -634,6 +634,8 @@ def main():
     config.predict_opts(parser)
     opt = parser.parse_args()
     opt = process_opt(opt)
+    opt.input_feeding = False
+    opt.copy_input_feeding = False
 
     logging = config.init_logging(logger_name=None, log_file=opt.exp_path + '/output.log', stdout=True)
 

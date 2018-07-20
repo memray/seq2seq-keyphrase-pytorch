@@ -30,3 +30,10 @@ def masked_softmax(x, m=None, axis=-1):
         e_x = e_x * m
     softmax = e_x / (torch.sum(e_x, dim=axis, keepdim=True) + 1e-6)
     return softmax
+
+
+def masked_log_softmax(x, m=None, axis=-1):
+    '''
+    Log softmax with mask (optional), might be numerically unstable?
+    '''
+    return torch.log(masked_softmax(x, m, axis))
