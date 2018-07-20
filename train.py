@@ -122,6 +122,7 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
 
     if opt.loss_mask == 1:
         trg_mask = GetMask()(trg)  # same size as trg
+        trg_mask = trg_mask[:, :-1]  # as in model.decode(), truncate the last word, as there's no further word after it for decoder to predict
         groundtruth = trg_copy_target if opt.copy_attention else trg_target
         groundtruth = groundtruth.contiguous()
         loss_batch = criterion(decoder_log_probs, groundtruth, trg_mask)
