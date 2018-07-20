@@ -120,7 +120,7 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
     # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
     start_time = time.time()
 
-    if opt.loss_mask:
+    if opt.loss_mask == 1:
         trg_mask = self.get_mask(trg)  # same size as trg
         groundtruth = trg_copy_target if opt.copy_attention else trg_target
         groundtruth = groundtruth.contiguous()
@@ -525,7 +525,6 @@ def init_optimizer_criterion(model, opt):
         criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.io.PAD_WORD])
     else:
         criterion = StandardNLL()
-
 
     if opt.train_ml:
         optimizer_ml = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
