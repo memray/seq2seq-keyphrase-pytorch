@@ -121,7 +121,7 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
     start_time = time.time()
 
     if opt.loss_mask == 1:
-        trg_mask = self.get_mask(trg)  # same size as trg
+        trg_mask = GetMask()(trg)  # same size as trg
         groundtruth = trg_copy_target if opt.copy_attention else trg_target
         groundtruth = groundtruth.contiguous()
         loss_batch = criterion(decoder_log_probs, groundtruth, trg_mask)
