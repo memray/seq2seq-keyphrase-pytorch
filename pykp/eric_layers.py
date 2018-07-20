@@ -55,3 +55,25 @@ class StandardNLL(torch.nn.modules.loss._Loss):
         log_P = log_P * mask  # batch x time
         sum_log_P = torch.sum(log_P, dim=1) / torch.sum(mask, dim=1)  # batch
         return -sum_log_P
+
+
+class TimeDistributedDense(torch.nn.Module):
+    '''
+    input:  x:          batch x time x a
+            mask:       batch x time
+    output: y:          batch x time x b
+    '''
+
+    def __init__(self, mlp):
+        super(TimeDistributedDense, self).__init__()
+        self.mlp = mlp
+
+    def forward(self, x, mask=None):
+
+        x_size = x.size()
+        x = x.view(-1, x_size[-1])  # batch*time x a
+        y = self.mlp.forward(x)  # batch*time x b
+        y = y.view(x_size[:-1] + (y.size(-1),))  # batch x time x b
+        if mask is not None:
+            y = y * mask.unsqueeze(-1)  # batch x time x b
+        return y

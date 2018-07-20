@@ -11,7 +11,7 @@ import numpy as np
 import random
 
 import pykp
-from pykp.eric_layers import GetMask, masked_softmax
+from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -86,8 +86,10 @@ class Attention(nn.Module):
         if self.method == 'general':
             self.attn = nn.Linear(enc_dim, trg_dim)
         elif self.method == 'concat':
-            self.attn = nn.Linear(enc_dim + trg_dim, trg_dim)
-            self.v = nn.Linear(trg_dim, 1)
+            attn = nn.Linear(enc_dim + trg_dim, trg_dim)
+            v = nn.Linear(trg_dim, 1)
+            self.attn = TimeDistributedDense(mlp=attn)
+            self.v = TimeDistributedDense(mlp=v)
 
         self.softmax = nn.Softmax()
 
@@ -101,7 +103,7 @@ class Attention(nn.Module):
 
         self.tanh = nn.Tanh()
 
-    def score(self, hiddens, encoder_outputs):
+    def score(self, hiddens, encoder_outputs, encoder_mask=None):
         '''
         :param hiddens: (batch, trg_len, trg_hidden_dim)
         :param encoder_outputs: (batch, src_len, src_hidden_dim)
@@ -112,22 +114,41 @@ class Attention(nn.Module):
             energies = torch.bmm(hiddens, encoder_outputs.transpose(1, 2))  # (batch, trg_len, src_len)
         elif self.method == 'general':
             energies = self.attn(encoder_outputs)  # (batch, src_len, trg_hidden_dim)
+            if encoder_mask is not None:
+                energies =  energies * encoder_mask.view(encoder_mask.size(0), encoder_mask.size(1), 1)
             # hidden (batch, trg_len, trg_hidden_dim) * encoder_outputs (batch, src_len, src_hidden_dim).transpose(1, 2) -> (batch, trg_len, src_len)
             energies = torch.bmm(hiddens, energies.transpose(1, 2))  # (batch, trg_len, src_len)
         elif self.method == 'concat':
             energies = []
             batch_size = encoder_outputs.size(0)
             src_len = encoder_outputs.size(1)
-            encoder_outputs_reshaped = encoder_outputs.contiguous().view(-1, encoder_outputs.size(2))
-            for trg_i in range(hiddens.size(1)):
-                expanded_hidden = hiddens[:, trg_i, :].unsqueeze(1).expand(-1, src_len, -1)  # (batch, src_len, trg_hidden_dim)
-                expanded_hidden = expanded_hidden.contiguous().view(-1, expanded_hidden.size(2))  # (batch * src_len, trg_hidden_dim)
-                concated = torch.cat((expanded_hidden, encoder_outputs_reshaped), 1)  # (batch_size * src_len, dec_hidden_dim + enc_hidden_dim)
-                energy = self.tanh(self.attn(concated))  # W_a * concated -> (batch_size * src_len, dec_hidden_dim)
-                energy = self.v(energy)  # (batch_size * src_len, dec_hidden_dim) * (dec_hidden_dim, 1) -> (batch_size * src_len, 1)
-                energies.append(energy.view(batch_size, src_len).unsqueeze(0))  # (1, batch_size, src_len)
+            for i in range(hidden.size(1)):
+                hidden_i = hiddens[:, i: i + 1, :].expand(-1, src_len, -1)  # (batch, src_len, trg_hidden_dim)
+                concated = torch.cat((hidden_i, encoder_outputs), 2)  # (batch_size, src_len, dec_hidden_dim + enc_hidden_dim)
+                if encoder_mask is not None:
+                    concated =  concated * encoder_mask.view(encoder_mask.size(0), encoder_mask.size(1), 1)  # (batch_size, src_len, dec_hidden_dim + enc_hidden_dim)
+                energy = self.tanh(self.attn(concated, encoder_mask))  # (batch_size, src_len, dec_hidden_dim)
+                if encoder_mask is not None:
+                    energy =  energy * encoder_mask.view(encoder_mask.size(0), encoder_mask.size(1), 1)  # (batch_size, src_len, dec_hidden_dim)
+                energy = self.v(energy, encoder_mask).squeeze(-1)  # (batch_size, src_len)
+                energies.append(energy)
+            energies = torch.stack(energies, dim=1)  # (batch_size, trg_len, src_len)
+            if encoder_mask is not None:
+                energies =  energies * encoder_mask.view(encoder_mask.size(0), 1, encoder_mask.size(1))
 
-            energies = torch.cat(energies, dim=0).permute(1, 0, 2)  # (trg_len, batch_size, src_len) -> (batch_size, trg_len, src_len)
+            # energies = []
+            # batch_size = encoder_outputs.size(0)
+            # src_len = encoder_outputs.size(1)
+            # encoder_outputs_reshaped = encoder_outputs.contiguous().view(-1, encoder_outputs.size(2))
+            # for trg_i in range(hiddens.size(1)):
+            #     expanded_hidden = hiddens[:, trg_i, :].unsqueeze(1).expand(-1, src_len, -1)  # (batch, src_len, trg_hidden_dim)
+            #     expanded_hidden = expanded_hidden.contiguous().view(-1, expanded_hidden.size(2))  # (batch * src_len, trg_hidden_dim)
+            #     concated = torch.cat((expanded_hidden, encoder_outputs_reshaped), 1)  # (batch_size * src_len, dec_hidden_dim + enc_hidden_dim)
+            #     energy = self.tanh(self.attn(concated))  # W_a * concated -> (batch_size * src_len, dec_hidden_dim)
+            #     energy = self.v(energy)  # (batch_size * src_len, dec_hidden_dim) * (dec_hidden_dim, 1) -> (batch_size * src_len, 1)
+            #     energies.append(energy.view(batch_size, src_len).unsqueeze(0))  # (1, batch_size, src_len)
+
+            # energies = torch.cat(energies, dim=0).permute(1, 0, 2)  # (trg_len, batch_size, src_len) -> (batch_size, trg_len, src_len)
 
         return energies.contiguous()
 
