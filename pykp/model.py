@@ -122,7 +122,7 @@ class Attention(nn.Module):
             energies = []
             batch_size = encoder_outputs.size(0)
             src_len = encoder_outputs.size(1)
-            for i in range(hidden.size(1)):
+            for i in range(hiddens.size(1)):
                 hidden_i = hiddens[:, i: i + 1, :].expand(-1, src_len, -1)  # (batch, src_len, trg_hidden_dim)
                 concated = torch.cat((hidden_i, encoder_outputs), 2)  # (batch_size, src_len, dec_hidden_dim + enc_hidden_dim)
                 if encoder_mask is not None:
