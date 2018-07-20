@@ -4,7 +4,7 @@
     <bookmark url="file://$PROJECT_DIR$/pykp/model.py" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="2f4f0ceb-6fe8-47df-b950-5132ade5cfd4" name="Default" comment="add --time to keep slurm running longer">
+    <list default="true" id="2f4f0ceb-6fe8-47df-b950-5132ade5cfd4" name="Default" comment="">
       <change type="DELETED" beforePath="$PROJECT_DIR$/.idea/dictionaries/memray.xml" afterPath="" />
       <change type="DELETED" beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterPath="" />
       <change type="DELETED" beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterPath="" />
@@ -12,7 +12,6 @@
       <change type="DELETED" beforePath="$PROJECT_DIR$/.idea/modules.xml" afterPath="" />
       <change type="DELETED" beforePath="$PROJECT_DIR$/.idea/seq2seq-keyphrase-pytorch.iml" afterPath="" />
       <change type="DELETED" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/script/train-kp20k-bidirectional.sh" afterPath="$PROJECT_DIR$/script/train-kp20k-bidirectional.sh" />
     </list>
     <list id="8ca2e02f-7766-4a75-8d04-6d2af4014691" name="Failed commit: Default" comment="remove useless code and add pack_padded_sequence and pad_packed_sequence" />
     <ignored path="$PROJECT_DIR$/.idea/" />
@@ -90,8 +89,8 @@
       <file leaf-file-name="train-kp20k-bidirectional.sh" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/script/train-kp20k-bidirectional.sh">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="374">
-              <caret line="22" column="61" lean-forward="false" selection-start-line="22" selection-start-column="61" selection-end-line="22" selection-end-column="61" />
+            <state relative-caret-position="425">
+              <caret line="22" column="427" lean-forward="true" selection-start-line="22" selection-start-column="427" selection-end-line="22" selection-end-column="427" />
               <folding />
             </state>
           </provider>
@@ -439,7 +438,7 @@
   </component>
   <component name="PropertiesComponent">
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
-    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
+    <property name="settings.editor.selected.configurable" value="vcs.Git" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="js.eslint.eslintPackage" value="" />
     <property name="SearchEverywhereHistoryKey" value="pykp.IO&#9;null&#9;null" />
@@ -830,13 +829,6 @@
       <option name="presentableId" value="Default" />
       <updated>1506620785216</updated>
     </task>
-    <task id="LOCAL-00063" summary="more bacthes for teacher forcing">
-      <created>1511663154378</created>
-      <option name="number" value="00063" />
-      <option name="presentableId" value="LOCAL-00063" />
-      <option name="project" value="LOCAL" />
-      <updated>1511663154378</updated>
-    </task>
     <task id="LOCAL-00064" summary="more bacthes for teacher forcing">
       <created>1511664057570</created>
       <option name="number" value="00064" />
@@ -1173,7 +1165,14 @@
       <option name="project" value="LOCAL" />
       <updated>1532039034054</updated>
     </task>
-    <option name="localTasksCounter" value="112" />
+    <task id="LOCAL-00112" summary="move scripts to a subfolder, and rerun&#10;edit sh">
+      <created>1532045454902</created>
+      <option name="number" value="00112" />
+      <option name="presentableId" value="LOCAL-00112" />
+      <option name="project" value="LOCAL" />
+      <updated>1532045454904</updated>
+    </task>
+    <option name="localTasksCounter" value="113" />
     <servers />
   </component>
   <component name="TodoView" selected-index="4">
@@ -1221,7 +1220,6 @@
   <component name="VcsManagerConfiguration">
     <option name="OFFER_MOVE_TO_ANOTHER_CHANGELIST_ON_PARTIAL_COMMIT" value="false" />
     <option name="CHECK_NEW_TODO" value="false" />
-    <MESSAGE value="Correct the sampling of next word in copy model: if pick up a unknown word, replace it with unk. Don’t merge their probs to unk&#10;Remove the limitation of max_unk_word, dynamically determine the size of extension (depends on the max number of oov words in current batch)&#10;Remove the k in model.generate(), just return probs of all words, let generator decide how many words to keep&#10;" />
     <MESSAGE value="fix the bug in copy model: if a sentence without oov mixed with sentences having oovs in the same batch, it would have probs on non-existent oov words. It's because I initialize the extended part of logits to zeros in order to plus the copying logits, however many logits are negative and then they become big probabilities after softmax.&#10;  Fix it by initializing extended part of logits with -inf if the sentence don't have that oov." />
     <MESSAGE value="slightly modify the output, set apart the predicting output from exp log" />
     <MESSAGE value="RL" />
@@ -1246,7 +1244,8 @@
     <MESSAGE value="update README to release test data" />
     <MESSAGE value="change preprocess.py to kp20k" />
     <MESSAGE value="move scripts to a subfolder, and rerun" />
-    <option name="LAST_COMMIT_MESSAGE" value="move scripts to a subfolder, and rerun" />
+    <MESSAGE value="move scripts to a subfolder, and rerun&#10;edit sh" />
+    <option name="LAST_COMMIT_MESSAGE" value="move scripts to a subfolder, and rerun&#10;edit sh" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1667,8 +1666,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/script/train-kp20k-bidirectional.sh">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="374">
-          <caret line="22" column="61" lean-forward="false" selection-start-line="22" selection-start-column="61" selection-end-line="22" selection-end-column="61" />
+        <state relative-caret-position="425">
+          <caret line="22" column="427" lean-forward="true" selection-start-line="22" selection-start-column="427" selection-end-line="22" selection-end-column="427" />
           <folding />
         </state>
       </provider>
