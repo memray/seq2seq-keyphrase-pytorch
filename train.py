@@ -36,6 +36,12 @@ from pykp.model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionCascading
 import time
 
 
+def to_cpu_list(input):
+    assert isinstance(input, list)
+    output = [item.data.cpu().numpy()[0] for item]
+    return output
+
+
 def time_usage(func):
     # argnames = func.func_code.co_varnames[:func.func_code.co_argcount]
     fname = func.__name__
@@ -164,9 +170,9 @@ def train_rl(one2many_batch, model, optimizer, generator, opt):
     # Compute their rewards and losses
     for seq_i, (src, trg, trg_copy, sampled_seqs, baseline_seqs, oov) in enumerate(zip(src_list, trg_list, trg_copy_target_list, sampled_seqs_list, baseline_seqs_list, oov_list)):
         # convert to string sequences
-        baseline_str_seqs = [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence] for seq in baseline_seqs]
+        baseline_str_seqs = [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in to_cpu_list(seq.sentence)] for seq in baseline_seqs]
         baseline_str_seqs = [seq[:seq.index(pykp.io.EOS_WORD) + 1] if pykp.io.EOS_WORD in seq else seq for seq in baseline_str_seqs]
-        sampled_str_seqs = [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence] for seq in sampled_seqs]
+        sampled_str_seqs = [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in to_cpu_list(seq.sentence)] for seq in sampled_seqs]
         sampled_str_seqs = [seq[:seq.index(pykp.io.EOS_WORD) + 1] if pykp.io.EOS_WORD in seq else seq for seq in sampled_str_seqs]
 
         # pad trg seqs with EOS to the same length
