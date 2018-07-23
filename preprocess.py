@@ -52,9 +52,19 @@ def main():
     '''
     # load keyphrase data from file, each data example is a pair of (src_str, [kp_1, kp_2 ... kp_m])
 
+    if opt.dataset == 'kp20k':
+        src_fields = ['title', 'abstract']
+        trg_fields = ['keyword']
+    elif opt.dataset == 'stackexchange':
+        src_fields = ['title', 'question']
+        trg_fields = ['tags']
+    else:
+        raise Exception('Unsupported dataset name=%s' % opt.dataset)
+
     print("Loading training data...")
+    src_trgs_pairs = pykp.io.load_json_data(opt.train_path, name=opt.dataset, src_fields=src_fields, trg_fields=trg_fields, trg_delimiter=';')
     # src_trgs_pairs = pykp.io.load_json_data(opt.train_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
-    src_trgs_pairs = pykp.io.load_json_data(opt.train_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
+    # src_trgs_pairs = pykp.io.load_json_data(opt.train_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
     print("Processing training data...")
     tokenized_train_pairs = pykp.io.tokenize_filter_data(
@@ -88,8 +98,9 @@ def main():
     Load and process validation data
     '''
     print("Loading validation data...")
+    src_trgs_pairs = pykp.io.load_json_data(opt.valid_path, name=opt.dataset, src_fields=src_fields, trg_fields=trg_fields, trg_delimiter=';')
     # src_trgs_pairs = pykp.io.load_json_data(opt.valid_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
-    src_trgs_pairs = pykp.io.load_json_data(opt.valid_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
+    # src_trgs_pairs = pykp.io.load_json_data(opt.valid_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
     print("Processing validation data...")
     tokenized_valid_pairs = pykp.io.tokenize_filter_data(
@@ -106,8 +117,9 @@ def main():
     Load and process test data
     '''
     print("Loading test data...")
+    src_trgs_pairs = pykp.io.load_json_data(opt.test_path, name=opt.dataset, src_fields=src_fields, trg_fields=trg_fields, trg_delimiter=';')
     # src_trgs_pairs = pykp.io.load_json_data(opt.test_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
-    src_trgs_pairs = pykp.io.load_json_data(opt.test_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
+    # src_trgs_pairs = pykp.io.load_json_data(opt.test_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
     print("Processing test data...")
     tokenized_test_pairs = pykp.io.tokenize_filter_data(
