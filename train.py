@@ -38,7 +38,7 @@ import time
 
 def to_cpu_list(input):
     assert isinstance(input, list)
-    output = [item.data.cpu().numpy()[0] for item]
+    output = [int(item.data.cpu().numpy()) for item in input]
     return output
 
 
@@ -206,7 +206,7 @@ def train_rl(one2many_batch, model, optimizer, generator, opt):
             print('\t\t[%f] %s' % (reward, ' '.join(pred_seq)))
         """
 
-        [policy_loss.append(-torch.cat(seq.logprobs, dim=0) * float(reward - baseline)) for seq, reward in zip(sampled_seqs, rewards)]
+        [policy_loss.append(-torch.stack(seq.logprobs, dim=0) * float(reward - baseline)) for seq, reward in zip(sampled_seqs, rewards)]
         [policy_rewards.append(reward) for reward in rewards]
 
     optimizer.zero_grad()
