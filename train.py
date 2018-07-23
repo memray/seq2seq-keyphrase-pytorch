@@ -27,7 +27,6 @@ from torch import cuda
 from beam_search import SequenceGenerator
 from evaluate import evaluate_beam_search, get_match_result
 from pykp.dataloader import KeyphraseDataLoader
-from pykp.eric_layers import StandardNLL, GetMask
 from utils import Progbar, plot_learning_curve
 
 import pykp
