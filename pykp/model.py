@@ -472,7 +472,9 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # Teacher Forcing
         self.current_batch += 1
-        do_word_wisely_training = True # because sequence-wise training is not compatible with input-feeding, so discard it
+        # because sequence-wise training is not compatible with input-feeding, so discard it
+        # TODO 20180722, do_word_wisely_training=True is buggy
+        do_word_wisely_training = False
         if not do_word_wisely_training:
             '''
             Teacher Forcing
