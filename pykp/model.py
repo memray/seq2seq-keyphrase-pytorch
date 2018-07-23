@@ -136,20 +136,6 @@ class Attention(nn.Module):
             if encoder_mask is not None:
                 energies =  energies * encoder_mask.view(encoder_mask.size(0), 1, encoder_mask.size(1))
 
-            # energies = []
-            # batch_size = encoder_outputs.size(0)
-            # src_len = encoder_outputs.size(1)
-            # encoder_outputs_reshaped = encoder_outputs.contiguous().view(-1, encoder_outputs.size(2))
-            # for trg_i in range(hiddens.size(1)):
-            #     expanded_hidden = hiddens[:, trg_i, :].unsqueeze(1).expand(-1, src_len, -1)  # (batch, src_len, trg_hidden_dim)
-            #     expanded_hidden = expanded_hidden.contiguous().view(-1, expanded_hidden.size(2))  # (batch * src_len, trg_hidden_dim)
-            #     concated = torch.cat((expanded_hidden, encoder_outputs_reshaped), 1)  # (batch_size * src_len, dec_hidden_dim + enc_hidden_dim)
-            #     energy = self.tanh(self.attn(concated))  # W_a * concated -> (batch_size * src_len, dec_hidden_dim)
-            #     energy = self.v(energy)  # (batch_size * src_len, dec_hidden_dim) * (dec_hidden_dim, 1) -> (batch_size * src_len, 1)
-            #     energies.append(energy.view(batch_size, src_len).unsqueeze(0))  # (1, batch_size, src_len)
-
-            # energies = torch.cat(energies, dim=0).permute(1, 0, 2)  # (trg_len, batch_size, src_len) -> (batch_size, trg_len, src_len)
-
         return energies.contiguous()
 
     def forward(self, hidden, encoder_outputs, encoder_mask=None):

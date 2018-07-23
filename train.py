@@ -120,24 +120,16 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
     # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
     start_time = time.time()
 
-    if opt.loss_mask == 1:
-        trg_mask = GetMask()(trg)  # same size as trg
-        trg_mask = trg_mask[:, :-1]  # as in model.decode(), truncate the last word, as there's no further word after it for decoder to predict
-        groundtruth = trg_copy_target if opt.copy_attention else trg_target
-        groundtruth = groundtruth.contiguous()
-        loss_batch = criterion(decoder_log_probs, groundtruth, trg_mask)
-        loss = torch.mean(loss_batch)
+    if not opt.copy_attention:
+        loss = criterion(
+            decoder_log_probs.contiguous().view(-1, opt.vocab_size),
+            trg_target.contiguous().view(-1)
+        )
     else:
-        if not opt.copy_attention:
-            loss = criterion(
-                decoder_log_probs.contiguous().view(-1, opt.vocab_size),
-                trg_target.contiguous().view(-1)
-            )
-        else:
-            loss = criterion(
-                decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
-                trg_copy_target.contiguous().view(-1)
-            )
+        loss = criterion(
+            decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
+            trg_copy_target.contiguous().view(-1)
+        )
     loss = loss * (1 - opt.loss_scale)
     print("--loss calculation- %s seconds ---" % (time.time() - start_time))
 
@@ -522,10 +514,7 @@ def init_optimizer_criterion(model, opt):
     # optimizer = torch.optim.Adadelta(model.parameters(), lr=0.1)
     # optimizer = torch.optim.RMSprop(model.parameters(), lr=0.1)
     '''
-    if opt.loss_mask == 0:
-        criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.io.PAD_WORD])
-    else:
-        criterion = StandardNLL()
+    criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.io.PAD_WORD])
 
     if opt.train_ml:
         optimizer_ml = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
