@@ -242,6 +242,8 @@ def train_opts(parser):
                          )
     parser.add_argument('-rl_method', default=0, type=int,
                         help="""0: ori, 1: running average as baseline""")
+    parser.add_argument('-rl_start_epoch', default=1, type=int,
+                        help="""from which epoch rl training starts""")
     # GPU
 
     # Teacher Forcing and Scheduled Sampling
