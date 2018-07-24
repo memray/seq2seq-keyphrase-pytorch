@@ -288,7 +288,7 @@ def train_rl_1(one2many_batch, model, optimizer, generator, opt, reward_cache):
         [policy_rewards.append(reward) for reward in rewards]
 
     optimizer.zero_grad()
-    policy_loss = torch.cat(policy_loss).mean() * (1 - opt.loss_scale)
+    policy_loss = torch.stack(policy_loss).mean() * (1 - opt.loss_scale)
     policy_loss.backward()
 
     if opt.max_grad_norm > 0:
