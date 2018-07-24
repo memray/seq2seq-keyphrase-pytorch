@@ -356,7 +356,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
             # Validate and save checkpoint
             if (opt.run_valid_every == -1 and batch_i == len(train_data_loader) - 1) or\
-               (total_batch > 1 and total_batch % opt.run_valid_every == 0):
+               (opt.run_valid_every > -1 and total_batch > 1 and total_batch % opt.run_valid_every == 0):
                 logging.info('*' * 50)
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
                 # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
