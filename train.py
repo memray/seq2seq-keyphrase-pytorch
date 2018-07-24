@@ -152,7 +152,7 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
     return loss.data[0], decoder_log_probs
 
 
-def train_rl(one2many_batch, model, optimizer, generator, opt):
+def train_rl_0(one2many_batch, model, optimizer, generator, opt):
     src_list, src_len, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list = one2many_batch
 
     if torch.cuda.is_available():
@@ -220,6 +220,92 @@ def train_rl(one2many_batch, model, optimizer, generator, opt):
 
     optimizer.step()
     return np.average(policy_rewards)
+
+
+class RewardCache(object):
+
+    def __init__(self, capacity=2000):
+        # vanilla replay memory
+        self.capacity = capacity
+        self.memory = []
+        self.reset()
+
+    def push(self, stuff):
+        if len(self.memory) == self.capacity:
+            self.memory = self.memory[1:]
+        self.memory.append(stuff)
+
+    def get_average(self):
+        if len(self.memory) == 0:
+            return 0
+        return np.mean(np.array(self.memory))
+
+    def reset(self):
+        self.memory = []
+
+    def __len__(self):
+        return len(self.memory)
+
+
+def train_rl_1(one2many_batch, model, optimizer, generator, opt, reward_cache):
+    src_list, src_len, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list = one2many_batch
+
+    if torch.cuda.is_available():
+        src_list = src_list.cuda()
+        src_oov_map_list = src_oov_map_list.cuda()
+
+    # Sample number_batch sequences
+    sampled_seqs_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=5, is_greedy=False)
+
+    policy_loss = []
+    policy_rewards = []
+    # Compute their rewards and losses
+    for seq_i, (src, trg, trg_copy, sampled_seqs, oov) in enumerate(zip(src_list, trg_list, trg_copy_target_list, sampled_seqs_list, oov_list)):
+        # convert to string sequences
+        sampled_str_seqs = [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in to_cpu_list(seq.sentence)] for seq in sampled_seqs]
+        sampled_str_seqs = [seq[:seq.index(pykp.io.EOS_WORD) + 1] if pykp.io.EOS_WORD in seq else seq for seq in sampled_str_seqs]
+
+        # pad trg seqs with EOS to the same length
+        trg_seqs = [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq] for seq in trg_copy]
+        # trg_seqs            =  [seq + [pykp.IO.EOS_WORD] * (opt.max_sent_length - len(seq)) for seq in trg_seqs]
+
+        # local rewards (bleu)
+        bleu_samples = get_match_result(true_seqs=trg_seqs, pred_seqs=sampled_str_seqs, type='bleu')
+
+        # global rewards
+        match_samples = get_match_result(true_seqs=trg_seqs, pred_seqs=sampled_str_seqs, type='exact')
+
+        _, _, fscore_samples = evaluate.evaluate(match_samples, sampled_str_seqs, trg_seqs, topk=5)
+
+        # compute the final rewards
+        alpha = 0.0
+        rewards = alpha * np.asarray(bleu_samples) + (1.0 - alpha) * fscore_samples
+        baseline = reward_cache.get_average()
+        for reward in rewards:
+            reward_cache.push(float(reward))
+
+        [policy_loss.append(-torch.stack(seq.logprobs, dim=0).sum() * float(reward - baseline)) for seq, reward in zip(sampled_seqs, rewards)]
+        [policy_rewards.append(reward) for reward in rewards]
+
+    optimizer.zero_grad()
+    policy_loss = torch.cat(policy_loss).mean() * (1 - opt.loss_scale)
+    policy_loss.backward()
+
+    if opt.max_grad_norm > 0:
+        pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
+        after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
+        # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
+
+    optimizer.step()
+    return np.average(policy_rewards)
+
+
+def train_rl(one2many_batch, model, optimizer, generator, opt, reward_cache):
+    if opt.rl_method == 0:
+        return train_rl_0(one2many_batch, model, optimizer, generator, opt)
+    elif opt.rl_method == 1:
+        return train_rl_1(one2many_batch, model, optimizer, generator, opt, reward_cache)
+
 
 
 def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt):
@@ -313,6 +399,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     train_rl_losses = []
     total_batch = -1
     early_stop_flag = False
+    if opt.train_rl:
+        reward_cache = RewardCache(2000)
 
     if False:  # opt.train_from:
         state_path = opt.train_from.replace('.model', '.state')
@@ -347,8 +435,9 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 if batch_i % opt.report_every == 0:
                     brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
 
-            if opt.train_rl:
-                loss_rl = train_rl(one2many_batch, model, optimizer_rl, generator, opt)
+            # do not apply rl in 0th epoch, need to get a resonable model before that.
+            if opt.train_rl and epoch > 0:
+                loss_rl = train_rl(one2many_batch, model, optimizer_rl, generator, opt, reward_cache)
                 train_rl_losses.append(loss_rl)
                 report_loss.append(('train_rl_loss', loss_rl))
 

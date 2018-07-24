@@ -240,6 +240,9 @@ def train_opts(parser):
                              'The γ used by Metamind is 0.9984 in "A DEEP REINFORCED MODEL FOR ABSTRACTIVE SUMMARIZATION"'
                              'The α used by Google is 0.017 in "Google Translation": O_Mixed(θ) = α ∗ O_ML(θ) + O_RL(θ)'
                          )
+    parser.add_argument('-rl_method', default=0, type=int,
+                        help="""0: ori, 1: running average as baseline""")
+    # GPU
 
     # Teacher Forcing and Scheduled Sampling
     parser.add_argument('-must_teacher_forcing', action="store_true",
