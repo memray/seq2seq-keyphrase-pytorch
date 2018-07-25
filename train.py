@@ -477,8 +477,11 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                     brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
 
             # do not apply rl in 0th epoch, need to get a resonable model before that.
-            if opt.train_rl and epoch >= opt.rl_start_epoch:
-                loss_rl = train_rl(one2many_batch, model, optimizer_rl, generator, opt, reward_cache)
+            if opt.train_rl:
+                if epoch >= opt.rl_start_epoch:
+                    loss_rl = train_rl(one2many_batch, model, optimizer_rl, generator, opt, reward_cache)
+                else:
+                    loss_rl = 0.0
                 train_rl_losses.append(loss_rl)
                 report_loss.append(('train_rl_loss', loss_rl))
 
@@ -504,7 +507,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                     curve_names += ['Training ML Error']
                     train_ml_losses = []
 
-                if opt.train_rl and epoch >= opt.rl_start_epoch:
+                if opt.train_rl:
                     train_rl_history_losses.append(copy.copy(train_rl_losses))
                     scores += [train_rl_history_losses]
                     curve_names += ['Training RL Reward']
