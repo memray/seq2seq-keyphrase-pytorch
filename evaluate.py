@@ -441,7 +441,6 @@ def self_redundancy(_input):
             elif i == j:
                 scores[i][j] = 0.0
             else:
-                if 
                 f1 = f1_score(_input[i], _input[j])
                 scores[i][j] = f1
                 scores[j][i] = f1
