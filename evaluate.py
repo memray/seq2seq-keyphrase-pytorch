@@ -7,6 +7,7 @@ import scipy
 import torch
 from nltk.stem.porter import *
 import numpy as np
+from collections import Counter
 
 import os
 
@@ -413,3 +414,37 @@ def evaluate(match_list, predicted_list, true_list, topk=5):
         microf1 = 0.0
 
     return micropk, micrork, microf1
+
+
+def f1_score(prediction, ground_truth):
+    # both prediction and grount_truth should be list of words
+    common = Counter(prediction) & Counter(ground_truth)
+    num_same = sum(common.values())
+    if num_same == 0:
+        return 0
+    precision = 1.0 * num_same / len(prediction)
+    recall = 1.0 * num_same / len(ground_truth)
+    f1 = (2 * precision * recall) / (precision + recall)
+    return f1
+
+
+def self_redundancy(_input):
+    # _input shoule be list of list of words
+    if len(_input) == 0:
+        return None
+    _len = len(_input)
+    scores = np.ones((_len, _len), dtype="float32") * -1.0
+    for i in range(_len):
+        for j in range(_len):
+            if scores[i][j] != -1:
+                continue
+            elif i == j:
+                scores[i][j] = 0.0
+            else:
+                if 
+                f1 = f1_score(_input[i], _input[j])
+                scores[i][j] = f1
+                scores[j][i] = f1
+    res = np.max(scores, 1)
+    res = np.mean(res)
+    return res

@@ -25,7 +25,7 @@ import torch.nn as nn
 from torch import cuda
 
 from beam_search import SequenceGenerator
-from evaluate import evaluate_beam_search, get_match_result
+from evaluate import evaluate_beam_search, get_match_result, self_redundancy
 from pykp.dataloader import KeyphraseDataLoader
 from utils import Progbar, plot_learning_curve
 
@@ -286,6 +286,46 @@ def train_rl_1(one2many_batch, model, optimizer, generator, opt, reward_cache):
 
         [policy_loss.append(-torch.stack(seq.logprobs, dim=0).sum() * float(reward - baseline)) for seq, reward in zip(sampled_seqs, rewards)]
         [policy_rewards.append(reward) for reward in rewards]
+
+    optimizer.zero_grad()
+    policy_loss = torch.stack(policy_loss).mean() * (1 - opt.loss_scale)
+    policy_loss.backward()
+
+    if opt.max_grad_norm > 0:
+        pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
+        after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
+        # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
+
+    optimizer.step()
+    return np.average(policy_rewards)
+
+
+def train_rl_2(one2many_batch, model, optimizer, generator, opt, reward_cache):
+    src_list, src_len, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list = one2many_batch
+
+    if torch.cuda.is_available():
+        src_list = src_list.cuda()
+        src_oov_map_list = src_oov_map_list.cuda()
+
+    # Sample number_batch sequences
+    sampled_seqs_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=5, is_greedy=False)
+
+    policy_loss = []
+    policy_rewards = []
+    # Compute their rewards and losses
+    for seq_i, (src, trg, trg_copy, sampled_seqs, oov) in enumerate(zip(src_list, trg_list, trg_copy_target_list, sampled_seqs_list, oov_list)):
+        # convert to string sequences
+        sampled_str_seqs = [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in to_cpu_list(seq.sentence)] for seq in sampled_seqs]
+        sampled_str_seqs = [seq[:seq.index(pykp.io.EOS_WORD) + 1] if pykp.io.EOS_WORD in seq else seq for seq in sampled_str_seqs]
+
+        redundancy = self_redundancy(sampled_str_seqs)
+        reward = 1.0 - redundancy  # the less redundant, the better
+
+        baseline = reward_cache.get_average()
+        reward_cache.push(float(reward))
+
+        [policy_loss.append(-torch.stack(seq.logprobs, dim=0).sum() * float(reward - baseline)) for seq in sampled_seqs]
+        policy_rewards.append(reward)
 
     optimizer.zero_grad()
     policy_loss = torch.stack(policy_loss).mean() * (1 - opt.loss_scale)
