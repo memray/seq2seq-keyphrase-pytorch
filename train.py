@@ -345,7 +345,8 @@ def train_rl(one2many_batch, model, optimizer, generator, opt, reward_cache):
         return train_rl_0(one2many_batch, model, optimizer, generator, opt)
     elif opt.rl_method == 1:
         return train_rl_1(one2many_batch, model, optimizer, generator, opt, reward_cache)
-
+    elif opt.rl_method == 2:
+        return train_rl_2(one2many_batch, model, optimizer, generator, opt, reward_cache)
 
 
 def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt):
