@@ -179,19 +179,17 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
     print('#(f_score@5#oneword=-1)=%d, sum=%f' % (len(score_dict['f_score@5#oneword=-1']), sum(score_dict['f_score@5#oneword=-1'])))
     print('#(f_score@10#oneword=-1)=%d, sum=%f' % (len(score_dict['f_score@10#oneword=-1']), sum(score_dict['f_score@10#oneword=-1'])))
-    print('#(f_score@5#oneword=1)=%d, sum=%f' % (len(score_dict['f_score@5#oneword=1']), sum(score_dict['f_score@5#oneword=1'])))
-    print('#(f_score@10#oneword=1)=%d, sum=%f' % (len(score_dict['f_score@10#oneword=1']), sum(score_dict['f_score@10#oneword=1'])))
 
     if save_path:
         # export scores. Each row is scores (precision, recall and f-score) of different way of filtering predictions (how many one-word predictions to keep)
         with open(save_path + os.path.sep + title + '_result.csv', 'w') as result_csv:
             csv_lines = []
-            for num_oneword_seq in num_oneword_range:
-                for topk in topk_range:
-                    csv_line = '#oneword=%d,@%d' % (num_oneword_seq, topk)
-                    for k in score_names:
-                        csv_line += ',%f' % np.average(score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)])
-                    csv_lines.append(csv_line + '\n')
+            num_oneword_seq = -1
+            for topk in topk_range:
+                csv_line = '#oneword=%d,@%d' % (num_oneword_seq, topk)
+                for k in score_names:
+                    csv_line += ',%f' % np.average(score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)])
+                csv_lines.append(csv_line + '\n')
 
             result_csv.writelines(csv_lines)
 
