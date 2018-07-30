@@ -313,9 +313,9 @@ def train_opts(parser):
     parser.add_argument('-beam_search_batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')
 
-    parser.add_argument('-beam_size',  type=int, default=16,
+    parser.add_argument('-beam_size',  type=int, default=8,
                         help='Beam size')
-    parser.add_argument('-max_sent_length', type=int, default=5,
+    parser.add_argument('-max_sent_length', type=int, default=20,
                         help='Maximum sentence length.')
 
 def predict_opts(parser):

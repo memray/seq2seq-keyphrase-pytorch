@@ -267,9 +267,9 @@ class KeyphraseDataset(torch.utils.data.Dataset):
 
         # return two tuples, 1st for one2many and 2nd for one2one (src, src_oov, trg, trg_target, trg_copy_target, oov_lists)
         if self.include_original:
-            return (src_o2s, src_o2s_len, trg_o2s, trg_target, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s, src_str, trg_str), (None,)
+            return (src_o2s, src_o2s_len, trg_o2s, trg_target_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s, src_str, trg_str), (None,)
         else:
-            return (src_o2s, src_o2s_len, trg_o2s, trg_target, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s), (None,)
+            return (src_o2s, src_o2s_len, trg_o2s, trg_target_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s), (None,)
 
 
 class KeyphraseDatasetTorchText(torchtext.data.Dataset):
