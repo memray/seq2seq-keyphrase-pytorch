@@ -127,7 +127,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
         # list(batch) of list(beam size) of Sequence
         pred_seq_list = generator.beam_search(src_list, src_len, src_oov_map_list, oov_list, opt.word2id)
-        best_pred_seq = [b[0] for b in batch]  # list(batch) of Sequence
+        best_pred_seq = [b[0] for b in pred_seq_list]  # list(batch) of Sequence
 
         '''
         process each example in current batch

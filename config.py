@@ -308,7 +308,7 @@ def train_opts(parser):
     # beam search setting
     parser.add_argument('-beam_search_batch_example', type=int, default=8,
                         help='Maximum of examples for one batch, should be disabled for training')
-    parser.add_argument('-beam_search_batch_size', type=int, default=8,
+    parser.add_argument('-beam_search_batch_size', type=int, default=32,
                         help='Maximum batch size')
     parser.add_argument('-beam_search_batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')
