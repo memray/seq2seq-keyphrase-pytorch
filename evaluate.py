@@ -38,8 +38,9 @@ def process_predseqs(pred_seq, oov, id2word, opt):
     processed_seq = [id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq_sentence_np]
     processed_string = " ".join(processed_seq)
     processed_strings = processed_string.split(SEP_WORD)
+    processed_strings = list(set(processed_strings))
     processed_strings = [s.strip().split() for s in processed_strings]
-    processed_strings = [s for s in processed_strings if len(s) > 0 and not has_special_token(s, [",", ".", UNK_WORD])]
+    processed_strings = [s for s in processed_strings if len(s) > 0 and not has_special_token(s, [",", ".", UNK_WORD, EOS_WORD])]
 
     return processed_strings
 
