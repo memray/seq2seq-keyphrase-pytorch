@@ -317,6 +317,9 @@ def train_opts(parser):
                         help='Beam size')
     parser.add_argument('-max_sent_length', type=int, default=20,
                         help='Maximum sentence length.')
+    parser.add_argument('-eval_method', type=str, default="sampling",
+                        help="Either sampling or beam search")
+
 
 def predict_opts(parser):
     parser.add_argument('-must_appear_in_src', action="store_true", default="True",

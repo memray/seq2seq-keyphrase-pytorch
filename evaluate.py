@@ -127,7 +127,13 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         # print("target size - %s" % len(trg_copy_target_list))
 
         # list(batch) of list(beam size) of Sequence
-        pred_seq_list = generator.beam_search(src_list, src_len, src_oov_map_list, oov_list, opt.word2id)
+        if opt.eval_method == "beam_search":
+            pred_seq_list = generator.beam_search(src_list, src_len, src_oov_map_list, oov_list, opt.word2id)
+        elif opt.eval_method == "sampling":
+            pred_seq_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=1, is_greedy=False)
+        else:
+            raise NotImplemented
+
         best_pred_seq = [b[0] for b in pred_seq_list]  # list(batch) of Sequence
 
         '''
