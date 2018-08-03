@@ -179,6 +179,7 @@ class SequenceGenerator(object):
 
         # if it's oov, replace it with <unk> (batch_size, 1)
         inputs = torch.cat([Variable(torch.LongTensor([seq.sentence[-1]] if seq.sentence[-1] < self.model.vocab_size else [self.model.unk_word])) for seq in flattened_sequences]).view(batch_size, -1)
+        inputs_prev = torch.cat([Variable(torch.LongTensor([seq.sentence_prev[-1]] if seq.sentence_prev[-1] < self.model.vocab_size else [self.model.unk_word])) for seq in flattened_sequences]).view(batch_size, -1)
 
         # (batch_size, trg_hidden_dim)
         if isinstance(flattened_sequences[0].dec_hidden, tuple):
@@ -195,6 +196,7 @@ class SequenceGenerator(object):
 
         if torch.cuda.is_available():
             inputs = inputs.cuda()
+            inputs_prev = inputs_prev.cuda()
             if isinstance(flattened_sequences[0].dec_hidden, tuple):
                 dec_hiddens = (dec_hiddens[0].cuda(), dec_hiddens[1].cuda())
             else:
@@ -203,7 +205,7 @@ class SequenceGenerator(object):
             ctx_mask = ctx_mask.cuda()
             src_oovs = src_oovs.cuda()
 
-        return seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists
+        return seq_id2batch_id, flattened_id_map, inputs, inputs_prev, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists
 
     def beam_search(self, src_input, src_len, src_oov, oov_list, word2id):
         """Runs beam search sequence generation given input (padded word indexes)
@@ -225,6 +227,7 @@ class SequenceGenerator(object):
 
         # each dec_hidden is (trg_seq_len, dec_hidden_dim)
         initial_input = [word2id[pykp.io.BOS_WORD]] * batch_size
+        initial_input_prev = [word2id[pykp.io.BOS_WORD]] * batch_size
         if isinstance(dec_hiddens, tuple):
             dec_hiddens = (dec_hiddens[0].squeeze(0), dec_hiddens[1].squeeze(0))
             dec_hiddens = [(dec_hiddens[0][i], dec_hiddens[1][i]) for i in range(batch_size)]
@@ -238,6 +241,7 @@ class SequenceGenerator(object):
             seq = Sequence(
                 batch_id=batch_i,
                 sentence=[initial_input[batch_i]],
+                sentence_prev=[initial_input_prev[batch_i]],
                 dec_hidden=dec_hiddens[batch_i],
                 context=src_context[batch_i],
                 ctx_mask=src_mask[batch_i],
@@ -264,6 +268,7 @@ class SequenceGenerator(object):
             # Run one-step generation. probs=(batch_size, 1, K), dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
             log_probs, new_dec_hiddens, attn_weights = self.model.generate(
                 trg_input=inputs,
+                trg_input_prev=inputs_prev,
                 dec_hidden=dec_hiddens,
                 enc_context=contexts,
                 ctx_mask=ctx_mask,
@@ -311,6 +316,7 @@ class SequenceGenerator(object):
                             new_sent = copy.copy(partial_seq.sentence)
                         else:
                             new_sent = []
+                        new_sent_prev = copy.copy(new_sent)
                         new_sent.append(w)
 
                         # if w >= 50000 and len(partial_seq.oov_list)==0:
@@ -321,6 +327,7 @@ class SequenceGenerator(object):
                         new_partial_seq = Sequence(
                             batch_id=partial_seq.batch_id,
                             sentence=new_sent,
+                            sentence_prev=new_sent_prev,
                             dec_hidden=None,
                             context=partial_seq.context,
                             ctx_mask=partial_seq.ctx_mask,
@@ -428,6 +435,7 @@ class SequenceGenerator(object):
 
         # each dec_hidden is (trg_seq_len, dec_hidden_dim)
         initial_input = [word2id[pykp.io.BOS_WORD]] * batch_size
+        initial_input_prev = [word2id[pykp.io.BOS_WORD]] * batch_size
         if isinstance(dec_hiddens, tuple):
             dec_hiddens = (dec_hiddens[0].squeeze(0), dec_hiddens[1].squeeze(0))
             dec_hiddens = [(dec_hiddens[0][i], dec_hiddens[1][i]) for i in range(batch_size)]
@@ -440,6 +448,7 @@ class SequenceGenerator(object):
             seq = Sequence(
                 batch_id=batch_i,
                 sentence=[initial_input[batch_i]],
+                sentence_prev=[initial_input_prev[batch_i]],
                 dec_hidden=dec_hiddens[batch_i],
                 context=src_context[batch_i],
                 ctx_mask=src_mask[batch_i],
@@ -455,11 +464,12 @@ class SequenceGenerator(object):
             num_partial_sequences = sum([len(batch_seqs) for batch_seqs in sampled_sequences])
 
             # flatten 2d sequences (batch_size, beam_size) into 1d batches (batch_size * beam_size) to feed model
-            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(sampled_sequences)
+            seq_id2batch_id, flattened_id_map, inputs, inputs_prev, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(sampled_sequences)
 
             # Run one-step generation. log_probs=(batch_size, 1, K), dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
             log_probs, new_dec_hiddens, attn_weights = self.model.generate(
                 trg_input=inputs,
+                trg_input_prev=inputs_prev,
                 dec_hidden=dec_hiddens,
                 enc_context=contexts,
                 ctx_mask=ctx_mask,
@@ -523,10 +533,12 @@ class SequenceGenerator(object):
                         # score=0 means this is the first word <BOS>, empty the sentence
                         if current_len > 1:
                             new_sent = copy.copy(partial_seq.sentence) + [w]
+                            new_sent_prev = copy.copy(partial_seq.sentence)
                             new_logprobs = partial_seq.logprobs + [probs[flattened_seq_id][seq_i]]
                             new_score = partial_seq.score + probs[flattened_seq_id][seq_i]
                         else:
                             new_sent = [w]
+                            new_sent_prev = [word2id[pykp.io.BOS_WORD]]
                             new_logprobs = [probs[flattened_seq_id][seq_i]]
                             new_score = probs[flattened_seq_id][seq_i]
 
@@ -546,6 +558,7 @@ class SequenceGenerator(object):
                         new_partial_seq = Sequence(
                             batch_id=partial_seq.batch_id,
                             sentence=new_sent,
+                            sentence_prev=new_sent_prev,
                             dec_hidden=new_dec_hidden,
                             context=partial_seq.context,
                             ctx_mask=partial_seq.ctx_mask,

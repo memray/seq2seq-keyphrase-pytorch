@@ -61,7 +61,7 @@ __email__ = "rui.meng@pitt.edu"
 
 
 def train_ml(one2one_batch, model, optimizer, criterion, opt):
-    src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists = one2one_batch
+    src, src_len, trg, trg_prev, trg_target, trg_copy_target, src_oov, oov_lists = one2one_batch
     max_oov_number = max([len(oov) for oov in oov_lists])
 
     print("src size - ", src.size())
@@ -70,13 +70,14 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
     if torch.cuda.is_available():
         src = src.cuda()
         trg = trg.cuda()
+        trg_prev = trg_prev.cuda()
         trg_target = trg_target.cuda()
         trg_copy_target = trg_copy_target.cuda()
         src_oov = src_oov.cuda()
 
     optimizer.zero_grad()
 
-    decoder_log_probs, _, _ = model.forward(src, src_len, trg, src_oov, oov_lists)
+    decoder_log_probs, _, _ = model.forward(src, src_len, trg, trg_prev, src_oov, oov_lists)
 
 
     # simply average losses of all the predicitons
