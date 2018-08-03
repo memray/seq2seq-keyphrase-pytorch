@@ -118,7 +118,7 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
     sampled_size = 2
     logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
-    src, _, trg, trg_target, trg_copy_target, src_ext, oov_lists = one2one_batch
+    src, _, trg, trg_prev, trg_target, trg_copy_target, src_ext, oov_lists = one2one_batch
     if torch.cuda.is_available():
         src = src.data.cpu().numpy()
         decoder_log_probs = decoder_log_probs.data.cpu().numpy()

@@ -498,6 +498,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # maximum length to unroll, ignore the last word (must be padding)
         trg_inputs = trg_inputs[:, :-1]
+        trg_inputs_prev = trg_inputs_prev[:, :-1]
         max_length = trg_inputs.size(1)
 
         # Teacher Forcing

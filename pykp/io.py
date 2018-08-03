@@ -13,6 +13,7 @@ from collections import Counter
 from collections import defaultdict
 import numpy as np
 import sys
+import copy
 from torch.autograd import Variable
 
 import torch.multiprocessing as multiprocessing
