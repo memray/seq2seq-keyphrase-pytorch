@@ -263,7 +263,7 @@ class SequenceGenerator(object):
                 break
 
             # flatten 2d sequences (batch_size, beam_size) into 1d batches (batch_size * beam_size) to feed model
-            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(partial_sequences)
+            seq_id2batch_id, flattened_id_map, inputs, inputs_prev, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(partial_sequences)
 
             # Run one-step generation. probs=(batch_size, 1, K), dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
             log_probs, new_dec_hiddens, attn_weights = self.model.generate(
@@ -316,7 +316,11 @@ class SequenceGenerator(object):
                             new_sent = copy.copy(partial_seq.sentence)
                         else:
                             new_sent = []
-                        new_sent_prev = copy.copy(new_sent)
+
+                        if len(new_sent) > 0:
+                            new_sent_prev = copy.copy(new_sent)
+                        else:
+                            new_sent_prev = [word2id[pykp.io.BOS_WORD]]
                         new_sent.append(w)
 
                         # if w >= 50000 and len(partial_seq.oov_list)==0:
