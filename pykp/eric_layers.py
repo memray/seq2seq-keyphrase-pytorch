@@ -77,3 +77,40 @@ class TimeDistributedDense(torch.nn.Module):
         if mask is not None:
             y = y * mask.unsqueeze(-1)  # batch x time x b
         return y
+
+
+class MLPMultiToOne(torch.nn.Module):
+    '''
+    input:  [x1: batch x input_1_dim
+            ...
+            xk: batch x input_k_dim]
+    output: y:  batch x output_dim
+    '''
+
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super(MLPMultiToOne, self).__init__()
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        first_layer = [torch.nn.Linear(self.input_dim[i], self.hidden_dim) for i in range(len(input_dim))]
+        self.first_layer = torch.nn.ModuleList(first_layer)
+        self.last_layer = torch.nn.Linear(self.hidden_dim, output_dim)
+        self.init_weights()
+
+    def init_weights(self):
+        for i in range(len(self.input_dim)):
+            torch.nn.init.xavier_uniform(self.first_layer[i].weight.data, gain=1)
+            self.first_layer[i].bias.data.fill_(0)
+        torch.nn.init.xavier_uniform(self.last_layer.weight.data, gain=1)
+        self.last_layer.bias.data.fill_(0)
+
+    def forward(self, x):
+        transfered = []
+        for i, item in enumerate(x):
+            temp = self.first_layer[i].forward(item)
+            temp = F.tanh(temp)
+            transfered.append(temp)
+        transfered = torch.stack(transfered, -1)
+        transfered = torch.sum(transfered, -1)  # batch x hidden
+        curr = self.last_layer.forward(transfered)
+        curr = F.tanh(curr)
+        return curr

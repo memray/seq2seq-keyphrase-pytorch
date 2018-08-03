@@ -30,18 +30,20 @@ from torch.distributions import Categorical
 class Sequence(object):
     """Represents a complete or partial sequence."""
 
-    def __init__(self, batch_id, sentence, dec_hidden, context, ctx_mask, src_oov, oov_list, logprobs, score, attention=None):
+    def __init__(self, batch_id, sentence, sentence_prev, dec_hidden, context, ctx_mask, src_oov, oov_list, logprobs, score, attention=None):
         """Initializes the Sequence.
 
         Args:
           batch_id: Original id of batch
           sentence: List of word ids in the sequence.
+          sentence_prev: sentence_{t-1}
           dec_hidden: Model state after generating the previous word.
           logprobs:  The log-probabilitu of each word in the sequence.
           score:    Score of the sequence (log-probability)
         """
         self.batch_id = batch_id
         self.sentence = sentence
+        self.sentence_prev = sentence_prev
         self.vocab = set(sentence)  # for filtering duplicates
         self.dec_hidden = dec_hidden
         self.context = context

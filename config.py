@@ -48,6 +48,10 @@ def model_opts(parser):
                         help="""Share the word embeddings between encoder
                          and decoder.""")
 
+
+    parser.add_argument('-bigram_merger_hidden_dim', type=int, default=256,
+                        help='bigram merger hidden dim')
+
     # RNN Options
     parser.add_argument('-encoder_type', type=str, default='rnn',
                         choices=['rnn', 'brnn', 'mean', 'transformer', 'cnn'],
