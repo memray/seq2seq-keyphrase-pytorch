@@ -23,7 +23,6 @@ import copy
 import torch
 import torch.nn as nn
 from torch import cuda
-import torch.nn.functional as F
 
 from beam_search import SequenceGenerator
 from evaluate import evaluate_beam_search, get_match_result, self_redundancy
@@ -65,7 +64,7 @@ def orthogonal_penalty(vec1, vec2, I):
     vec1 = vec1.view(-1, 1)  # h x 1
     vec2 = vec2.view(1, -1)  # 1 x h
     m = torch.mm(vec1, vec2)  # h x h
-    return F.normalize((m - I).view(-1), p=2, dim=0)
+    return torch.norm((m - I), p=2)
 
 
 def all_pairs(_list, identity):
