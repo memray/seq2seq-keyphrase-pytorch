@@ -337,8 +337,8 @@ def load_data_vocab(opt, load_train=True):
     valid_one2seq = valid_one2seq[:2000]
     test_one2seq = test_one2seq[:2000]
 
-    valid_one2seq_dataset = KeyphraseDataset(valid_one2seq, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
-    test_one2seq_dataset = KeyphraseDataset(test_one2seq, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
+    valid_one2seq_dataset = KeyphraseDataset(valid_one2seq, word2id=word2id, id2word=id2word, type='one2seq', include_original=True)
+    test_one2seq_dataset = KeyphraseDataset(test_one2seq, word2id=word2id, id2word=id2word, type='one2seq', include_original=True)
 
     """
     # temporary code, exporting test data for Theano model

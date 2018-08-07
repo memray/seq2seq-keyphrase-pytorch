@@ -60,7 +60,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             for k in keys:
                 filtered_example[k] = e[k]
             if 'oov_list' in filtered_example:
-                if type == 'one2one':
+                if type in['one2one', 'one2seq']:
                     filtered_example['oov_number'] = len(filtered_example['oov_list'])
                 elif type == 'one2many':
                     filtered_example['oov_number'] = [len(oov) for oov in filtered_example['oov_list']]
