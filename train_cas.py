@@ -105,12 +105,12 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
 
     sep_id = opt.word2id[pykp.io.SEP_WORD]
     penalties = []
-    for i in range(len(src)):
+    for i in range(len(trg_copy_target_np)):
         seps = []
-        for j in range(len(trg_copy_target[i])):  # len of target
+        for j in range(len(trg_copy_target_np[i])):  # len of target
             if trg_copy_target_np[i][j] == sep_id:
                 seps.append(decoder_outputs[i][j])
-        penalty = all_pairs(seps)
+        penalty = all_pairs(seps, identity)
         if len(penalty) > 0:
             penalties.append(torch.mean(torch.stack(penalty, -1)))
 
