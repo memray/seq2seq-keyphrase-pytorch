@@ -492,137 +492,49 @@ class Seq2SeqLSTMAttention(nn.Module):
             enc_context = enc_context * ctx_mask.view(ctx_mask.size() + (1,))
 
         # maximum length to unroll, ignore the last word (must be padding)
-        max_length = trg_inputs.size(1) - 1
+        trg_inputs = trg_inputs[:, :-1]
+        max_length = trg_inputs.size(1)
 
         # Teacher Forcing
         self.current_batch += 1
-        # because sequence-wise training is not compatible with input-feeding, so discard it
-        # TODO 20180722, do_word_wisely_training=True is buggy
-        do_word_wisely_training = False
-        if not do_word_wisely_training:
-            '''
-            Teacher Forcing
-            (1) Feedforwarding RNN
-            '''
-            # truncate the last word, as there's no further word after it for decoder to predict
-            trg_inputs = trg_inputs[:, :-1]
+        '''
+        Teacher Forcing
+        (1) Feedforwarding RNN
+        '''
 
-            # initialize target embedding and reshape the targets to be time step first
-            trg_emb = self.embedding(trg_inputs)  # (batch_size, trg_len, embed_dim)
-            trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
+        # initialize target embedding and reshape the targets to be time step first
+        trg_emb = self.embedding(trg_inputs)  # (batch_size, trg_len, embed_dim)
+        trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
 
-            # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
-            decoder_outputs, dec_hidden = self.decoder(
-                trg_emb, init_hidden
-            )
-            '''
-            (2) Standard Attention
-            '''
-            # Get the h_tilde (batch_size, trg_len, trg_hidden_dim) and attention weights (batch_size, trg_len, src_len)
-            h_tildes, attn_weights, attn_logits = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
+        # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
+        decoder_outputs, dec_hidden = self.decoder(
+            trg_emb, init_hidden
+        )
+        '''
+        (2) Standard Attention
+        '''
+        # Get the h_tilde (batch_size, trg_len, trg_hidden_dim) and attention weights (batch_size, trg_len, src_len)
+        h_tildes, attn_weights, attn_logits = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
 
-            # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde), (batch_size, trg_len, trg_hidden_size) -> (batch_size * trg_len, vocab_size)
-            # h_tildes=(batch_size, trg_len, trg_hidden_size) -> decoder2vocab(h_tildes.view)=(batch_size * trg_len, vocab_size) -> decoder_logits=(batch_size, trg_len, vocab_size)
-            decoder_logits = self.decoder2vocab(h_tildes.view(-1, trg_hidden_dim)).view(batch_size, max_length, -1)
+        # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde), (batch_size, trg_len, trg_hidden_size) -> (batch_size * trg_len, vocab_size)
+        # h_tildes=(batch_size, trg_len, trg_hidden_size) -> decoder2vocab(h_tildes.view)=(batch_size * trg_len, vocab_size) -> decoder_logits=(batch_size, trg_len, vocab_size)
+        decoder_logits = self.decoder2vocab(h_tildes.view(-1, trg_hidden_dim)).view(batch_size, max_length, -1)
 
-            '''
-            (3) Copy Attention
-            '''
-            if self.copy_attention:
-                # copy_weights and copy_logits is (batch_size, trg_len, src_len)
-                if not self.reuse_copy_attn:
-                    _, copy_weights, copy_logits = self.copy_attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
-                else:
-                    copy_logits = attn_logits
-
-                # merge the generative and copying probs, (batch_size, trg_len, vocab_size + max_oov_number)
-                decoder_log_probs = self.merge_copy_probs(decoder_logits, copy_logits, src_map, oov_list)  # (batch_size, trg_len, vocab_size + max_oov_number)
-                decoder_outputs = decoder_outputs.permute(1, 0, 2)  # (batch_size, trg_len, trg_hidden_dim)
+        '''
+        (3) Copy Attention
+        '''
+        if self.copy_attention:
+            # copy_weights and copy_logits is (batch_size, trg_len, src_len)
+            if not self.reuse_copy_attn:
+                _, copy_weights, copy_logits = self.copy_attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
             else:
-                decoder_log_probs = torch.nn.functional.log_softmax(decoder_logits, dim=-1).view(batch_size, -1, self.vocab_size)
+                copy_logits = attn_logits
 
+            # merge the generative and copying probs, (batch_size, trg_len, vocab_size + max_oov_number)
+            decoder_log_probs = self.merge_copy_probs(decoder_logits, copy_logits, src_map, oov_list)  # (batch_size, trg_len, vocab_size + max_oov_number)
+            decoder_outputs = decoder_outputs.permute(1, 0, 2)  # (batch_size, trg_len, trg_hidden_dim)
         else:
-            '''
-            Word Sampling
-            (1) Feedforwarding RNN
-            '''
-            # take the first word (should be BOS <s>) of each target sequence (batch_size, 1)
-            trg_input = trg_inputs[:, 0].unsqueeze(1)
-            decoder_log_probs = []
-            decoder_outputs = []
-            attn_weights = []
-            copy_weights = []
-            dec_hidden = init_hidden
-            h_tilde = Variable(torch.zeros(batch_size, 1, trg_hidden_dim)).cuda() if torch.cuda.is_available() else Variable(torch.zeros(batch_size, 1, trg_hidden_dim))
-            copy_h_tilde = Variable(torch.zeros(batch_size, 1, trg_hidden_dim)).cuda() if torch.cuda.is_available() else Variable(torch.zeros(batch_size, 1, trg_hidden_dim))
-
-            for di in range(max_length):
-                # initialize target embedding and reshape the targets to be time step first
-                trg_emb = self.embedding(trg_input)  # (batch_size, 1, embed_dim)
-
-                # input-feeding, attentional vectors h˜t are concatenated with inputs at the next time steps
-                dec_input = self.merge_decode_inputs(trg_emb, h_tilde, copy_h_tilde)
-
-                # run RNN decoder with inputs (trg_len first)
-                decoder_output, dec_hidden = self.decoder(
-                    dec_input, dec_hidden
-                )
-
-                '''
-                (2) Standard Attention
-                '''
-                # Get the h_tilde (hidden after attention) and attention weights. h_tilde (batch_size,1,trg_hidden), attn_weight & attn_logit(batch_size,1,src_len)
-                h_tilde, attn_weight, attn_logit = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
-
-                # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
-                # h_tilde=(batch_size, 1, trg_hidden_size) -> decoder2vocab(h_tilde.view)=(batch_size * 1, vocab_size) -> decoder_logit=(batch_size, 1, vocab_size)
-                decoder_logit = self.decoder2vocab(h_tilde.view(-1, trg_hidden_dim)).view(batch_size, 1, -1)
-
-                '''
-                (3) Copy Attention
-                '''
-                if self.copy_attention:
-                    # copy_weights and copy_logits is (batch_size, trg_len, src_len)
-                    if not self.reuse_copy_attn:
-                        copy_h_tilde, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
-                    else:
-                        copy_h_tilde, copy_weight, copy_logit = h_tilde, attn_weight, attn_logit
-
-                    # merge the generative and copying probs (batch_size, 1, vocab_size + max_oov_number)
-                    decoder_log_prob = self.merge_copy_probs(decoder_logit, copy_logit, src_map, oov_list)
-                else:
-                    decoder_log_prob = torch.nn.functional.log_softmax(decoder_logit, dim=-1).view(batch_size, -1, self.vocab_size)
-                    copy_weight = None
-
-                '''
-                Prepare for the next iteration
-                '''
-                # prepare the next input word
-                if self.do_teacher_forcing():
-                    # truncate the last word, as there's no further word after it for decoder to predict
-                    trg_input = trg_inputs[:, di + 1].unsqueeze(1)
-                else:
-                    # find the top 1 predicted word
-                    top_v, top_idx = decoder_log_prob.data.topk(1, dim=-1)
-                    # if it's a oov, replace it with <unk>
-                    top_idx[top_idx >= self.vocab_size] = self.unk_word
-                    top_idx = Variable(top_idx.squeeze(2))
-                    # top_idx and next_index are (batch_size, 1)
-                    trg_input = top_idx.cuda() if torch.cuda.is_available() else top_idx
-
-                # Save results of current step. Permute to trg_len first, otherwise the cat operation would mess up things
-                decoder_log_probs.append(decoder_log_prob.permute(1, 0, 2))
-                decoder_outputs.append(decoder_output)
-                attn_weights.append(attn_weight.permute(1, 0, 2))
-                if self.copy_attention:
-                    copy_weights.append(copy_weight.permute(1, 0, 2))
-
-            # convert output into the right shape and make batch first
-            decoder_log_probs = torch.cat(decoder_log_probs, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, vocab_size + max_oov_number)
-            decoder_outputs = torch.cat(decoder_outputs, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, hidden_size)
-            attn_weights = torch.cat(attn_weights, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, src_seq_len)
-            if self.copy_attention:
-                copy_weights = torch.cat(copy_weights, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, src_seq_len)
+            decoder_log_probs = torch.nn.functional.log_softmax(decoder_logits, dim=-1).view(batch_size, -1, self.vocab_size)
 
         # Return final outputs (logits after log_softmax), hidden states, and attention weights (for visualization)
         return decoder_log_probs, decoder_outputs, attn_weights, copy_weights

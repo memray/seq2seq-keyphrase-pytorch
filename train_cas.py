@@ -23,6 +23,7 @@ import copy
 import torch
 import torch.nn as nn
 from torch import cuda
+import torch.nn.functional as F
 
 from beam_search import SequenceGenerator
 from evaluate import evaluate_beam_search, get_match_result, self_redundancy
@@ -60,9 +61,28 @@ __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
 
+def orthogonal_penalty(vec1, vec2, I):
+    vec1 = vec1.view(-1, 1)  # h x 1
+    vec2 = vec2.view(1, -1)  # 1 x h
+    m = torch.mm(vec1, vec2)  # h x h
+    return F.normalize((m - I).view(-1), p=2, dim=0)
+
+
+def all_pairs(_list, identity):
+    res = []
+    if len(_list) <= 1:
+        return res
+    for i in range(len(_list) - 1):
+        for j in range(i + 1, len(_list)):
+            res.append(orthogonal_penalty(_list[i], _list[j], identity))
+    return res
+
+
+
 def train_ml(one2one_batch, model, optimizer, criterion, opt):
     src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists = one2one_batch
     max_oov_number = max([len(oov) for oov in oov_lists])
+    trg_copy_target_np = copy.copy(trg_copy_target)
 
     print("src size - ", src.size())
     print("target size - ", trg.size())
@@ -76,8 +96,28 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
 
     optimizer.zero_grad()
 
-    decoder_log_probs, _, _ = model.forward(src, src_len, trg, src_oov, oov_lists)
+    decoder_log_probs, decoder_outputs, _ = model.forward(src, src_len, trg, src_oov, oov_lists)
 
+    # aux loss: make the decoder outputs at all <SEP>s to be orthogonal
+    identity = torch.eye(decoder_outputs.size(-1))
+    if torch.cuda.is_available():
+        identity = identity.cuda()
+
+    sep_id = opt.word2id[pykp.io.SEP_WORD]
+    penalties = []
+    for i in range(len(src)):
+        seps = []
+        for j in range(len(trg_copy_target[i])):  # len of target
+            if trg_copy_target_np[i][j] == sep_id:
+                seps.append(decoder_outputs[i][j])
+        penalty = all_pairs(seps)
+        if len(penalty) > 0:
+            penalties.append(torch.mean(torch.stack(penalty, -1)))
+
+    if len(penalties) > 0:
+        penalties = torch.sum(torch.stack(penalties, -1)) / float(len(src))
+    else:
+        penalties = 0.0
 
     # simply average losses of all the predicitons
     # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
@@ -95,6 +135,7 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
         )
     loss = loss * (1 - opt.loss_scale)
     print("--loss calculation- %s seconds ---" % (time.time() - start_time))
+    loss = loss + penalties * 0.1
 
     start_time = time.time()
     loss.backward()
