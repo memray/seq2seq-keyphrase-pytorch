@@ -148,7 +148,7 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
 
     optimizer.step()
 
-    return loss.data[0], decoder_log_probs
+    return loss.data[0], decoder_log_probs, penalties.data[0]
 
 
 def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt):
@@ -256,11 +256,13 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
             # Training
             if opt.train_ml:
-                loss_ml, decoder_log_probs = train_ml(one2seq_batch, model, optimizer_ml, criterion, opt)
+                loss_ml, decoder_log_probs, penalty = train_ml(one2seq_batch, model, optimizer_ml, criterion, opt)
                 loss_ml = loss_ml.cpu().data.numpy()
+                penalty = penalty.cpu().data.numpy()
                 train_ml_losses.append(loss_ml)
                 report_loss.append(('train_ml_loss', loss_ml))
                 report_loss.append(('PPL', loss_ml))
+                report_loss.append(('penalty', penalty))
 
                 # Brief report
                 if batch_i % opt.report_every == 0:
