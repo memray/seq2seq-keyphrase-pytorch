@@ -326,6 +326,7 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
 
 
 def evaluate(match_list, predicted_list, true_list, topk=5):
+    topk = 1000
     if len(match_list) > topk:
         match_list = match_list[:topk]
     if len(predicted_list) > topk:
