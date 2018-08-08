@@ -202,6 +202,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
             result_csv.writelines(csv_lines)
 
+            # epoch=5-batch=20947-total_batch=104739,1.09204,0.266730595946,0.270347045579,0.266903580579,0.270397761243
+
     # precision, recall, f_score = macro_averaged_score(precisionlist=score_dict['precision'], recalllist=score_dict['recall'])
     # logging.info("Macro@5\n\t\tprecision %.4f\n\t\tmacro recall %.4f\n\t\tmacro fscore %.4f " % (np.average(score_dict['precision@5']), np.average(score_dict['recall@5']), np.average(score_dict['f1score@5'])))
     # logging.info("Macro@10\n\t\tprecision %.4f\n\t\tmacro recall %.4f\n\t\tmacro fscore %.4f " % (np.average(score_dict['precision@10']), np.average(score_dict['recall@10']), np.average(score_dict['f1score@10'])))
@@ -326,6 +328,7 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
 
 
 def evaluate(match_list, predicted_list, true_list, topk=5):
+    topk = 1000
     if len(match_list) > topk:
         match_list = match_list[:topk]
     if len(predicted_list) > topk:
