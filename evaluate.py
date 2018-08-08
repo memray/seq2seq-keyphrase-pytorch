@@ -134,7 +134,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         elif opt.eval_method == "greedy":
             pred_seq_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=1, is_greedy=True)
         else:
-            raise NotImplemented
+            raise NotImplementedError
 
         best_pred_seq = [b[0] for b in pred_seq_list]  # list(batch) of Sequence
 
@@ -201,8 +201,6 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 csv_lines.append(csv_line + '\n')
 
             result_csv.writelines(csv_lines)
-
-            # epoch=5-batch=20947-total_batch=104739,1.09204,0.266730595946,0.270347045579,0.266903580579,0.270397761243
 
     # precision, recall, f_score = macro_averaged_score(precisionlist=score_dict['precision'], recalllist=score_dict['recall'])
     # logging.info("Macro@5\n\t\tprecision %.4f\n\t\tmacro recall %.4f\n\t\tmacro fscore %.4f " % (np.average(score_dict['precision@5']), np.average(score_dict['recall@5']), np.average(score_dict['f1score@5'])))

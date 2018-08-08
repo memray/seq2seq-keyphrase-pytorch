@@ -60,21 +60,11 @@ __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
 
-def orthogonal_penalty(vec1, vec2, I):
-    vec1 = vec1.view(-1, 1)  # h x 1
-    vec2 = vec2.view(1, -1)  # 1 x h
-    m = torch.mm(vec1, vec2)  # h x h
-    return torch.norm((m - I), p=1)
-
-
-def all_pairs(_list, identity):
-    res = []
-    if len(_list) <= 1:
-        return res
-    for i in range(len(_list) - 1):
-        for j in range(i + 1, len(_list)):
-            res.append(orthogonal_penalty(_list[i], _list[j], identity))
-    return res
+def orthogonal_penalty(_m, I, l_n_norm=2):
+    # _m: h x n
+    # I:  n x n
+    m = torch.mm(torch.t(_m), _m)  # n x n
+    return torch.norm((m - I), p=l_n_norm)
 
 
 def train_ml(one2one_batch, model, optimizer, criterion, opt):
@@ -97,9 +87,6 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
     decoder_log_probs, decoder_outputs, _ = model.forward(src, src_len, trg, src_oov, oov_lists)
 
     # aux loss: make the decoder outputs at all <SEP>s to be orthogonal
-    identity = torch.eye(decoder_outputs.size(-1))
-    if torch.cuda.is_available():
-        identity = identity.cuda()
 
     sep_id = opt.word2id[pykp.io.SEP_WORD]
     penalties = []
@@ -107,10 +94,14 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
         seps = []
         for j in range(len(trg_copy_target_np[i])):  # len of target
             if trg_copy_target_np[i][j] == sep_id:
-                seps.append(decoder_outputs[i][j])
-        penalty = all_pairs(seps, identity)
-        if len(penalty) > 0:
-            penalties.append(torch.mean(torch.stack(penalty, -1)))
+                seps.append(decoder_outputs[i][j]) 
+        if len(seps) > 0:
+            seps = torch.stack(seps, -1)  # h x n
+            identity = torch.eye(seps.size(-1))  # n x n
+            if torch.cuda.is_available():
+                identity = identity.cuda()
+            penalty = orthogonal_penalty(seps, identity, 2)  # 1
+            penalties.append(penalty)
 
     if len(penalties) > 0:
         penalties = torch.sum(torch.stack(penalties, -1)) / float(src.size(0))
