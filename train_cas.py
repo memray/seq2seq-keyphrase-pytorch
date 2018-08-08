@@ -64,7 +64,7 @@ def orthogonal_penalty(vec1, vec2, I):
     vec1 = vec1.view(-1, 1)  # h x 1
     vec2 = vec2.view(1, -1)  # 1 x h
     m = torch.mm(vec1, vec2)  # h x h
-    return torch.norm((m - I), p=2)
+    return torch.norm((m - I), p=1)
 
 
 def all_pairs(_list, identity):
@@ -75,7 +75,6 @@ def all_pairs(_list, identity):
         for j in range(i + 1, len(_list)):
             res.append(orthogonal_penalty(_list[i], _list[j], identity))
     return res
-
 
 
 def train_ml(one2one_batch, model, optimizer, criterion, opt):
@@ -114,7 +113,7 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
             penalties.append(torch.mean(torch.stack(penalty, -1)))
 
     if len(penalties) > 0:
-        penalties = torch.sum(torch.stack(penalties, -1)) / float(len(src))
+        penalties = torch.sum(torch.stack(penalties, -1)) / float(src.size(0))
     else:
         penalties = 0.0
 
