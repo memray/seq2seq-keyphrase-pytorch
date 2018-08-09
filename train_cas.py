@@ -443,7 +443,7 @@ def init_model(opt):
         logging.info("loading previous checkpoint from %s" % opt.train_from)
         # load the saved the meta-model and override the current one
         model = torch.load(
-            open(os.path.join(opt.model_path, opt.exp, '.initial.model'), 'wb')
+            open(os.path.join(opt.model_path, opt.exp + '.initial.model'), 'wb')
         )
 
         if torch.cuda.is_available():
@@ -459,7 +459,7 @@ def init_model(opt):
         # dump the meta-model
         torch.save(
             model.state_dict(),
-            open(os.path.join(opt.train_from[: opt.train_from.find('.epoch=')], 'initial.model'), 'wb')
+            open(os.path.join(opt.model_path, opt.exp + '.initial.model'), 'wb')
         )
 
     if torch.cuda.is_available():
