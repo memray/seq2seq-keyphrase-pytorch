@@ -306,6 +306,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             dropout=self.dropout
         )
         self.target_encoding_merger = Average()
+        self.bilinear_layer = nn.Bilinear(self.src_hidden_dim, self.trg_hidden_dim, 1)
 
         self.attention_layer = Attention(self.src_hidden_dim * self.num_directions, self.trg_hidden_dim, method=self.attention_mode)
 

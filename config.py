@@ -244,6 +244,12 @@ def train_opts(parser):
                         help="""0: ori, 1: running average as baseline""")
     parser.add_argument('-rl_start_epoch', default=2, type=int,
                         help="""from which epoch rl training starts""")
+    parser.add_argument('-n_negative_samples', default=5, type=int,
+                        help="""how many negative samples""")
+    parser.add_argument('-target_encoder_lambda', default=0.1, type=int,
+                        help="""target encoder lambda""")
+
+
     # GPU
 
     # Teacher Forcing and Scheduled Sampling

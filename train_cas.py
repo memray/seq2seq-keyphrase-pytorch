@@ -19,6 +19,7 @@ import config
 import evaluate
 import utils
 import copy
+import random
 
 import torch
 import torch.nn as nn
@@ -67,7 +68,70 @@ def orthogonal_penalty(_m, I, l_n_norm=2):
     return torch.norm((m - I), p=l_n_norm)
 
 
-def train_ml(one2one_batch, model, optimizer, criterion, opt):
+class ReplayMemory(object):
+    def __init__(self, capacity=500):
+        # vanilla replay memory
+        self.capacity = capacity
+        self.memory = []
+        self.position = 0
+
+    def push(self, stuff):
+        """Saves a transition."""
+        if len(self.memory) < self.capacity:
+            self.memory.append(None)
+        self.memory[self.position] = stuff
+        self.position = (self.position + 1) % self.capacity
+
+    def sample(self, batch_size):
+        return random.sample(self.memory, batch_size)
+
+    def __len__(self):
+        return len(self.memory)
+
+
+def random_insert(_list, elem):
+    insert_before_this = np.random.randint(low=0, high=len(_list) + 1)
+    return _list[:insert_before_this] + [elem] + _list[insert_before_this:], insert_before_this
+
+
+def train_target_encoder(model, source_representations, target_representations, replay_memory, criterion, opt):
+    # source_representations: batch x hid
+    # target_representations: batch x hid
+    batch_size = target_representations.size(0)
+    n_neg = opt.n_negative_samples
+    coef = opt.target_encoder_lambda
+    if coef == 0.0:
+        return 0.0
+    batch_inputs, batch_labels = [], []
+
+    for b in range(batch_size):
+        # 1. negative sampling
+        if len(replay_memory) >= n_neg:
+            neg_list = replay_memory.sample(n_neg)
+            inputs, which = random_insert(neg_list, source_representations[b])
+            inputs = torch.stack(inputs, 0)  # n_neg+1 x hid
+            batch_inputs.append(inputs)
+            batch_labels.append(which)
+        # 2. push source representations into replay memory
+        replay_memory.push(source_representations[b])
+    if len(batch_inputs) == 0:
+        return 0.0
+    batch_inputs = torch.stack(batch_inputs, 0)  # batch x n_neg+1 x hid
+    batch_labels = np.array(batch_labels)  # batch
+    batch_labels = torch.autograd.Variable(torch.from_numpy(batch_labels).type(torch.LongTensor))
+    if torch.cuda.is_available():
+        batch_labels =  batch_labels.cuda()
+
+    # 3. prediction
+    pred = model.bilinear_layer(batch_inputs, target_representations).sqeeze(-1)  # batch x n_neg+1
+    pred = torch.nn.functional.log_softmax(pred, dim=-1)  # batch x n_neg+1
+    # 4. backprop & update
+    loss = criterion(pred, batch_labels)
+    loss = loss * coef
+    return loss
+
+
+def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
     src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists = one2one_batch
     max_oov_number = max([len(oov) for oov in oov_lists])
     trg_copy_target_np = copy.copy(trg_copy_target)
@@ -82,12 +146,12 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
         trg_copy_target = trg_copy_target.cuda()
         src_oov = src_oov.cuda()
 
-    optimizer.zero_grad()
-
     decoder_log_probs, decoder_outputs, _, source_representations, target_representations = model.forward(src, src_len, trg, src_oov, oov_lists)
 
-    # aux loss: make the decoder outputs at all <SEP>s to be orthogonal
+    te_loss = train_target_encoder(model, source_representations, target_representations, replay_memory, criterion, opt)
 
+    optimizer.zero_grad()
+    # aux loss: make the decoder outputs at all <SEP>s to be orthogonal
     sep_id = opt.word2id[pykp.io.SEP_WORD]
     penalties = []
     for i in range(len(trg_copy_target_np)):
@@ -113,18 +177,18 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
     start_time = time.time()
 
     if not opt.copy_attention:
-        loss = criterion(
+        nll_loss = criterion(
             decoder_log_probs.contiguous().view(-1, opt.vocab_size),
             trg_target.contiguous().view(-1)
         )
     else:
-        loss = criterion(
+        nll_loss = criterion(
             decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
             trg_copy_target.contiguous().view(-1)
         )
-    loss = loss * (1 - opt.loss_scale)
+    nll_loss = nll_loss * (1 - opt.loss_scale)
     print("--loss calculation- %s seconds ---" % (time.time() - start_time))
-    loss = loss + penalties * 0.1
+    loss = nll_loss + penalties * 0.1 + te_loss
 
     start_time = time.time()
     loss.backward()
@@ -134,10 +198,9 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
         pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
         after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
         # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
-
     optimizer.step()
 
-    return loss.data[0], decoder_log_probs, penalties.data[0]
+    return loss.data[0], decoder_log_probs, nll_loss.data[0], penalties.data[0], te_loss.data[0]
 
 
 def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt):
@@ -229,6 +292,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     train_ml_losses = []
     total_batch = -1
     early_stop_flag = False
+    replay_memory = ReplayMemory(opt.replay_buffer_capacity)
 
     for epoch in range(opt.start_epoch, opt.epochs):
         if early_stop_flag:
@@ -245,7 +309,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
             # Training
             if opt.train_ml:
-                loss_ml, decoder_log_probs, penalty = train_ml(one2seq_batch, model, optimizer_ml, criterion, opt)
+                loss_ml, decoder_log_probs, penalty = train_ml(one2seq_batch, model, optimizer_ml, criterion, replay_memory, opt)
                 loss_ml = loss_ml.cpu().data.numpy()
                 penalty = penalty.cpu().data.numpy()
                 train_ml_losses.append(loss_ml)
