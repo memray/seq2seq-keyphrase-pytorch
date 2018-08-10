@@ -61,6 +61,14 @@ __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
 
+def to_np(x):
+    if isinstance(x, float) or isinstance(x, int):
+        return x
+    if isinstance(x, np.ndarray):
+        return x
+    return x.data.cpu().numpy()
+
+
 def orthogonal_penalty(_m, I, l_n_norm=2):
     # _m: h x n
     # I:  n x n
@@ -211,9 +219,7 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
         # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
     optimizer.step()
 
-    return loss.data[0], decoder_log_probs, nll_loss.data[0],\
-           penalties if isinstance(penalties, float) else penalties.data[0],\
-           te_loss if isinstance(te_loss, float) else te_loss.data[0]
+    return to_np(loss), decoder_log_probs, to_np(nll_loss), to_np(penalties), to_np(te_loss)
 
 
 def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt):
@@ -323,10 +329,10 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
             # Training
             if opt.train_ml:
                 loss_ml, decoder_log_probs, nll_loss, penalty, te_loss = train_ml(one2seq_batch, model, optimizer_ml, criterion, replay_memory, opt)
-                loss_ml = loss_ml.cpu().data.numpy()
-                penalty = penalty.cpu().data.numpy()
-                nll_loss = nll_loss.cpu().data.numpy()
-                te_loss = te_loss.cpu().data.numpy()
+                # loss_ml = loss_ml.cpu().data.numpy()
+                # penalty = penalty.cpu().data.numpy()
+                # nll_loss = nll_loss.cpu().data.numpy()
+                # te_loss = te_loss.cpu().data.numpy()
                 train_ml_losses.append(loss_ml)
                 report_loss.append(('train_ml_loss', loss_ml))
                 report_loss.append(('PPL', loss_ml))
