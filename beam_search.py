@@ -445,6 +445,11 @@ class SequenceGenerator(object):
             dec_hiddens = [(dec_hiddens[0][i], dec_hiddens[1][i]) for i in range(batch_size)]
         elif isinstance(dec_hiddens, list):
             dec_hiddens = dec_hiddens
+        if isinstance(trg_enc_hiddens, tuple):
+            trg_enc_hiddens = (trg_enc_hiddens[0].squeeze(0), trg_enc_hiddens[1].squeeze(0))
+            trg_enc_hiddens = [(trg_enc_hiddens[0][i], trg_enc_hiddens[1][i]) for i in range(batch_size)]
+        elif isinstance(trg_enc_hiddens, list):
+            trg_enc_hiddens = trg_enc_hiddens
 
         sampled_sequences = [TopN_heap(self.beam_size) for _ in range(batch_size)]
 
@@ -471,7 +476,7 @@ class SequenceGenerator(object):
             _, flattened_id_map, inputs, dec_hiddens, trg_enc_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(sampled_sequences)
 
             # Run one-step generation. log_probs=(batch_size, 1, K), dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
-            log_probs, new_dec_hiddens, new_trg_enc_hidden, attn_weights = self.model.generate(
+            log_probs, new_dec_hiddens, new_trg_enc_hiddens, attn_weights = self.model.generate(
                 trg_input=inputs,
                 dec_hidden=dec_hiddens,
                 trg_enc_hidden=trg_enc_hiddens,

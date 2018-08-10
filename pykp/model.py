@@ -390,13 +390,13 @@ class Seq2SeqLSTMAttention(nn.Module):
         h0_target_encoder = Variable(torch.zeros(
             self.target_encoder.num_layers,
             batch_size,
-            self.trg_hidden_dim
+            self.emb_dim
         ), requires_grad=False)
 
         c0_target_encoder = Variable(torch.zeros(
             self.target_encoder.num_layers,
             batch_size,
-            self.trg_hidden_dim
+            self.emb_dim
         ), requires_grad=False)
 
         if torch.cuda.is_available():
@@ -544,7 +544,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             trg_emb, (h0_target_encoder, c0_target_encoder)
         )
         trg_enc_h = trg_enc_h.detach()
-        decoder_input = self.target_encoding_merger(trg_enc_h, trg_emb)
+        decoder_input = self.target_encoding_merger([trg_enc_h, trg_emb])
 
         # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
         decoder_outputs, _ = self.decoder(
@@ -722,7 +722,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 trg_emb, trg_enc_hidden
             )
             trg_enc_h = trg_enc_h.detach()
-            dec_input = self.target_encoding_merger(trg_enc_h, trg_emb)
+            dec_input = self.target_encoding_merger([trg_enc_h, trg_emb])
 
             # (seq_len, batch_size, hidden_size * num_directions)
             decoder_output, dec_hidden = self.decoder(
