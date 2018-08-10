@@ -102,7 +102,7 @@ def train_target_encoder(model, source_representations, target_representations, 
     coef = opt.target_encoder_lambda
     if coef == 0.0:
         return 0.0
-    batch_inputs, batch_labels = [], []
+    batch_inputs_source, batch_inputs_target, batch_labels = [], [], []
 
     for b in range(batch_size):
         # 1. negative sampling
@@ -110,13 +110,15 @@ def train_target_encoder(model, source_representations, target_representations, 
             neg_list = replay_memory.sample(n_neg)
             inputs, which = random_insert(neg_list, source_representations[b])
             inputs = torch.stack(inputs, 0)  # n_neg+1 x hid
-            batch_inputs.append(inputs)
+            batch_inputs_source.append(inputs)
+            batch_inputs_target.append(target_representations[b])
             batch_labels.append(which)
         # 2. push source representations into replay memory
         replay_memory.push(source_representations[b])
-    if len(batch_inputs) == 0:
+    if len(batch_inputs_source) == 0:
         return 0.0
-    batch_inputs = torch.stack(batch_inputs, 0)  # batch x n_neg+1 x hid
+    batch_inputs_source = torch.stack(batch_inputs_source, 0)  # batch x n_neg+1 x hid
+    batch_inputs_target = torch.stack(batch_inputs_target, 0)  # batch x hid
     batch_labels = np.array(batch_labels)  # batch
     batch_labels = torch.autograd.Variable(torch.from_numpy(batch_labels).type(torch.LongTensor))
     if torch.cuda.is_available():
@@ -124,8 +126,8 @@ def train_target_encoder(model, source_representations, target_representations, 
 
     # 3. prediction
     pred = []
-    for s in range(batch_labels.size(1)):
-        p = model.bilinear_layer(batch_inputs[:, s], target_representations).sqeeze(-1)  # batch
+    for s in range(batch_inputs_source.size(1)):
+        p = model.bilinear_layer(batch_inputs_source[:, s], batch_inputs_target).sqeeze(-1)  # batch
         pred.append(p)
     pred = torch.stack(pred, -1)  # batch x n_neg+1
     pred = torch.nn.functional.log_softmax(pred, dim=-1)  # batch x n_neg+1
