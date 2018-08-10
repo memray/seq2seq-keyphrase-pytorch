@@ -279,7 +279,7 @@ class SequenceGenerator(object):
             seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, trg_enc_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(partial_sequences)
 
             # Run one-step generation. probs=(batch_size, 1, K), dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
-            log_probs, new_dec_hiddens, attn_weights = self.model.generate(
+            log_probs, new_dec_hiddens, new_trg_enc_hiddens, attn_weights = self.model.generate(
                 trg_input=inputs,
                 dec_hidden=dec_hiddens,
                 trg_enc_hidden=trg_enc_hiddens,
