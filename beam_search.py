@@ -232,6 +232,7 @@ class SequenceGenerator(object):
 
         # prepare the init hidden vector, (batch_size, trg_seq_len, dec_hidden_dim)
         dec_hiddens = self.model.init_decoder_state(src_h, src_c)
+        trg_enc_hiddens = self.model.init_target_encoder_state(batch_size) 
 
         # each dec_hidden is (trg_seq_len, dec_hidden_dim)
         initial_input = [word2id[pykp.io.BOS_WORD]] * batch_size
@@ -240,6 +241,11 @@ class SequenceGenerator(object):
             dec_hiddens = [(dec_hiddens[0][i], dec_hiddens[1][i]) for i in range(batch_size)]
         elif isinstance(dec_hiddens, list):
             dec_hiddens = dec_hiddens
+        if isinstance(trg_enc_hiddens, tuple):
+            trg_enc_hiddens = (trg_enc_hiddens[0].squeeze(0), trg_enc_hiddens[1].squeeze(0))
+            trg_enc_hiddens = [(trg_enc_hiddens[0][i], trg_enc_hiddens[1][i]) for i in range(batch_size)]
+        elif isinstance(trg_enc_hiddens, list):
+            trg_enc_hiddens = trg_enc_hiddens
 
         partial_sequences = [TopN_heap(self.beam_size) for _ in range(batch_size)]
         complete_sequences = [TopN_heap(sys.maxsize) for _ in range(batch_size)]
@@ -249,6 +255,7 @@ class SequenceGenerator(object):
                 batch_id=batch_i,
                 sentence=[initial_input[batch_i]],
                 dec_hidden=dec_hiddens[batch_i],
+                trg_enc_hidden=trg_enc_hiddens[batch_i],
                 context=src_context[batch_i],
                 ctx_mask=src_mask[batch_i],
                 src_oov=src_oov[batch_i],
@@ -269,12 +276,13 @@ class SequenceGenerator(object):
                 break
 
             # flatten 2d sequences (batch_size, beam_size) into 1d batches (batch_size * beam_size) to feed model
-            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(partial_sequences)
+            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, trg_enc_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(partial_sequences)
 
             # Run one-step generation. probs=(batch_size, 1, K), dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
             log_probs, new_dec_hiddens, attn_weights = self.model.generate(
                 trg_input=inputs,
                 dec_hidden=dec_hiddens,
+                trg_enc_hidden=trg_enc_hiddens,
                 enc_context=contexts,
                 ctx_mask=ctx_mask,
                 src_map=src_oovs,
@@ -299,6 +307,10 @@ class SequenceGenerator(object):
                 new_dec_hiddens1 = new_dec_hiddens[0].squeeze(0)
                 new_dec_hiddens2 = new_dec_hiddens[1].squeeze(0)
                 new_dec_hiddens = [(new_dec_hiddens1[i], new_dec_hiddens2[i]) for i in range(num_partial_sequences)]
+            if isinstance(new_trg_enc_hiddens, tuple):
+                new_trg_enc_hiddens1 = new_trg_enc_hiddens[0].squeeze(0)
+                new_trg_enc_hiddens2 = new_trg_enc_hiddens[1].squeeze(0)
+                new_trg_enc_hiddens = [(new_trg_enc_hiddens1[i], new_trg_enc_hiddens2[i]) for i in range(num_partial_sequences)]
 
             # For every partial_sequence (num_partial_sequences in total), find and trim to the best hypotheses (beam_size in total)
             for batch_i in range(batch_size):
@@ -332,6 +344,7 @@ class SequenceGenerator(object):
                             batch_id=partial_seq.batch_id,
                             sentence=new_sent,
                             dec_hidden=None,
+                            trg_enc_hidden=None,
                             context=partial_seq.context,
                             ctx_mask=partial_seq.ctx_mask,
                             src_oov=partial_seq.src_oov,
@@ -347,6 +360,7 @@ class SequenceGenerator(object):
 
                         # dec_hidden and attention of this partial_seq are shared by its descendant beams
                         new_partial_seq.dec_hidden = new_dec_hiddens[flattened_seq_id]
+                        new_partial_seq.trg_enc_hidden = new_trg_enc_hiddens[flattened_seq_id]
 
                         if self.return_attention:
                             if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
@@ -427,7 +441,7 @@ class SequenceGenerator(object):
             is_greedy: if True, pick up the most probable word after the 1st time step
 
         """
-        # self.model.eval()  # have to be in training mode, to backprop
+        self.model.eval()  # have to be in training mode, to backprop
         batch_size = len(src_input)
 
         src_mask = self.get_mask(src_input)  # same size as input_src
