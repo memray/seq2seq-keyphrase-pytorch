@@ -415,7 +415,7 @@ class SequenceGenerator(object):
             is_greedy: if True, pick up the most probable word after the 1st time step
 
         """
-        # self.model.eval()  # have to be in training mode, to backprop
+        self.model.eval()
         batch_size = len(src_input)
 
         src_mask = self.get_mask(src_input)  # same size as input_src
