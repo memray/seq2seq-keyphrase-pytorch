@@ -309,13 +309,17 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
             # Training
             if opt.train_ml:
-                loss_ml, decoder_log_probs, penalty = train_ml(one2seq_batch, model, optimizer_ml, criterion, replay_memory, opt)
+                loss_ml, decoder_log_probs, nll_loss, penalty, te_loss = train_ml(one2seq_batch, model, optimizer_ml, criterion, replay_memory, opt)
                 loss_ml = loss_ml.cpu().data.numpy()
                 penalty = penalty.cpu().data.numpy()
+                nll_loss = nll_loss.cpu().data.numpy()
+                te_loss = te_loss.cpu().data.numpy()
                 train_ml_losses.append(loss_ml)
                 report_loss.append(('train_ml_loss', loss_ml))
                 report_loss.append(('PPL', loss_ml))
+                report_loss.append(('nll_loss', nll_loss))
                 report_loss.append(('penalty', penalty))
+                report_loss.append(('te_loss', te_loss))
 
                 # Brief report
                 if batch_i % opt.report_every == 0:
