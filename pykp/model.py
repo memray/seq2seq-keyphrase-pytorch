@@ -544,6 +544,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         trg_enc_h, (trg_enc_h_last, _) = self.target_encoder(
             trg_emb, (h0_target_encoder, c0_target_encoder)
         )
+        trg_enc_h_last = trg_enc_h_last[0]  # bi directional
         trg_enc_h = trg_enc_h.detach()
         decoder_input = self.target_encoding_merger([trg_enc_h, trg_emb])
 

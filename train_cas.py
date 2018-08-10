@@ -123,7 +123,11 @@ def train_target_encoder(model, source_representations, target_representations, 
         batch_labels =  batch_labels.cuda()
 
     # 3. prediction
-    pred = model.bilinear_layer(batch_inputs, target_representations).sqeeze(-1)  # batch x n_neg+1
+    pred = []
+    for s in range(batch_labels.size(1)):
+        p = model.bilinear_layer(batch_inputs[:, s], target_representations).sqeeze(-1)  # batch
+        pred.append(p)
+    pred = torch.stack(pred, -1)  # batch x n_neg+1
     pred = torch.nn.functional.log_softmax(pred, dim=-1)  # batch x n_neg+1
     # 4. backprop & update
     loss = criterion(pred, batch_labels)
