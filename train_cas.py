@@ -127,7 +127,7 @@ def train_target_encoder(model, source_representations, target_representations, 
     # 3. prediction
     pred = []
     for s in range(batch_inputs_source.size(1)):
-        p = model.bilinear_layer(batch_inputs_source[:, s], batch_inputs_target).sqeeze(-1)  # batch
+        p = model.bilinear_layer(batch_inputs_source[:, s], batch_inputs_target).squeeze(-1)  # batch
         pred.append(p)
     pred = torch.stack(pred, -1)  # batch x n_neg+1
     pred = torch.nn.functional.log_softmax(pred, dim=-1)  # batch x n_neg+1
@@ -141,10 +141,12 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
     src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists = one2one_batch
     max_oov_number = max([len(oov) for oov in oov_lists])
     trg_copy_target_np = copy.copy(trg_copy_target)
+    orth_coef = opt.orthogonal_regularization_lambda
 
     print("src size - ", src.size())
     print("target size - ", trg.size())
 
+    optimizer.zero_grad()
     if torch.cuda.is_available():
         src = src.cuda()
         trg = trg.cuda()
@@ -156,25 +158,28 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
 
     te_loss = train_target_encoder(model, source_representations, target_representations, replay_memory, criterion, opt)
 
-    optimizer.zero_grad()
-    # aux loss: make the decoder outputs at all <SEP>s to be orthogonal
-    sep_id = opt.word2id[pykp.io.SEP_WORD]
-    penalties = []
-    for i in range(len(trg_copy_target_np)):
-        seps = []
-        for j in range(len(trg_copy_target_np[i])):  # len of target
-            if trg_copy_target_np[i][j] == sep_id:
-                seps.append(decoder_outputs[i][j]) 
-        if len(seps) > 0:
-            seps = torch.stack(seps, -1)  # h x n
-            identity = torch.eye(seps.size(-1))  # n x n
-            if torch.cuda.is_available():
-                identity = identity.cuda()
-            penalty = orthogonal_penalty(seps, identity, 2)  # 1
-            penalties.append(penalty)
+    if orth_coef > 0.0:
+        # aux loss: make the decoder outputs at all <SEP>s to be orthogonal
+        sep_id = opt.word2id[pykp.io.SEP_WORD]
+        penalties = []
+        for i in range(len(trg_copy_target_np)):
+            seps = []
+            for j in range(len(trg_copy_target_np[i])):  # len of target
+                if trg_copy_target_np[i][j] == sep_id:
+                    seps.append(decoder_outputs[i][j]) 
+            if len(seps) > 0:
+                seps = torch.stack(seps, -1)  # h x n
+                identity = torch.eye(seps.size(-1))  # n x n
+                if torch.cuda.is_available():
+                    identity = identity.cuda()
+                penalty = orthogonal_penalty(seps, identity, 2)  # 1
+                penalties.append(penalty)
 
-    if len(penalties) > 0:
-        penalties = torch.sum(torch.stack(penalties, -1)) / float(src.size(0))
+        if len(penalties) > 0:
+            penalties = torch.sum(torch.stack(penalties, -1)) / float(src.size(0))
+        else:
+            penalties = 0.0
+        penalties = penalties * orth_coef
     else:
         penalties = 0.0
 
@@ -194,10 +199,10 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
         )
     nll_loss = nll_loss * (1 - opt.loss_scale)
     print("--loss calculation- %s seconds ---" % (time.time() - start_time))
-    loss = nll_loss + penalties * 0.1 + te_loss
+    loss = nll_loss + penalties + te_loss
 
     start_time = time.time()
-    loss.backward()
+    loss.backward(retain_graph=True)
     print("--backward- %s seconds ---" % (time.time() - start_time))
 
     if opt.max_grad_norm > 0:
@@ -206,7 +211,9 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
         # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
     optimizer.step()
 
-    return loss.data[0], decoder_log_probs, nll_loss.data[0], penalties.data[0], te_loss.data[0]
+    return loss.data[0], decoder_log_probs, nll_loss.data[0],\
+           penalties if isinstance(penalties, float) else penalties.data[0],\
+           te_loss if isinstance(te_loss, float) else te_loss.data[0]
 
 
 def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt):
