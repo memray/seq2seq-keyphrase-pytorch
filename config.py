@@ -248,7 +248,8 @@ def train_opts(parser):
                         help="""how many negative samples""")
     parser.add_argument('-target_encoder_lambda', default=0.1, type=float,
                         help="""target encoder lambda""")
-
+    parser.add_argument('-replay_buffer_capacity', default=500, type=int,
+                        help="""how many negative samples""")
 
     # GPU
 
