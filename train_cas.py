@@ -84,7 +84,7 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
 
     optimizer.zero_grad()
 
-    decoder_log_probs, decoder_outputs, _ = model.forward(src, src_len, trg, src_oov, oov_lists)
+    decoder_log_probs, decoder_outputs, _, source_representations, target_representations = model.forward(src, src_len, trg, src_oov, oov_lists)
 
     # aux loss: make the decoder outputs at all <SEP>s to be orthogonal
 
