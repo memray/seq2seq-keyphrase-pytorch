@@ -129,3 +129,18 @@ class Average(torch.nn.Module):
 
     def forward(self, x):
         return torch.mean(torch.stack(x, -1), -1)
+
+
+class Concat(torch.nn.Module):
+    '''
+    input:  [x1: batch x h
+            ...
+            xk: batch x h]
+    output: y:  batch x sum(h)
+    '''
+
+    def __init__(self):
+        super(Concat, self).__init__()
+
+    def forward(self, x):
+        return torch.cat(x, -1)

@@ -246,12 +246,17 @@ def train_opts(parser):
                         help="""from which epoch rl training starts""")
     parser.add_argument('-n_negative_samples', default=5, type=int,
                         help="""how many negative samples""")
+
+
+    parser.add_argument('-target_encoder_dim', default=256, type=int,
+                        help="""target encoder dim, 0 means average""")
+                        
     parser.add_argument('-target_encoder_lambda', default=0.1, type=float,
                         help="""target encoder lambda""")
     parser.add_argument('-orthogonal_regularization_lambda', default=0.0, type=float,
                         help="""target encoder lambda""")
     parser.add_argument('-replay_buffer_capacity', default=500, type=int,
-                        help="""how many negative samples""")
+                        help="""replay buffer lambda""")
 
     # GPU
 
