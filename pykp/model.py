@@ -11,7 +11,7 @@ import numpy as np
 import random
 
 import pykp
-from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average
+from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -306,7 +306,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         
         self.target_encoder = nn.LSTM(
             input_size=self.emb_dim,
-            hidden_size=self.emb_dim if self.target_encoder_merge_mode == "mean" else self.emb_dim + self.target_encoder_dim,
+            hidden_size=self.emb_dim if self.target_encoder_merge_mode == "mean" else self.target_encoder_dim,
             num_layers=1,
             bidirectional=False,
             batch_first=False,
