@@ -528,8 +528,8 @@ class SequenceGenerator(object):
                 temp_mask = torch.eq(inputs, self.sep_id) + torch.eq(inputs, self.bos_id)
                 temp_mask = temp_mask.float()
                 probs = probs_sample * temp_mask + probs_greedy * (1 - temp_mask)
+                temp_mask = temp_mask.long()
                 words = words_sample * temp_mask + words_greedy * (1 - temp_mask)
-                words = words.int()
 
             # (hyp_seq_size, trg_len=1, src_len) -> (hyp_seq_size, src_len)
             if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
