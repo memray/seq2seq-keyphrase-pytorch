@@ -127,6 +127,8 @@ class SequenceGenerator(object):
     def __init__(self,
                  model,
                  eos_id=None,
+                 sep_id=4,
+                 bos_id=1,
                  beam_size=3,
                  max_sequence_length=5,
                  return_attention=True,
@@ -149,6 +151,8 @@ class SequenceGenerator(object):
         """
         self.model = model
         self.eos_id = eos_id
+        self.bos_id = bos_id
+        self.sep_id = sep_id
         self.beam_size = beam_size
         self.max_sequence_length = max_sequence_length
         self.length_normalization_factor = length_normalization_factor
@@ -432,13 +436,13 @@ class SequenceGenerator(object):
 
         return complete_sequences
 
-    def sample(self, src_input, src_len, src_oov, oov_list, word2id, k, is_greedy=False):
+    def sample(self, src_input, src_len, src_oov, oov_list, word2id, k, mode="greedy"):
         """
         Sample k sequeces for each src in src_input
 
         Args:
             k: number of sequences to sample
-            is_greedy: if True, pick up the most probable word after the 1st time step
+            mode: greedy, sample, hybrid
 
         """
         self.model.eval()  # have to be in training mode, to backprop
@@ -465,7 +469,7 @@ class SequenceGenerator(object):
         elif isinstance(trg_enc_hiddens, list):
             trg_enc_hiddens = trg_enc_hiddens
 
-        sampled_sequences = [TopN_heap(self.beam_size) for _ in range(batch_size)]
+        sampled_sequences = [TopN_heap(k) for _ in range(batch_size)]
 
         for batch_i in range(batch_size):
             seq = Sequence(
@@ -508,22 +512,24 @@ class SequenceGenerator(object):
             # m = Categorical(exp_log_probs)
 
             # probs, words are [batch_size, k] at time 0, and [batch_size * k, 1] later on
-            if current_len == 1:
-                if is_greedy:
-                    probs, words = log_probs.data.topk(k, dim=-1)
-                else:
-                    # m.sample_n(k)
-                    words = torch.multinomial(exp_log_probs, k, replacement=False)
-                    probs = torch.gather(log_probs, 1, words)
-                    words = words.data
-            else:
-                if is_greedy:
-                    probs, words = log_probs.data.topk(1, dim=-1)
-                else:
-                    # words = m.sample_n(1)
-                    words = torch.multinomial(exp_log_probs, 1, replacement=False)
-                    probs = torch.gather(log_probs, 1, words)
-                    words = words.data
+            
+            _k = 1 if current_len == 1 else k
+            # greedy
+            probs_greedy, words_greedy = log_probs.data.topk(_k, dim=-1)
+            # sample
+            words_sample = torch.multinomial(exp_log_probs, _k, replacement=False)
+            probs_sample = torch.gather(log_probs, 1, words_sample)
+            words_sample = words_sample.data
+            if mode == "greedy":
+                probs, words = probs_greedy, words_greedy
+            elif mode == "sampling":
+                probs, words = probs_sample, words_sample
+            elif mode == "hybrid":
+                temp_mask = torch.eq(inputs, self.sep_id) + torch.eq(inputs, self.bos_id)
+                temp_mask = temp_mask.float()
+                probs = probs_sample * temp_mask + probs_greedy * (1 - temp_mask)
+                words = words_sample * temp_mask + words_greedy * (1 - temp_mask)
+                words = words.int()
 
             # (hyp_seq_size, trg_len=1, src_len) -> (hyp_seq_size, src_len)
             if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
@@ -544,7 +550,7 @@ class SequenceGenerator(object):
 
             # For every partial_sequence (num_partial_sequences in total), find and trim to the best hypotheses (beam_size in total)
             for batch_i in range(batch_size):
-                new_partial_sequences = TopN_heap(self.beam_size)
+                new_partial_sequences = TopN_heap(k)
 
                 for partial_id, partial_seq in enumerate(sampled_sequences[batch_i].extract()):
                     flattened_seq_id = flattened_id_map[batch_i][partial_id]

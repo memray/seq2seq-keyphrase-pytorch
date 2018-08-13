@@ -129,10 +129,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         # list(batch) of list(beam size) of Sequence
         if opt.eval_method == "beam_search":
             pred_seq_list = generator.beam_search(src_list, src_len, src_oov_map_list, oov_list, opt.word2id)
-        elif opt.eval_method == "sampling":
-            pred_seq_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=1, is_greedy=False)
-        elif opt.eval_method == "greedy":
-            pred_seq_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=1, is_greedy=True)
+        elif opt.eval_method in ["sampling", "greedy", "hybrid"]:
+            pred_seq_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=1, mode=opt.eval_method)
         else:
             raise NotImplementedError
 

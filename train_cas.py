@@ -282,6 +282,8 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
 def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt):
     generator = SequenceGenerator(model,
                                   eos_id=opt.word2id[pykp.io.EOS_WORD],
+                                  bos_id=opt.word2id[pykp.io.BOS_WORD],
+                                  sep_id=opt.word2id[pykp.io.SEP_WORD],
                                   beam_size=opt.beam_size,
                                   max_sequence_length=opt.max_sent_length
                                   )
