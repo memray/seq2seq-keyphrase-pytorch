@@ -526,7 +526,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # prepare the init hidden vector, (batch_size, dec_hidden_dim) -> 2 * (1, batch_size, dec_hidden_dim)
         init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
-        h0_target_encoder, c0_target_encoder = self.init_target_encoder_state(batch_size)  # (self.encoder.num_layers * self.num_directions, batch_size, self.src_hidden_dim)
+        init_hidden_target_encoder = self.init_target_encoder_state(batch_size)  # (self.encoder.num_layers * self.num_directions, batch_size, self.src_hidden_dim)
 
         # enc_context has to be reshaped before dot attention (batch_size, src_len, context_dim) -> (batch_size, src_len, trg_hidden_dim)
         if self.attention_layer.method == 'dot':
@@ -549,9 +549,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
 
         # target encoder
-        trg_enc_h, (trg_enc_h_last, _) = self.target_encoder(
-            trg_emb, (h0_target_encoder, c0_target_encoder)
-        )
+        trg_enc_h, (trg_enc_h_last, _) = self.target_encoder(trg_emb, init_hidden_target_encoder)
         trg_enc_h_last = trg_enc_h_last[0]  # bi directional
         trg_enc_h = trg_enc_h.detach()
         decoder_input = self.target_encoding_merger([trg_enc_h, trg_emb])
