@@ -111,7 +111,7 @@ def train_target_encoder(model, source_representations, target_representations, 
     if coef == 0.0:
         return 0.0
     batch_inputs_source, batch_inputs_target, batch_labels = [], [], []
-
+    source_representations = source_representations.detach()
     for b in range(batch_size):
         # 1. negative sampling
         if len(replay_memory) >= n_neg:
