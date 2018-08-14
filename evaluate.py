@@ -174,8 +174,11 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                     # print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
             print_processed_strings = [" ".join(item) for item in processed_strings]
             print_trg_str_seqs = [" ".join(item) for item in trg_str_seqs]
-            print_out += "\nPREDICTION: " + " / ".join(print_processed_strings)
-            print_out += "\nGROUND TRUTH: " + " / ".join(print_trg_str_seqs)
+            print_out += "\n--- PREDICTION: " + " / ".join(print_processed_strings)
+            print_out += "\n--- GROUND TRUTH: " + " / ".join(print_trg_str_seqs)
+            print_out += "\n --- precision, recall, fscore: " + str(np.average(score_dict['precision@5#oneword=-1'])) + " , " +\
+                         str(np.average(score_dict['recall@5#oneword=-1'])) + " , " +\
+                         str(np.average(score_dict['f_score@5#oneword=-1']))
             logging.info(print_out)
 
             if save_path:
