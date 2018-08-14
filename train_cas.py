@@ -102,7 +102,7 @@ def random_insert(_list, elem):
     return _list[:insert_before_this] + [elem] + _list[insert_before_this:], insert_before_this
 
 
-def train_target_encoder(model, source_representations, target_representations, replay_memory, criterion, opt):
+def get_target_encoder_loss(model, source_representations, target_representations, replay_memory, criterion, opt):
     # source_representations: batch x hid
     # target_representations: batch x hid
     batch_size = target_representations.size(0)
@@ -142,11 +142,38 @@ def train_target_encoder(model, source_representations, target_representations, 
     return loss
 
 
+def get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt):
+    orth_coef = opt.orthogonal_regularization_lambda
+    if orth_coef == 0:
+        return 0.0
+    # aux loss: make the decoder outputs at all <SEP>s to be orthogonal
+    sep_id = opt.word2id[pykp.io.SEP_WORD]
+    penalties = []
+    for i in range(len(trg_copy_target_np)):
+        seps = []
+        for j in range(len(trg_copy_target_np[i])):  # len of target
+            if trg_copy_target_np[i][j] == sep_id:
+                seps.append(decoder_outputs[i][j]) 
+        if len(seps) > 0:
+            seps = torch.stack(seps, -1)  # h x n
+            identity = torch.eye(seps.size(-1))  # n x n
+            if torch.cuda.is_available():
+                identity = identity.cuda()
+            penalty = orthogonal_penalty(seps, identity, 2)  # 1
+            penalties.append(penalty)
+
+    if len(penalties) > 0:
+        penalties = torch.sum(torch.stack(penalties, -1)) / float(decoder_outputs.size(0))
+    else:
+        penalties = 0.0
+    penalties = penalties * orth_coef
+    return penalties
+
+
 def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
     src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists = one2one_batch
     max_oov_number = max([len(oov) for oov in oov_lists])
     trg_copy_target_np = copy.copy(trg_copy_target)
-    orth_coef = opt.orthogonal_regularization_lambda
 
     print("src size - ", src.size())
     print("target size - ", trg.size())
@@ -161,32 +188,8 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
 
     decoder_log_probs, decoder_outputs, _, source_representations, target_representations = model.forward(src, src_len, trg, src_oov, oov_lists)
 
-    te_loss = train_target_encoder(model, source_representations, target_representations, replay_memory, criterion, opt)
-
-    if orth_coef > 0.0:
-        # aux loss: make the decoder outputs at all <SEP>s to be orthogonal
-        sep_id = opt.word2id[pykp.io.SEP_WORD]
-        penalties = []
-        for i in range(len(trg_copy_target_np)):
-            seps = []
-            for j in range(len(trg_copy_target_np[i])):  # len of target
-                if trg_copy_target_np[i][j] == sep_id:
-                    seps.append(decoder_outputs[i][j]) 
-            if len(seps) > 0:
-                seps = torch.stack(seps, -1)  # h x n
-                identity = torch.eye(seps.size(-1))  # n x n
-                if torch.cuda.is_available():
-                    identity = identity.cuda()
-                penalty = orthogonal_penalty(seps, identity, 2)  # 1
-                penalties.append(penalty)
-
-        if len(penalties) > 0:
-            penalties = torch.sum(torch.stack(penalties, -1)) / float(src.size(0))
-        else:
-            penalties = 0.0
-        penalties = penalties * orth_coef
-    else:
-        penalties = 0.0
+    te_loss = get_target_encoder_loss(model, source_representations, target_representations, replay_memory, criterion, opt)
+    penalties = get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt)
 
     # simply average losses of all the predicitons
     # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
