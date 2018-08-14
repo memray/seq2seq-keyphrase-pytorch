@@ -533,8 +533,6 @@ class Seq2SeqLSTMAttention(nn.Module):
             enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
             enc_context = enc_context * ctx_mask.view(ctx_mask.size() + (1,))
 
-        # maximum length to unroll, ignore the last word (must be padding)
-        trg_inputs = trg_inputs[:, :-1]
         max_length = trg_inputs.size(1)
 
         # Teacher Forcing
