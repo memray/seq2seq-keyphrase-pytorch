@@ -542,7 +542,7 @@ class SequenceGenerator(object):
                 new_dec_hiddens1 = new_dec_hiddens[0].squeeze(0)
                 new_dec_hiddens2 = new_dec_hiddens[1].squeeze(0)
                 new_dec_hiddens = [(new_dec_hiddens1[i], new_dec_hiddens2[i]) for i in range(num_partial_sequences)]
-                
+
             if isinstance(new_trg_enc_hiddens, tuple):
                 new_trg_enc_hiddens1 = new_trg_enc_hiddens[0].squeeze(0)
                 new_trg_enc_hiddens2 = new_trg_enc_hiddens[1].squeeze(0)

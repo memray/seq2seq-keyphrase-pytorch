@@ -171,8 +171,11 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                     score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)].append(v)
 
                     print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
-
-            # logging.info(print_out)
+            print_processed_strings = [" ".join(item) for item in processed_strings]
+            print_trg_str_seqs = [" ".join(item) for item in trg_str_seqs]
+            print_out += "\nPREDICTION: " + " / ".join(print_processed_strings)
+            print_out += "\nGROUND TRUTH: " + " / ".join(print_trg_str_seqs)
+            logging.info(print_out)
 
             if save_path:
                 if not os.path.exists(os.path.join(save_path, title + '_detail')):
