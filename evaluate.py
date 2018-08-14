@@ -142,16 +142,16 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         for src, src_str, trg, trg_str_seqs, trg_copy, pred_seq, oov in zip(src_list, src_str_list, trg_list, trg_str_list, trg_copy_target_list, best_pred_seq, oov_list):
             # logging.info('======================  %d =========================' % (example_idx))
             print_out = ''
-            print_out += '[Source][%d]: %s \n' % (len(src_str), ' '.join(src_str))
+            # print_out += '[Source][%d]: %s \n' % (len(src_str), ' '.join(src_str))
             # src = src.cpu().data.numpy() if torch.cuda.is_available() else src.data.numpy()
             # print_out += '\nSource Input: \n %s\n' % (' '.join([opt.id2word[x] for x in src[:len(src_str) + 5]]))
             # print_out += 'Real Target String [%d] \n\t\t%s \n' % (len(trg_str_seqs), trg_str_seqs)
             # print_out += 'Real Target Input:  \n\t\t%s \n' % str([[opt.id2word[x] for x in t] for t in trg])
             # print_out += 'Real Target Copy:   \n\t\t%s \n' % str([[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in t] for t in trg_copy])
             trg_str_is_present = if_present_duplicate_phrase(src_str, trg_str_seqs)
-            print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(trg_str_is_present), len(trg_str_is_present))
-            print_out += '\n'.join(['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in zip(trg_str_seqs, trg_str_is_present)])
-            print_out += '\noov_list:   \n\t\t%s \n' % str(oov)
+            # print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(trg_str_is_present), len(trg_str_is_present))
+            # print_out += '\n'.join(['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in zip(trg_str_seqs, trg_str_is_present)])
+            # print_out += '\noov_list:   \n\t\t%s \n' % str(oov)
 
             # 1st filtering
             processed_strings = process_predseqs(pred_seq, oov, opt.id2word, opt)
@@ -170,7 +170,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                         score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)] = []
                     score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)].append(v)
 
-                    print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
+                    # print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
             print_processed_strings = [" ".join(item) for item in processed_strings]
             print_trg_str_seqs = [" ".join(item) for item in trg_str_seqs]
             print_out += "\nPREDICTION: " + " / ".join(print_processed_strings)
