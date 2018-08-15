@@ -159,28 +159,43 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             '''
             Evaluate predictions w.r.t different filterings and metrics
             '''
-            topk_range = [5, 10]
             score_names = ['precision', 'recall', 'f_score']
-            match_list = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_strings)
+            match_list_exact = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_strings, type="exact")
+            match_list_soft = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_strings, type="partial")
 
-            num_oneword_seq = -1
-            for topk in topk_range:
-                results = evaluate(match_list, processed_strings, trg_str_seqs, topk=topk)
-                for k, v in zip(score_names, results):
-                    if '%s@%d#oneword=%d' % (k, topk, num_oneword_seq) not in score_dict:
-                        score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)] = []
-                    score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)].append(v)
-                if topk == 10:
-                    print_out += "\n --- batch precision, recall, fscore: " + str(results[0]) + " , " + str(results[1]) + " , " + str(results[2])
+            # exact scores
+            results_exact = evaluate(match_list_exact, processed_strings, trg_str_seqs)
+            for k, v in zip(score_names, results_exact):
+                if '%s_exact' % (k) not in score_dict:
+                    score_dict['%s_exact' % (k)] = []
+                score_dict['%s_exact' % (k)].append(v)
+            print_out += "\n --- batch exact precision, recall, fscore: " + str(results_exact[0]) + " , " + str(results_exact[1]) + " , " + str(results_exact[2])
 
                     # print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
             print_processed_strings = [" ".join(item) for item in processed_strings]
             print_trg_str_seqs = [" ".join(item) for item in trg_str_seqs]
             print_out += "\n--- PREDICTION: " + " / ".join(print_processed_strings)
             print_out += "\n--- GROUND TRUTH: " + " / ".join(print_trg_str_seqs)
-            print_out += "\n --- total precision, recall, fscore: " + str(np.average(score_dict['precision@5#oneword=-1'])) + " , " +\
-                         str(np.average(score_dict['recall@5#oneword=-1'])) + " , " +\
-                         str(np.average(score_dict['f_score@5#oneword=-1']))
+            print_out += "\n --- total precision, recall, fscore: " + str(np.average(score_dict['precision_exact'])) + " , " +\
+                         str(np.average(score_dict['recall_exact'])) + " , " +\
+                         str(np.average(score_dict['f_score_exact']))
+
+            # soft scores
+            results_soft = evaluate(match_list_soft, processed_strings, trg_str_seqs)
+            for k, v in zip(score_names, results_soft):
+                if '%s_soft' % (k) not in score_dict:
+                    score_dict['%s_soft' % (k)] = []
+                score_dict['%s_soft' % (k)].append(v)
+            print_out += "\n --- batch soft precision, recall, fscore: " + str(results_soft[0]) + " , " + str(results_soft[1]) + " , " + str(results_soft[2])
+
+                    # print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
+            print_processed_strings = [" ".join(item) for item in processed_strings]
+            print_trg_str_seqs = [" ".join(item) for item in trg_str_seqs]
+            print_out += "\n--- PREDICTION: " + " / ".join(print_processed_strings)
+            print_out += "\n--- GROUND TRUTH: " + " / ".join(print_trg_str_seqs)
+            print_out += "\n --- total precision, recall, fscore: " + str(np.average(score_dict['precision_soft'])) + " , " +\
+                         str(np.average(score_dict['recall_soft'])) + " , " +\
+                         str(np.average(score_dict['f_score_soft']))
             logging.info(print_out)
 
             if save_path:
@@ -189,22 +204,19 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 with open(os.path.join(save_path, title + '_detail', str(example_idx) + '_print.txt'), 'w') as f_:
                     f_.write(print_out)
 
-            progbar.update(epoch, example_idx, [('f_score@5#oneword=-1', np.average(score_dict['f_score@5#oneword=-1'])), ('f_score@10#oneword=-1', np.average(score_dict['f_score@10#oneword=-1']))])
+            progbar.update(epoch, example_idx, [('f_score_exact', np.average(score_dict['f_score_exact'])),
+                                                ('f_score_soft', np.average(score_dict['f_score_soft']))])
 
             example_idx += 1
-
-    print('#(f_score@5#oneword=-1)=%d, sum=%f' % (len(score_dict['f_score@5#oneword=-1']), sum(score_dict['f_score@5#oneword=-1'])))
-    print('#(f_score@10#oneword=-1)=%d, sum=%f' % (len(score_dict['f_score@10#oneword=-1']), sum(score_dict['f_score@10#oneword=-1'])))
 
     if save_path:
         # export scores. Each row is scores (precision, recall and f-score) of different way of filtering predictions (how many one-word predictions to keep)
         with open(save_path + os.path.sep + title + '_result.csv', 'w') as result_csv:
             csv_lines = []
-            num_oneword_seq = -1
-            for topk in topk_range:
-                csv_line = '#oneword=%d,@%d' % (num_oneword_seq, topk)
+            for mode in ["exact", "soft"]:
+                csv_line = ""
                 for k in score_names:
-                    csv_line += ',%f' % np.average(score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)])
+                    csv_line += ',%f' % np.average(score_dict['%s_%s' % (k, mode)])
                 csv_lines.append(csv_line + '\n')
 
             result_csv.writelines(csv_lines)

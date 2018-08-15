@@ -342,7 +342,7 @@ def predict_opts(parser):
     parser.add_argument('-num_oneword_seq', type=int, default=10000,
                         help="""Source sequence to decode (one line per
                         sequence)""")
-    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5#oneword=-1', 'f_score@10#oneword=-1'], help="""Default measure to report""")
+    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score_exact', 'f_score_soft'], help="""Default measure to report""")
     # parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5#oneword=-1', 'f_score@10#oneword=-1', 'f_score@5#oneword=1', 'f_score@10#oneword=1'], help="""Default measure to report""")
     # parser.add_argument('-test_data', required=True,
     #                     help="""Source sequence to decode (one line per
