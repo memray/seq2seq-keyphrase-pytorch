@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Python File Template 
+Python File Template
 """
 import json
 import os
@@ -69,10 +69,20 @@ def to_np(x):
     return x.data.cpu().numpy()
 
 
+def pairwise_cosine(m):
+    '''
+    m: h x N
+    '''
+    nom = torch.mm(torch.t(m), m)  # N x N
+    norms = torch.norm(m, p=2, dim=0, keepdim=True)  # 1 x N
+    denom = torch.mm(torch.t(norms), norms)  # N x N
+    return nom / denom  # N x N
+
+
 def orthogonal_penalty(_m, I, l_n_norm=2):
     # _m: h x n
     # I:  n x n
-    m = torch.mm(torch.t(_m), _m)  # n x n
+    m = pairwise_cosine(_m)  # n x n
     return torch.norm((m - I), p=l_n_norm)
 
 
@@ -141,7 +151,6 @@ def get_target_encoder_loss(model, source_representations, target_representation
     loss = loss * coef
     return loss
 
-
 def get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt):
     orth_coef = opt.orthogonal_regularization_lambda
     if orth_coef == 0:
@@ -153,7 +162,7 @@ def get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt):
         seps = []
         for j in range(len(trg_copy_target_np[i])):  # len of target
             if trg_copy_target_np[i][j] == sep_id:
-                seps.append(decoder_outputs[i][j]) 
+                seps.append(decoder_outputs[i][j])
         if len(seps) > 0:
             seps = torch.stack(seps, -1)  # h x n
             identity = torch.eye(seps.size(-1))  # n x n
