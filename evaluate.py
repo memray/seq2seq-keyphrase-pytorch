@@ -164,35 +164,37 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             match_list_soft = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_strings, type="partial")
 
             # exact scores
+            print_out += "\n ===================================================== EXACT"
             results_exact = evaluate(match_list_exact, processed_strings, trg_str_seqs)
             for k, v in zip(score_names, results_exact):
                 if '%s_exact' % (k) not in score_dict:
                     score_dict['%s_exact' % (k)] = []
                 score_dict['%s_exact' % (k)].append(v)
-            print_out += "\n --- batch exact precision, recall, fscore: " + str(results_exact[0]) + " , " + str(results_exact[1]) + " , " + str(results_exact[2])
 
                     # print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
             print_processed_strings = [" ".join(item) for item in processed_strings]
             print_trg_str_seqs = [" ".join(item) for item in trg_str_seqs]
-            print_out += "\n--- PREDICTION: " + " / ".join(print_processed_strings)
-            print_out += "\n--- GROUND TRUTH: " + " / ".join(print_trg_str_seqs)
+            print_out += "\n PREDICTION: " + " / ".join(print_processed_strings)
+            print_out += "\n GROUND TRUTH: " + " / ".join(print_trg_str_seqs)
+            print_out += "\n --- batch precision, recall, fscore: " + str(results_exact[0]) + " , " + str(results_exact[1]) + " , " + str(results_exact[2])
             print_out += "\n --- total precision, recall, fscore: " + str(np.average(score_dict['precision_exact'])) + " , " +\
                          str(np.average(score_dict['recall_exact'])) + " , " +\
                          str(np.average(score_dict['f_score_exact']))
 
             # soft scores
+            print_out += "\n ----------------------------------------------------- SOFT"
             results_soft = evaluate(match_list_soft, processed_strings, trg_str_seqs)
             for k, v in zip(score_names, results_soft):
                 if '%s_soft' % (k) not in score_dict:
                     score_dict['%s_soft' % (k)] = []
                 score_dict['%s_soft' % (k)].append(v)
-            print_out += "\n --- batch soft precision, recall, fscore: " + str(results_soft[0]) + " , " + str(results_soft[1]) + " , " + str(results_soft[2])
 
                     # print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
             print_processed_strings = [" ".join(item) for item in processed_strings]
             print_trg_str_seqs = [" ".join(item) for item in trg_str_seqs]
-            print_out += "\n--- PREDICTION: " + " / ".join(print_processed_strings)
-            print_out += "\n--- GROUND TRUTH: " + " / ".join(print_trg_str_seqs)
+            print_out += "\n PREDICTION: " + " / ".join(print_processed_strings)
+            print_out += "\n GROUND TRUTH: " + " / ".join(print_trg_str_seqs)
+            print_out += "\n --- batch precision, recall, fscore: " + str(results_soft[0]) + " , " + str(results_soft[1]) + " , " + str(results_soft[2])
             print_out += "\n --- total precision, recall, fscore: " + str(np.average(score_dict['precision_soft'])) + " , " +\
                          str(np.average(score_dict['recall_soft'])) + " , " +\
                          str(np.average(score_dict['f_score_soft']))
