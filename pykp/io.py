@@ -48,14 +48,30 @@ torchtext.vocab.Vocab.__setstate__ = __setstate__
 
 
 class KeyphraseDataset(torch.utils.data.Dataset):
-    def __init__(self, examples, word2id, id2word, type='one2many', include_original=False):
-        # keys of matter. `src_oov_map` is for mapping pointed word to dict, `oov_dict` is for determining the dim of predicted logit: dim=vocab_size+max_oov_dict_in_batch
+    def __init__(self, examples, word2id, id2word, type='one2many', include_original=False, shuffle_targets=False):
+        """
+        :param examples:
+        :param word2id:
+        :param id2word:
+        :param type:
+        :param include_original:
+        :param shuffle_targets: shuffle the order of target phrases, to make model be order-invariant
+        """
+        # keys of each data
+        # `src_oov_map` is for mapping pointed word to dict, `oov_dict` is for determining the dim of predicted logit: dim=vocab_size+max_oov_dict_in_batch
         keys = ['src', 'trg', 'trg_copy', 'src_oov', 'oov_dict', 'oov_list']
         if include_original:
             keys = keys + ['src_str', 'trg_str']
         filtered_examples = []
 
         for e in examples:
+            # remove empty lists in trg, trg_copy, trg_str
+            for key in [k for k in keys if k.startswith('trg')]:
+                e[key] = [p for p in e[key] if len(p) > 0]
+            if len(e['trg']) == 0:
+                continue
+
+            # ignore some unnecessary data fields and empty blank trgs
             filtered_example = {}
             for k in keys:
                 filtered_example[k] = e[k]
@@ -73,6 +89,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         self.pad_id = word2id[PAD_WORD]
         self.type = type
         self.include_original = include_original
+        self.shuffle_targets = shuffle_targets
 
     def __getitem__(self, index):
         return self.examples[index]
@@ -80,19 +97,69 @@ class KeyphraseDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.examples)
 
-    def _pad(self, x_raw):
-        x_raw = np.asarray(x_raw)
-        x_lens = [len(x_) for x_ in x_raw]
-        max_length = max(x_lens)  # (deprecated) + 1 to ensure at least one padding appears in the end
-        # x_lens = [x_len + 1 for x_len in x_lens]
-        x = np.array([np.concatenate((x_, [self.pad_id] * (max_length - len(x_)))) for x_ in x_raw])
+    def _pad_1d_sequences(self, sequences, output_dim=None):
+        """
+        Pad all the sequences in x_raw to equal length with pad_id (0)
+        The output dim after padding by default is the max length of each dimension (batch_size, max_len_seq),
+        otherwise it's the specified output_dim (specified_num_seq, specified_len_seq)
+        :param sequences: a list of 1-D integer sequences
+        :param output_dim: a tuple specifying the desired output dimension
+        :return: padded sequences
+        """
+        sequences = np.asarray(sequences)
+        x_lens = [len(x_) for x_ in sequences]
+        max_seq_len = max(x_lens)
+
+        # increase x_lens and max_seq_len to ensure they meet output_dim
+        if output_dim and output_dim[0] > len(x_lens):
+            x_lens.extend([0] * (output_dim[0] - len(x_lens)))
+        if output_dim and output_dim[1] > max_seq_len:
+            max_seq_len = output_dim[1]
+
+        # pad each sequence by concatenating extra PAD
+        x = [np.concatenate((x_, [self.pad_id] * (max_seq_len - len(x_)))) for x_ in sequences]
+        x_mask = [[1] * x_len + [0] * (max_seq_len - x_len) for x_len in x_lens]
+        # pad extra sequences if output_dim is specified
+        if output_dim and output_dim[0] > len(x_lens):
+            x.extend([[self.pad_id] * max_seq_len] * (output_dim[0] - len(x_lens)))
+            x_mask.extend([[0] * max_seq_len] * (output_dim[0] - len(x_lens)))
+        # x = np.asarray(x)
+        # x_mask = np.array(x_mask)
         x = Variable(torch.stack([torch.from_numpy(x_) for x_ in x], 0)).type('torch.LongTensor')
-        x_mask = np.array([[1] * x_len + [0] * (max_length - x_len) for x_len in x_lens])
         x_mask = Variable(torch.stack([torch.from_numpy(m_) for m_ in x_mask], 0))
 
-        assert x.size(1) == max_length
+        assert x.size(0) == len(x_lens)
+        assert x.size(1) == max_seq_len
 
         return x, x_lens, x_mask
+
+    def _pad_2d_sequences(self, list_of_sequences):
+        """
+        To pad a 2d sequences. The *sequences* is a variable-length list and each element is a variable-length list.
+        :param list_of_sequences:  (batch_size, len_list, len_each_seq)
+        :return: A padded tensor:  (batch_size, max_len_list, max_len_seq)
+        """
+        max_len_list = max([len(l) for l in list_of_sequences])
+        max_len_seq = max([[len(seq) for seq in l] for l in list_of_sequences])
+
+        padded_seqs_list = []
+        seqs_len_list = []
+        seqs_mask_list = []
+
+        for sequences in list_of_sequences:
+            padded_seqs, seqs_len, seqs_mask\
+                = self._pad_1d_sequences(sequences,
+                                         output_dim=(max_len_list, max_len_seq))
+            padded_seqs_list.append(padded_seqs)
+            seqs_len_list.append(seqs_len)
+            seqs_mask_list.append(seqs_mask)
+
+        # convert them into tensors
+        padded_seqs_list = Variable(torch.stack([torch.from_numpy(m_) for m_ in padded_seqs_list], 0))
+        seqs_len_list = Variable(torch.stack([torch.from_numpy(m_) for m_ in seqs_len_list], 0))
+        seqs_mask_list = Variable(torch.stack([torch.from_numpy(m_) for m_ in seqs_mask_list], 0))
+
+        return padded_seqs_list, seqs_len_list, seqs_mask_list
 
     def collate_fn_one2one(self, batches):
         '''
@@ -107,11 +174,11 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         trg_copy_target = [b['trg_copy'] + [self.word2id[EOS_WORD]] for b in batches]
         # extended src (unk words are replaced with temporary idx, e.g. 50000, 50001 etc.)
         src_ext = [[self.word2id[BOS_WORD]] + b['src_oov'] + [self.word2id[EOS_WORD]] for b in batches]
-        src, src_lens, src_mask = self._pad(src)
-        trg, _, _ = self._pad(trg)
-        trg_target, _, _ = self._pad(trg_target)
-        trg_copy_target, _, _ = self._pad(trg_copy_target)
-        src_ext, src_ext_lens, src_ext_mask = self._pad(src_ext)
+        src, src_lens, src_mask = self._pad_1d_sequences(src)
+        trg, _, _ = self._pad_1d_sequences(trg)
+        trg_target, _, _ = self._pad_1d_sequences(trg_target)
+        trg_copy_target, _, _ = self._pad_1d_sequences(trg_copy_target)
+        src_ext, src_ext_lens, src_ext_mask = self._pad_1d_sequences(src_ext)
 
         oov_lists = [b['oov_list'] for b in batches]
 
@@ -119,16 +186,26 @@ class KeyphraseDataset(torch.utils.data.Dataset):
 
     def collate_fn_one2many(self, batches):
         # source with oov words replaced by <unk>
-        src = [[self.word2id[BOS_WORD]] + b['src'] + [self.word2id[EOS_WORD]] for b in batches]
+        src_unk = [[self.word2id[BOS_WORD]] + b['src'] + [self.word2id[EOS_WORD]] for b in batches]
         # extended src (oov words are replaced with temporary idx, e.g. 50000, 50001 etc.)
-        src_oov = [[self.word2id[BOS_WORD]] + b['src_oov'] + [self.word2id[EOS_WORD]] for b in batches]
+        src_copy = [[self.word2id[BOS_WORD]] + b['src_oov'] + [self.word2id[EOS_WORD]] for b in batches]
+
+        if self.shuffle_targets:
+            trg_keys = [k for k in batches[0].keys() if k.startswith('trg')]
+            for b in batches:
+                combined = list(zip(*[b[k] for k in trg_keys]))
+                random.shuffle(combined)
+                shuffuled_targets = list(zip(*combined))
+                for trg_key, shuffuled_target in zip(trg_keys, shuffuled_targets):
+                    b[trg_key] = shuffuled_target
+
         # target_input: input to decoder, starts with BOS and oovs are replaced with <unk>
-        trg = [[[self.word2id[BOS_WORD]] + t + [self.word2id[EOS_WORD]] for t in b['trg']] for b in batches]
+        trg_unk = [[[self.word2id[BOS_WORD]] + t + [self.word2id[EOS_WORD]] for t in b['trg']] for b in batches]
 
         # target_for_loss: input to criterion
-        trg_target = [[t + [self.word2id[EOS_WORD]] for t in b['trg']] for b in batches]
-        # target for copy model, oovs are replaced with temporary idx, e.g. 50000, 50001 etc.)
-        trg_copy_target = [[t + [self.word2id[EOS_WORD]] for t in b['trg_copy']] for b in batches]
+        trg_unk_for_loss = [[t + [self.word2id[EOS_WORD]] for t in b['trg']] for b in batches]
+        # target_for_loss for copy model, oovs are replaced with temporary idx, e.g. 50000, 50001 etc.)
+        trg_copy_for_loss = [[t + [self.word2id[EOS_WORD]] for t in b['trg_copy']] for b in batches]
         oov_lists = [b['oov_list'] for b in batches]
 
         # for training, the trg_copy_target_o2o and trg_copy_target_o2m is the final target (no way to uncover really unseen words). for evaluation, the trg_str is the final target.
@@ -137,38 +214,39 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             trg_str = [b['trg_str'] for b in batches]
 
         # sort all the sequences in the order of source lengths, to meet the requirement of pack_padded_sequence
-        src_len_order = np.argsort([len(s) for s in src])[::-1]
-        src = [src[i] for i in src_len_order]
-        src_oov = [src_oov[i] for i in src_len_order]
-        trg = [trg[i] for i in src_len_order]
-        trg_target = [trg_target[i] for i in src_len_order]
-        trg_copy_target = [trg_copy_target[i] for i in src_len_order]
-        oov_lists = [oov_lists[i] for i in src_len_order]
+        ordered_by_src_len = np.argsort([len(s) for s in src_unk])[::-1]
+        src_unk = [src_unk[i] for i in ordered_by_src_len]
+        src_copy = [src_copy[i] for i in ordered_by_src_len]
+        trg_unk = [trg_unk[i] for i in ordered_by_src_len]
+        trg_unk_for_loss = [trg_unk_for_loss[i] for i in ordered_by_src_len]
+        trg_copy_for_loss = [trg_copy_for_loss[i] for i in ordered_by_src_len]
+        oov_lists = [oov_lists[i] for i in ordered_by_src_len]
         if self.include_original:
-            src_str = [src_str[i] for i in src_len_order]
-            trg_str = [trg_str[i] for i in src_len_order]
+            src_str = [src_str[i] for i in ordered_by_src_len]
+            trg_str = [trg_str[i] for i in ordered_by_src_len]
 
         # pad the one2many variables
-        src_o2m, src_o2m_len, _ = self._pad(src)
-        trg_o2m = trg
-        src_oov_o2m, _, _ = self._pad(src_oov)
-        # trg_target_o2m, _, _      = self._pad(trg_target)
-        trg_copy_target_o2m = trg_copy_target
+        src_unk_o2m, src_o2m_len, _ = self._pad_1d_sequences(src_unk)
+        src_copy_o2m, _, _ = self._pad_1d_sequences(src_copy)
+        # pad to be equal number of targets and equal length
+        trg_unk_o2m = self._pad_2d_sequences(trg_unk)
+        trg_unk_for_loss_o2m = self._pad_2d_sequences(trg_unk_for_loss)
+        trg_copy_for_loss_o2m = self._pad_2d_sequences(trg_copy_for_loss)
         oov_lists_o2m = oov_lists
 
-        # unfold the one2many pairs and pad the one2one variables
-        src_o2o, src_o2o_len, _ = self._pad(list(itertools.chain(*[[src[idx]] * len(t) for idx, t in enumerate(trg)])))
-        src_oov_o2o, _, _ = self._pad(list(itertools.chain(*[[src_oov[idx]] * len(t) for idx, t in enumerate(trg)])))
-        trg_o2o, _, _ = self._pad(list(itertools.chain(*[t for t in trg])))
-        trg_target_o2o, _, _ = self._pad(list(itertools.chain(*[t for t in trg_target])))
-        trg_copy_target_o2o, _, _ = self._pad(list(itertools.chain(*[t for t in trg_copy_target])))
-        oov_lists_o2o = list(itertools.chain(*[[oov_lists[idx]] * len(t) for idx, t in enumerate(trg)]))
+        # unfold the one2many pairs to generate the one2one variables
+        src_unk_o2o, src_unk_o2o_len, _ = self._pad_1d_sequences(list(itertools.chain(*[[src_unk[idx]] * len(t) for idx, t in enumerate(trg_unk)])))
+        src_copy_o2o, _, _ = self._pad_1d_sequences(list(itertools.chain(*[[src_copy[idx]] * len(t) for idx, t in enumerate(trg_unk)])))
+        trg_unk_o2o, _, _ = self._pad_1d_sequences(list(itertools.chain(*[t for t in trg_unk])))
+        trg_unk_for_loss_o2o, _, _ = self._pad_1d_sequences(list(itertools.chain(*[t for t in trg_unk_for_loss])))
+        trg_copy_for_loss_o2o, _, _ = self._pad_1d_sequences(list(itertools.chain(*[t for t in trg_copy_for_loss])))
+        oov_lists_o2o = list(itertools.chain(*[[oov_lists[idx]] * len(t) for idx, t in enumerate(trg_unk)]))
 
-        assert (len(src) == len(src_o2m) == len(src_oov_o2m) == len(trg_copy_target_o2m) == len(oov_lists_o2m))
-        assert (sum([len(t) for t in trg]) == len(src_o2o) == len(src_oov_o2o) == len(trg_copy_target_o2o) == len(oov_lists_o2o))
-        assert (src_o2m.size() == src_oov_o2m.size())
-        assert (src_o2o.size() == src_oov_o2o.size())
-        assert ([trg_o2o.size(0), trg_o2o.size(1) - 1] == list(trg_target_o2o.size()) == list(trg_copy_target_o2o.size()))
+        assert (len(src_unk) == len(src_unk_o2m) == len(src_copy_o2m) == len(trg_copy_for_loss_o2m) == len(oov_lists_o2m))
+        assert (sum([len(t) for t in trg_unk]) == len(src_unk_o2o) == len(src_copy_o2o) == len(trg_copy_for_loss_o2o) == len(oov_lists_o2o))
+        assert (src_unk_o2m.size() == src_copy_o2m.size())
+        assert (src_unk_o2o.size() == src_copy_o2o.size())
+        assert ([trg_unk_o2o.size(0), trg_unk_o2o.size(1) - 1] == list(trg_unk_for_loss_o2o.size()) == list(trg_copy_for_loss_o2o.size()))
 
         '''
         for s, s_o2m, t, s_str, t_str in zip(src, src_o2m.data.numpy(), trg, src_str, trg_str):
@@ -190,9 +268,11 @@ class KeyphraseDataset(torch.utils.data.Dataset):
 
         # return two tuples, 1st for one2many and 2nd for one2one (src, src_oov, trg, trg_target, trg_copy_target, oov_lists)
         if self.include_original:
-            return (src_o2m, src_o2m_len, trg_o2m, None, trg_copy_target_o2m, src_oov_o2m, oov_lists_o2m, src_str, trg_str), (src_o2o, src_o2o_len, trg_o2o, trg_target_o2o, trg_copy_target_o2o, src_oov_o2o, oov_lists_o2o)
+            return (src_unk_o2m, src_o2m_len, trg_unk_o2m, trg_unk_for_loss_o2m, trg_copy_for_loss_o2m, src_copy_o2m, oov_lists_o2m, src_str, trg_str), \
+                   (src_unk_o2o, src_unk_o2o_len, trg_unk_o2o, trg_unk_for_loss_o2o, trg_copy_for_loss_o2o, src_copy_o2o, oov_lists_o2o)
         else:
-            return (src_o2m, src_o2m_len, trg_o2m, None, trg_copy_target_o2m, src_oov_o2m, oov_lists_o2m), (src_o2o, src_o2o_len, trg_o2o, trg_target_o2o, trg_copy_target_o2o, src_oov_o2o, oov_lists_o2o)
+            return (src_unk_o2m, src_o2m_len, trg_unk_o2m, trg_unk_for_loss_o2m, trg_copy_for_loss_o2m, src_copy_o2m, oov_lists_o2m), \
+                   (src_unk_o2o, src_unk_o2o_len, trg_unk_o2o, trg_unk_for_loss_o2o, trg_copy_for_loss_o2o, src_copy_o2o, oov_lists_o2o)
 
     def collate_fn_one2seq(self, batches):
         # source with oov words replaced by <unk>
@@ -247,11 +327,11 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             trg_str = [trg_str[i] for i in src_len_order]
 
         # pad the one2many variables
-        src_o2s, src_o2s_len, _ = self._pad(src)
-        trg_o2s, _, _ = self._pad(trg)
-        src_oov_o2s, _, _ = self._pad(src_oov)
-        trg_target_o2s, _, _      = self._pad(trg_target)
-        trg_copy_target_o2s, _, _ = self._pad(trg_copy_target)
+        src_o2s, src_o2s_len, _ = self._pad_1d_sequences(src)
+        trg_o2s, _, _ = self._pad_1d_sequences(trg)
+        src_oov_o2s, _, _ = self._pad_1d_sequences(src_oov)
+        trg_target_o2s, _, _      = self._pad_1d_sequences(trg_target)
+        trg_copy_target_o2s, _, _ = self._pad_1d_sequences(trg_copy_target)
         oov_lists_o2s = oov_lists
 
         assert (len(src) == len(src_o2s) == len(src_oov_o2s) == len(trg_copy_target_o2s) == len(oov_lists_o2s))
@@ -347,11 +427,11 @@ def copyseq_tokenize(text):
 
 
 def tokenize_filter_data(
-        src_trgs_pairs, tokenize, opt, valid_check=False):
+        src_trgs_pairs, tokenize_fn, opt, valid_check=False):
     '''
     tokenize and truncate data, filter examples that exceed the length limit
     :param src_trgs_pairs:
-    :param tokenize:
+    :param tokenize_fn:
     :param src_seq_length:
     :param trg_seq_length:
     :param src_seq_length_trunc:
@@ -363,7 +443,7 @@ def tokenize_filter_data(
         src_filter_flag = False
 
         src = src.lower() if opt.lower else src
-        src_tokens = tokenize(src)
+        src_tokens = tokenize_fn(src)
         if opt.src_seq_length_trunc and len(src) > opt.src_seq_length_trunc:
             src_tokens = src_tokens[:opt.src_seq_length_trunc]
 
@@ -389,7 +469,7 @@ def tokenize_filter_data(
             # FILTER 2: ingore all the phrases that contains strange punctuations, very DIRTY data!
             puncts = re.findall(r'[,_\"<>\(\){}\[\]\?~`!@$%\^=]', trg)
 
-            trg_tokens = tokenize(trg)
+            trg_tokens = tokenize_fn(trg)
 
             if len(puncts) > 0:
                 print('-' * 50)
@@ -444,9 +524,9 @@ def tokenize_filter_data(
     return return_pairs
 
 
-def build_dataset(src_trgs_pairs, word2id, id2word, opt, mode='one2one', include_original=False):
+def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one', include_original=False):
     '''
-    Standard process for copy model
+    Standard process for copy model, parsing strings to tensors
     :param mode: one2one or one2many
     :param include_original: keep the original texts of source and target
     :return:
@@ -460,10 +540,10 @@ def build_dataset(src_trgs_pairs, word2id, id2word, opt, mode='one2one', include
         # if w is not seen in training data vocab (word2id, size could be larger than opt.vocab_size), replace with <unk>
         src_all = [word2id[w] if w in word2id else word2id[UNK_WORD] for w in source]
         # if w's id is larger than opt.vocab_size, replace with <unk>
-        src = [word2id[w] if w in word2id and word2id[w] < opt.vocab_size else word2id[UNK_WORD] for w in source]
+        src_unk = [word2id[w] if w in word2id and word2id[w] < opt.vocab_size else word2id[UNK_WORD] for w in source]
 
         # create a local vocab for the current source text. If there're V words in the vocab of this string, len(itos)=V+2 (including <unk> and <pad>), len(stoi)=V+1 (including <pad>)
-        src_oov, oov_dict, oov_list = extend_vocab_OOV(source, word2id, opt.vocab_size, opt.max_unk_words)
+        src_copy, oov_dict, oov_list = extend_vocab_OOV(source, word2id, opt.vocab_size, opt.max_unk_words)
         examples = []  # for one-to-many
 
         for target in targets:
@@ -473,7 +553,7 @@ def build_dataset(src_trgs_pairs, word2id, id2word, opt, mode='one2one', include
                 example['src_str'] = source
                 example['trg_str'] = target
 
-            example['src'] = src
+            example['src'] = src_unk
             # example['src_input'] = [word2id[BOS_WORD]] + src + [word2id[EOS_WORD]] # target input, requires BOS at the beginning
             # example['src_all']   = src_all
 
@@ -483,7 +563,7 @@ def build_dataset(src_trgs_pairs, word2id, id2word, opt, mode='one2one', include
             # example['trg_all']   = [word2id[w] if w in word2id else word2id[UNK_WORD] for w in target]
             # example['trg_loss']  = example['trg'] + [word2id[EOS_WORD]] # target for loss computation, ignore BOS
 
-            example['src_oov'] = src_oov
+            example['src_oov'] = src_copy
             example['oov_dict'] = oov_dict
             example['oov_list'] = oov_list
             if len(oov_list) > max_oov_len:
@@ -525,14 +605,14 @@ def build_dataset(src_trgs_pairs, word2id, id2word, opt, mode='one2one', include
                 print('trg       \n\t\t[len=%d]: %s' % (len(example['trg']), example['trg']))
                 # print('trg_input \n\t\t[len=%d]: %s' % (len(example['trg_input']), example['trg_input']))
 
-                print('src_oov   \n\t\t[len=%d]: %s' % (len(src_oov), src_oov))
+                print('src_copy \n\t\t[len=%d]: %s' % (len(src_copy), src_copy))
 
                 print('oov_dict         \n\t\t[len=%d]: %s' % (len(oov_dict), oov_dict))
                 print('oov_list         \n\t\t[len=%d]: %s' % (len(oov_list), oov_list))
                 if len(oov_dict) > 0:
                     print('Find OOV in source')
 
-                print('trg_copy         \n\t\t[len=%d]: %s' % (len(trg_copy), trg_copy))
+                print('trg_copy \n\t\t[len=%d]: %s' % (len(trg_copy), trg_copy))
                 # print('trg_copy_input   \n\t\t[len=%d]: %s' % (len(example["trg_copy_input"]), example["trg_copy_input"]))
 
                 if any([w >= opt.vocab_size for w in trg_copy]):
@@ -572,16 +652,19 @@ def build_dataset(src_trgs_pairs, word2id, id2word, opt, mode='one2one', include
     return return_examples
 
 
-def extend_vocab_OOV(source_words, word2id, vocab_size, max_unk_words):
+def extend_vocab_OOV(source_words, word2id, vocab_size, max_oov_words):
     """
-    Map source words to their ids, including OOV words. Also return a list of OOVs in the article.
+    Map source words to their ids, including OOV words. Also return a list of OOVs in a given doc.
     WARNING: if the number of oovs in the source text is more than max_unk_words, ignore and replace them as <unk>
     Args:
-        source_words: list of words (strings)
-        word2id: vocab word2id
-        vocab_size: the maximum acceptable index of word in vocab
+        source_words: a list of words (strings) of a document
+        word2id: global vocab word2id
+        vocab_size: the maximum acceptable index of word in vocab (default 50000)
+        max_oov_words: the maximum acceptable number of unique OOV words in a document,
+                        any OOV words exceed this limit would be replace by unk
     Returns:
-        ids: A list of word ids (integers); OOVs are represented by their temporary article OOV number. If the vocabulary size is 50k and the article has 3 OOVs, then these temporary OOV numbers will be 50000, 50001, 50002.
+        ids: A list of word ids (integers); OOVs are represented by their temporary document OOV number.
+             If the vocabulary size is 50k and the doc has 3 OOVs, then these temporary OOV id will be 50000, 50001, 50002.
         oovs: A list of the OOV words in the article (strings), in the order corresponding to their temporary article OOV numbers.
     """
     src_ext = []
@@ -590,7 +673,7 @@ def extend_vocab_OOV(source_words, word2id, vocab_size, max_unk_words):
         if w in word2id and word2id[w] < vocab_size:  # a OOV can be either outside the vocab or id>=vocab_size
             src_ext.append(word2id[w])
         else:
-            if len(oov_dict) < max_unk_words:
+            if len(oov_dict) < max_oov_words:
                 # e.g. 50000 for the first article OOV, 50001 for the second...
                 word_id = oov_dict.get(w, len(oov_dict) + vocab_size)
                 oov_dict[w] = word_id

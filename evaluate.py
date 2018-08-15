@@ -105,8 +105,8 @@ def if_present_duplicate_phrase(src_str, phrase_seqs):
     return present_index
 
 
-def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_path=None):
-    logging = config.init_logging(title, save_path + '/%s.log' % title)
+def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict_save_path=None):
+    logging = config.init_logging(title, predict_save_path + '/%s.log' % title)
     progbar = Progbar(logger=logging, title=title, target=len(data_loader.dataset.examples), batch_size=data_loader.batch_size,
                       total_examples=len(data_loader.dataset.examples))
 
@@ -176,10 +176,10 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
             # logging.info(print_out)
 
-            if save_path:
-                if not os.path.exists(os.path.join(save_path, title + '_detail')):
-                    os.makedirs(os.path.join(save_path, title + '_detail'))
-                with open(os.path.join(save_path, title + '_detail', str(example_idx) + '_print.txt'), 'w') as f_:
+            if predict_save_path:
+                if not os.path.exists(os.path.join(predict_save_path, title + '_detail')):
+                    os.makedirs(os.path.join(predict_save_path, title + '_detail'))
+                with open(os.path.join(predict_save_path, title + '_detail', str(example_idx) + '_print.txt'), 'w') as f_:
                     f_.write(print_out)
 
             progbar.update(epoch, example_idx, [('f_score@5#oneword=-1', np.average(score_dict['f_score@5#oneword=-1'])), ('f_score@10#oneword=-1', np.average(score_dict['f_score@10#oneword=-1']))])
@@ -189,9 +189,9 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
     print('#(f_score@5#oneword=-1)=%d, sum=%f' % (len(score_dict['f_score@5#oneword=-1']), sum(score_dict['f_score@5#oneword=-1'])))
     print('#(f_score@10#oneword=-1)=%d, sum=%f' % (len(score_dict['f_score@10#oneword=-1']), sum(score_dict['f_score@10#oneword=-1'])))
 
-    if save_path:
+    if predict_save_path:
         # export scores. Each row is scores (precision, recall and f-score) of different way of filtering predictions (how many one-word predictions to keep)
-        with open(save_path + os.path.sep + title + '_result.csv', 'w') as result_csv:
+        with open(predict_save_path + os.path.sep + title + '_result.csv', 'w') as result_csv:
             csv_lines = []
             num_oneword_seq = -1
             for topk in topk_range:
@@ -332,15 +332,15 @@ def evaluate(match_list, predicted_list, true_list, topk=5):
         predicted_list = predicted_list[:topk]
 
     # Micro-Averaged  Method
-    micropk = float(sum(match_list)) / float(len(predicted_list)) if len(predicted_list) > 0 else 0.0
-    micrork = float(sum(match_list)) / float(len(true_list)) if len(true_list) > 0 else 0.0
+    micro_pk = float(sum(match_list)) / float(len(predicted_list)) if len(predicted_list) > 0 else 0.0
+    micro_rk = float(sum(match_list)) / float(len(true_list)) if len(true_list) > 0 else 0.0
 
-    if micropk + micrork > 0:
-        microf1 = float(2 * (micropk * micrork)) / (micropk + micrork)
+    if micro_pk + micro_rk > 0:
+        micro_f1 = float(2 * (micro_pk * micro_rk)) / (micro_pk + micro_rk)
     else:
-        microf1 = 0.0
+        micro_f1 = 0.0
 
-    return micropk, micrork, microf1
+    return micro_pk, micro_rk, micro_f1
 
 
 def f1_score(prediction, ground_truth):

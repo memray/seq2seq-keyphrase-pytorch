@@ -79,7 +79,7 @@ def main():
 
         # import time
         # start_time = time.time()
-        evaluate_beam_search(generator, test_data_loader, opt, title='predict', save_path=opt.pred_path + '/[epoch=%d,batch=%d,total_batch=%d]test_result.csv' % (0, 0, 0))
+        evaluate_beam_search(generator, test_data_loader, opt, title='predict', predict_save_path=opt.pred_path + '/[epoch=%d,batch=%d,total_batch=%d]test_result.csv' % (0, 0, 0))
         # print("--- %s seconds --- Complete Beam Search" % (time.time() - start_time))
 
         # predict_greedy(model, test_data_loader, test_examples, opt)

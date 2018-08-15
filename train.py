@@ -494,8 +494,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
                 # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
                 # valid_history_losses.append(valid_losses)
-                valid_score_dict = evaluate_beam_search(generator, valid_data_loader, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
-                test_score_dict = evaluate_beam_search(generator, test_data_loader, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                valid_score_dict = evaluate_beam_search(generator, valid_data_loader, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                test_score_dict = evaluate_beam_search(generator, test_data_loader, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
 
                 checkpoint_names.append('epoch=%d-batch=%d-total_batch=%d' % (epoch, batch_i, total_batch))
 
@@ -573,14 +573,14 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
 def load_data_vocab(opt, load_train=True):
 
-    logging.info("Loading vocab from disk: %s" % (opt.vocab))
-    word2id, id2word, vocab = torch.load(opt.vocab, 'wb')
+    logging.info("Loading vocab from disk: %s" % (opt.vocab_file))
+    word2id, id2word, vocab = torch.load(opt.vocab_file, 'wb')
 
     # one2one data loader
-    logging.info("Loading train and validate data from '%s'" % opt.data)
+    logging.info("Loading train and validate data from '%s'" % opt.data_path_prefix)
     '''
-    train_one2one  = torch.load(opt.data + '.train.one2one.pt', 'wb')
-    valid_one2one  = torch.load(opt.data + '.valid.one2one.pt', 'wb')
+    train_one2one  = torch.load(opt.data_path_prefix + '.train.one2one.pt', 'wb')
+    valid_one2one  = torch.load(opt.data_path_prefix + '.valid.one2one.pt', 'wb')
 
     train_one2one_dataset = KeyphraseDataset(train_one2one, word2id=word2id)
     valid_one2one_dataset = KeyphraseDataset(valid_one2one, word2id=word2id)
@@ -591,22 +591,42 @@ def load_data_vocab(opt, load_train=True):
     logging.info('======================  Dataset  =========================')
     # one2many data loader
     if load_train:
-        train_one2many = torch.load(opt.data + '.train.one2many.pt', 'wb')
-        train_one2many_dataset = KeyphraseDataset(train_one2many, word2id=word2id, id2word=id2word, type='one2many')
-        train_one2many_loader = KeyphraseDataLoader(dataset=train_one2many_dataset, collate_fn=train_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=1024, max_batch_pair=opt.batch_size, pin_memory=True, shuffle=True)
+        train_one2many = torch.load(opt.data_path_prefix + '.train.one2many.pt', 'wb')
+        # sort by number of targets to speed up training
+        if opt.cascading_model:
+            train_one2many = sorted(train_one2many, key=lambda x: len(x['trg']))
+        train_one2many_dataset = KeyphraseDataset(train_one2many,
+                                                  word2id=word2id, id2word=id2word,
+                                                  type='one2many',
+                                                  shuffle_targets=True)
+        train_one2many_loader = KeyphraseDataLoader(dataset=train_one2many_dataset,
+                                                    collate_fn=train_one2many_dataset.collate_fn_one2many,
+                                                    num_workers=opt.batch_workers,
+                                                    max_batch_example=1024,
+                                                    max_batch_pair=opt.batch_size,
+                                                    pin_memory=True,
+                                                    shuffle=True)
         logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d, #(average examples/batch)=%.3f' % (len(train_one2many_loader.dataset), train_one2many_loader.one2one_number(), len(train_one2many_loader), train_one2many_loader.one2one_number() / len(train_one2many_loader)))
     else:
         train_one2many_loader = None
 
-    valid_one2many = torch.load(opt.data + '.valid.one2many.pt', 'wb')
-    test_one2many = torch.load(opt.data + '.test.one2many.pt', 'wb')
+    valid_one2many = torch.load(opt.data_path_prefix + '.valid.one2many.pt', 'wb')
+    test_one2many = torch.load(opt.data_path_prefix + '.test.one2many.pt', 'wb')
 
     # !important. As it takes too long to do beam search, thus reduce the size of validation and test datasets
     valid_one2many = valid_one2many[:2000]
     test_one2many = test_one2many[:2000]
 
-    valid_one2many_dataset = KeyphraseDataset(valid_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
-    test_one2many_dataset = KeyphraseDataset(test_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
+    valid_one2many_dataset = KeyphraseDataset(valid_one2many,
+                                              word2id=word2id, id2word=id2word,
+                                              type='one2many',
+                                              include_original=True,
+                                              shuffle_targets=False)
+    test_one2many_dataset = KeyphraseDataset(test_one2many,
+                                             word2id=word2id, id2word=id2word,
+                                             type='one2many',
+                                             include_original=True,
+                                             shuffle_targets=False)
 
     """
     # temporary code, exporting test data for Theano model
@@ -618,8 +638,20 @@ def load_data_vocab(opt, load_train=True):
     exit()
     """
 
-    valid_one2many_loader = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.beam_search_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
-    test_one2many_loader = KeyphraseDataLoader(dataset=test_one2many_dataset, collate_fn=test_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.beam_search_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
+    valid_one2many_loader = KeyphraseDataLoader(dataset=valid_one2many_dataset,
+                                                collate_fn=valid_one2many_dataset.collate_fn_one2many,
+                                                num_workers=opt.batch_workers,
+                                                max_batch_example=opt.beam_search_batch_example,
+                                                max_batch_pair=opt.beam_search_batch_size,
+                                                pin_memory=True,
+                                                shuffle=False)
+    test_one2many_loader = KeyphraseDataLoader(dataset=test_one2many_dataset,
+                                               collate_fn=test_one2many_dataset.collate_fn_one2many,
+                                               num_workers=opt.batch_workers,
+                                               max_batch_example=opt.beam_search_batch_example,
+                                               max_batch_pair=opt.beam_search_batch_size,
+                                               pin_memory=True,
+                                               shuffle=False)
 
     opt.word2id = word2id
     opt.id2word = id2word
@@ -738,8 +770,16 @@ def process_opt(opt):
     # fill time into the name
     if opt.exp_path.find('%s') > 0:
         opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
-        opt.pred_path = opt.pred_path % (opt.exp, opt.timemark)
-        opt.model_path = opt.model_path % (opt.exp, opt.timemark)
+
+    # Path to outputs of predictions.
+    setattr(opt, 'pred_path', os.path.join(opt.exp_path, 'pred/'))
+    # Path to checkpoints.
+    setattr(opt, 'model_path', os.path.join(opt.exp_path, 'model/'))
+    # Path to log output.
+    setattr(opt, 'log_path', os.path.join(opt.exp_path, 'log/'))
+    setattr(opt, 'log_file', os.path.join(opt.log_path, 'output.log'))
+    # Path to plots.
+    setattr(opt, 'plot_path', os.path.join(opt.exp_path, 'plot/'))
 
     if not os.path.exists(opt.exp_path):
         os.makedirs(opt.exp_path)
@@ -747,6 +787,10 @@ def process_opt(opt):
         os.makedirs(opt.pred_path)
     if not os.path.exists(opt.model_path):
         os.makedirs(opt.model_path)
+    if not os.path.exists(opt.log_path):
+        os.makedirs(opt.log_path)
+    if not os.path.exists(opt.plot_path):
+        os.makedirs(opt.plot_path)
 
     logging.info('EXP_PATH : ' + opt.exp_path)
 
@@ -778,7 +822,7 @@ def main():
     opt.input_feeding = False
     opt.copy_input_feeding = False
 
-    logging = config.init_logging(logger_name=None, log_file=opt.exp_path + '/output.log', stdout=True)
+    logging = config.init_logging(logger_name=None, log_file=opt.exp_path + '/output.log', redirect_to_stdout=False)
 
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]

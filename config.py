@@ -6,7 +6,7 @@ import sys
 import time
 
 
-def init_logging(logger_name, log_file, stdout=False):
+def init_logging(logger_name, log_file, redirect_to_stdout=False):
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s',
                                   datefmt='%m/%d/%Y %H:%M:%S'   )
 
@@ -23,7 +23,7 @@ def init_logging(logger_name, log_file, stdout=False):
     logger.addHandler(fh)
     logger.setLevel(logging.INFO)
 
-    if stdout:
+    if redirect_to_stdout:
         ch = logging.StreamHandler(sys.stdout)
         ch.setFormatter(formatter)
         ch.setLevel(logging.INFO)
@@ -165,10 +165,10 @@ def preprocess_opts(parser):
 
 def train_opts(parser):
     # Model loading/saving options
-    parser.add_argument('-data', required=True,
+    parser.add_argument('-data_path_prefix', required=True,
                         help="""Path prefix to the ".train.pt" and
                         ".valid.pt" file path from preprocess.py""")
-    parser.add_argument('-vocab', required=True,
+    parser.add_argument('-vocab_file', required=True,
                         help="""Path prefix to the ".vocab.pt"
                         file path from preprocess.py""")
 
@@ -291,6 +291,7 @@ def train_opts(parser):
     parser.add_argument('-timemark', type=str, default=timemark,
                         help="Save checkpoint at this interval.")
 
+    # output setting
     parser.add_argument('-save_model_every', type=int, default=2000,
                         help="Save checkpoint at this interval.")
 
@@ -299,11 +300,7 @@ def train_opts(parser):
     parser.add_argument('-exp', type=str, default="stackexchange",
                         help="Name of the experiment for logging.")
     parser.add_argument('-exp_path', type=str, default="exp/%s.%s",
-                        help="Path of experiment log/plot.")
-    parser.add_argument('-pred_path', type=str, default="pred/%s.%s",
-                        help="Path of outputs of predictions.")
-    parser.add_argument('-model_path', type=str, default="model/%s.%s",
-                        help="Path of checkpoints.")
+                        help="Root path to experiment log/plot/checkpoints.")
 
     # beam search setting
     parser.add_argument('-beam_search_batch_example', type=int, default=8,
@@ -328,40 +325,3 @@ def predict_opts(parser):
                         help="""Source sequence to decode (one line per
                         sequence)""")
     parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5#oneword=-1', 'f_score@10#oneword=-1'], help="""Default measure to report""")
-    # parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5#oneword=-1', 'f_score@10#oneword=-1', 'f_score@5#oneword=1', 'f_score@10#oneword=1'], help="""Default measure to report""")
-    # parser.add_argument('-test_data', required=True,
-    #                     help="""Source sequence to decode (one line per
-    #                     sequence)""")
-    # parser.add_argument('-save_data', required=True,
-    #                     help="Output file for the prepared test data")
-    # parser.add_argument('-model_path', required=True,
-    #                     help='Path to model .pt file')
-    # parser.add_argument('-vocab', required=True,
-    #                     help="""Path prefix to the ".vocab.pt"
-    #                     file path from preprocess.py""")
-    # parser.add_argument('-output', default='pred.txt',
-    #                     help="""Path to output the predictions (each line will
-    #                     be the decoded sequence""")
-    # parser.add_argument('-replace_unk', action="store_true",
-    #                     help="""Replace the generated UNK tokens with the
-    #                     source token that had highest attention weight. If
-    #                     phrase_table is provided, it will lookup the
-    #                     identified source token and give the corresponding
-    #                     target token. If it is not provided(or the identified
-    #                     source token does not exist in the table) then it
-    #                     will copy the source token""")
-    # parser.add_argument('-verbose', action="store_true",
-    #                     help='Print scores and predictions for each sentence')
-    # parser.add_argument('-attn_debug', action="store_true",
-    #                     help='Print best attn for each word')
-    # parser.add_argument('-dump_beam', type=str, default="",
-    #                     help='File to dump beam information to.')
-    # parser.add_argument('-n_best', type=int, default=1,
-    #                     help="""If verbose is set, will output the n_best
-    #                     decoded sentences""")
-    # GPU
-    # parser.add_argument('-gpuid', default=[0], nargs='+', type=int,
-    #                     help="Use CUDA on the listed devices.")
-    # parser.add_argument('-seed', type=int, default=9527,
-    #                     help="""Random seed used for the experiments
-    #                     reproducibility.""")
