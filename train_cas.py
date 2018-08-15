@@ -79,11 +79,23 @@ def pairwise_cosine(m):
     return nom / denom  # N x N
 
 
-def orthogonal_penalty(_m, I, l_n_norm=2):
+def orthogonal_penalty(_m, I, l_n_norm=2, mode='vanilla'):
     # _m: h x n
     # I:  n x n
-    m = pairwise_cosine(_m)  # n x n
-    return torch.norm((m - I), p=l_n_norm)
+    assert mode in ['vanilla', 'ignore_diagonal', 'cosine']
+
+    if 'cosine' == mode:
+        m = pairwise_cosine(_m)  # n x n
+    else:  # inner prod
+        m = torch.mm(torch.t(_m), _m)
+
+    if 'ignore_diagonal' == mode:
+        # zero out diagonal
+        m *= 1.0 - I
+    else:
+        # for vanilla and cosine: distance from identity
+        m -= I
+    return torch.norm(m, p=l_n_norm)
 
 
 class ReplayMemory(object):
@@ -168,7 +180,7 @@ def get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt):
             identity = torch.eye(seps.size(-1))  # n x n
             if torch.cuda.is_available():
                 identity = identity.cuda()
-            penalty = orthogonal_penalty(seps, identity, 2)  # 1
+            penalty = orthogonal_penalty(seps, identity, l_n_norm=2, mode=opt.orthogonal_metric)  # 1
             penalties.append(penalty)
 
     if len(penalties) > 0:
