@@ -244,7 +244,7 @@ def train_opts(parser):
                         help="""0: ori, 1: running average as baseline""")
     parser.add_argument('-rl_start_epoch', default=2, type=int,
                         help="""from which epoch rl training starts""")
-    parser.add_argument('-n_negative_samples', default=5, type=int,
+    parser.add_argument('-n_negative_samples', default=20, type=int,
                         help="""how many negative samples""")
 
 
@@ -255,7 +255,7 @@ def train_opts(parser):
                         help="""target encoder lambda""")
     parser.add_argument('-orthogonal_regularization_lambda', default=0.0, type=float,
                         help="""target encoder lambda""")
-    parser.add_argument('-replay_buffer_capacity', default=500, type=int,
+    parser.add_argument('-replay_buffer_capacity', default=100, type=int,
                         help="""replay buffer lambda""")
 
 
