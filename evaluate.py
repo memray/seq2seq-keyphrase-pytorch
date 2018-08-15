@@ -170,13 +170,15 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                     if '%s@%d#oneword=%d' % (k, topk, num_oneword_seq) not in score_dict:
                         score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)] = []
                     score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)].append(v)
+                if topk == 10:
+                    print_out += "\n --- batch precision, recall, fscore: " + str(results[0]) + " , " + str(results[1]) + " , " + str(results[2])
 
                     # print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
             print_processed_strings = [" ".join(item) for item in processed_strings]
             print_trg_str_seqs = [" ".join(item) for item in trg_str_seqs]
             print_out += "\n--- PREDICTION: " + " / ".join(print_processed_strings)
             print_out += "\n--- GROUND TRUTH: " + " / ".join(print_trg_str_seqs)
-            print_out += "\n --- precision, recall, fscore: " + str(np.average(score_dict['precision@5#oneword=-1'])) + " , " +\
+            print_out += "\n --- total precision, recall, fscore: " + str(np.average(score_dict['precision@5#oneword=-1'])) + " , " +\
                          str(np.average(score_dict['recall@5#oneword=-1'])) + " , " +\
                          str(np.average(score_dict['f_score@5#oneword=-1']))
             logging.info(print_out)
