@@ -174,7 +174,8 @@ def get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt):
         seps = []
         for j in range(len(trg_copy_target_np[i])):  # len of target
             if trg_copy_target_np[i][j] == sep_id:
-                seps.append(decoder_outputs[i][j])
+                # j + 1 won't result in out of bound since sep cannot be the last word in target sequence
+                seps.append(decoder_outputs[i][j + opt.orthorgonal_sep_offset])
         if len(seps) > 0:
             seps = torch.stack(seps, -1)  # h x n
             identity = torch.eye(seps.size(-1))  # n x n
