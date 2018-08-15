@@ -116,8 +116,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
     for i, batch in enumerate(data_loader):
 
-        one2many_batch, one2one_batch = batch
-        src_list, src_len, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
+        one2many_batch, _ = batch
+        src_list, src_len, _, _, _, _, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
 
         if torch.cuda.is_available():
             src_list = src_list.cuda()
@@ -140,7 +140,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         '''
         process each example in current batch
         '''
-        for src, src_str, trg, trg_str_seqs, trg_copy, pred_seq, oov in zip(src_list, src_str_list, trg_list, trg_str_list, trg_copy_target_list, best_pred_seq, oov_list):
+        for src_str, trg_str_seqs, pred_seq, oov in zip(src_str_list, trg_str_list, best_pred_seq, oov_list):
             # logging.info('======================  %d =========================' % (example_idx))
             print_out = ''
             # print_out += '[Source][%d]: %s \n' % (len(src_str), ' '.join(src_str))

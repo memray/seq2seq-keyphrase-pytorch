@@ -39,6 +39,11 @@ def model_opts(parser):
     # Embedding Options
     parser.add_argument('-word_vec_size', type=int, default=300,
                         help='Word embedding for both.')
+    parser.add_argument('-idx_vocab_size', type=int, default=30,
+                        help='index vocab size.')
+    parser.add_argument('-idx_emb_dim', type=int, default=30,
+                        help='index embedding.')
+
 
     parser.add_argument('-position_encoding', action='store_true',
                         help='Use a sin to mark relative words positions.')
