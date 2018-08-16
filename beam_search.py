@@ -27,14 +27,19 @@ import logging
 from torch.distributions import Categorical
 
 
-def split_list(seq, delimiters):    
-    group = []    
-    for num in seq:
-        if num not in delimiters:
-            group.append(num)
-        elif group:
-            yield group
-            group = []
+def split_list(seq, delimiters):
+    result = []
+    group = []
+    for e in seq:
+        if e in delimiters:  # found delimiter
+            if group:  # ignore empty groups (delimiter at beginning or after another delimiter)
+                result.append(group)
+                group = []  # start new accumulator
+        else: 
+            group.append(e)
+    if group:  # Handle last group
+        result.append(group)
+    return result
 
 
 class Sequence(object):
@@ -822,12 +827,13 @@ class SequenceGenerator(object):
                         # if w has appeared before, ignore current hypothese
                         # if w in partial_seq.vocab:
                         #     continue
-                        if partial_seq.score > 0 and w in [self.sep_id, self.eos_id]:  # not new sent, greedy!
-                            temp_sent = copy.copy(partial_seq.sentence)
-                            kps = list(split_list(temp_sent, delimiters=[self.sep_id]))
-                            kps = [str(item) for item in kps]
-                            if len(kps) != len(set(kps)):
-                                continue
+
+                        if partial_seq.score != 0 and partial_seq.sentence[-1] == self.sep_id: # not new sent, greedy!
+                            kps = split_list(partial_seq.sentence, delimiters=[self.sep_id])
+                            kps = [item[0] for item in kps]
+                            if w in kps:
+                                if np.random.choice([0, 1], p=[0.25, 0.75]) == 1:
+                                    continue
 
                         if partial_seq.score == 0:  # new sent
                             new_sent = []
