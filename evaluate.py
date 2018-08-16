@@ -235,13 +235,13 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             assert len(filtered_pred_seq) == len(filtered_pred_str_seqs) == len(filtered_pred_score) == len(match_list_exact) == len(match_list_soft)
 
             print_out += "\n ======================================================="
-            print_pred_seqs = [" ".join(item) for item in filtered_pred_seq]
+            print_pred_str_seqs = [" ".join(item) for item in filtered_pred_str_seqs]
             print_trg_str_seqs = [" ".join(item) for item in trg_str_seqs]
-            print_out += "\n PREDICTION: " + " / ".join(print_pred_seqs)
+            print_out += "\n PREDICTION: " + " / ".join(print_pred_str_seqs)
             print_out += "\n GROUND TRUTH: " + " / ".join(print_trg_str_seqs)
 
             for topk in topk_range:
-                results_exact = evaluate(match_list_exact, filtered_pred_seq, trg_str_seqs, topk=topk)
+                results_exact = evaluate(match_list_exact, filtered_pred_str_seqs, trg_str_seqs, topk=topk)
                 for k, v in zip(score_names, results_exact):
                     if '%s@%d_exact' % (k, topk) not in score_dict:
                         score_dict['%s@%d_exact' % (k, topk)] = []
@@ -254,7 +254,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                             str(np.average(score_dict['f_score@%d_exact' % (topk)]))
 
             for topk in topk_range:
-                results_soft = evaluate(match_list_soft, filtered_pred_seq, trg_str_seqs, topk=topk)
+                results_soft = evaluate(match_list_soft, filtered_pred_str_seqs, trg_str_seqs, topk=topk)
                 for k, v in zip(score_names, results_soft):
                     if '%s@%d_soft' % (k, topk) not in score_dict:
                         score_dict['%s@%d_soft' % (k, topk)] = []
