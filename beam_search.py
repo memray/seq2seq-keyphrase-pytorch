@@ -122,6 +122,10 @@ class TopN_heap(object):
         """
         assert self._data is not None
         data = self._data
+        for i in range(len(data)):
+            if len(data[i].sentence) == 0:
+                continue
+            data[i].score = data[i].score / float(len(data[i].sentence))
         if sort:
             data.sort(reverse=True)
         return data
@@ -886,11 +890,10 @@ class SequenceGenerator(object):
 
                 partial_sequences[batch_i] = new_partial_sequences
 
-                print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (
-                    batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
-
-            print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (current_len, batch_size, sum(
-                [len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
+                # print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (
+                #     batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
+            # print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (current_len, batch_size, sum(
+            #     [len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
 
         for batch_i in range(batch_size):
             if len(complete_sequences[batch_i]) == 0:
