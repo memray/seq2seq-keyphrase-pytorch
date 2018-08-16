@@ -266,8 +266,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                             str(np.average(score_dict['recall@%d_soft' % (topk)])) + " , " +\
                             str(np.average(score_dict['f_score@%d_soft' % (topk)]))
 
-
-            # logging.info(print_out)
+            logging.info(print_out)
 
             if save_path:
                 if not os.path.exists(os.path.join(save_path, title + '_detail')):
@@ -295,6 +294,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             csv_lines = []
             for mode in ["exact", "soft"]:
                 for topk in topk_range:
+                    csv_line = ""
                     for k in score_names:
                         csv_line += ',%f' % np.average(score_dict['%s@%d_%s' % (k, topk, mode)])
                     csv_lines.append(csv_line + '\n')
