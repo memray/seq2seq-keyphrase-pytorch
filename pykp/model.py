@@ -178,6 +178,9 @@ class Attention(nn.Module):
             # add a large negative number to mask tensors
             neg_mask = -1e10 * torch.ne(encoder_mask.unsqueeze(1).expand(batch_size, trg_len, src_len),
                                 Variable(torch.ones(attn_energies.shape).type(torch.LongTensor))).type(torch.FloatTensor)
+            if torch.cuda.is_available():
+                neg_mask = neg_mask.cuda()
+
             attn_energies = attn_energies + neg_mask  # (batch_size, trg_len, src_len)
             attn_weights = self.softmax(attn_energies)  # (batch_size, trg_len, src_len)
 
