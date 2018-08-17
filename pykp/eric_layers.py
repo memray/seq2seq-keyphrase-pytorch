@@ -182,6 +182,8 @@ class FastUniLSTM(torch.nn.Module):
                 mask:       batch x time
         output: encoding:   batch x time x hidden[-1]
         """
+        
+        x = x.transpose(0, 1)
         # Compute sorted sequence lengths
         batch_size = x.size(0)
         lengths = mask.data.eq(1).long().sum(1).squeeze()
@@ -249,4 +251,6 @@ class FastUniLSTM(torch.nn.Module):
             output = torch.cat([output, torch.autograd.Variable(padding)], 1)
 
         output = output.contiguous() * mask.unsqueeze(-1)
+        
+        x = x.transpose(0, 1)
         return output, mask, last_states

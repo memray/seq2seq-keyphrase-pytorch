@@ -11,7 +11,7 @@ import numpy as np
 import random
 
 import pykp
-from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat
+from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, FastUniLSTM
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -295,14 +295,9 @@ class Seq2SeqLSTMAttention(nn.Module):
             dropout=self.dropout
         )
 
-        self.decoder = nn.LSTM(
-            input_size=self.emb_dim if self.target_encoder_merge_mode == "mean" else self.emb_dim + self.target_encoder_dim,
-            hidden_size=self.trg_hidden_dim,
-            num_layers=self.nlayers_trg,
-            bidirectional=False,
-            batch_first=False,
-            dropout=self.dropout
-        )
+        self.decoder = FastUniLSTM(input_size=self.emb_dim if self.target_encoder_merge_mode == "mean" else self.emb_dim + self.target_encoder_dim,
+                                   hidden_size=self.trg_hidden_dim,
+                                   dropout_between_rnn_layers=self.dropout)
         
         self.target_encoder = nn.LSTM(
             input_size=self.emb_dim,
@@ -553,8 +548,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         decoder_input = self.target_encoding_merger([trg_enc_h, trg_emb])
 
         # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
-        decoder_outputs, _ = self.decoder(
-            decoder_input, init_hidden
+        decoder_outputs, _, _ = self.decoder(
+            decoder_input, trg_mask, init_hidden
         )
 
         '''
@@ -684,7 +679,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return do_tf
 
-    def generate(self, trg_input, dec_hidden, enc_context, trg_enc_hidden, ctx_mask=None, src_map=None, oov_list=None, max_len=1, return_attention=False):
+    def generate(self, trg_input, dec_hidden, enc_context, trg_enc_hidden, ctx_mask=None, trg_mask=None, src_map=None, oov_list=None, max_len=1, return_attention=False):
         '''
         Given the initial input, state and the source contexts, return the top K restuls for each time step
         :param trg_input: just word indexes of target texts (usually zeros indicating BOS <s>)
@@ -731,8 +726,8 @@ class Seq2SeqLSTMAttention(nn.Module):
             dec_input = self.target_encoding_merger([trg_enc_h, trg_emb])
 
             # (seq_len, batch_size, hidden_size * num_directions)
-            decoder_output, dec_hidden = self.decoder(
-                dec_input, dec_hidden
+            decoder_output, _, dec_hidden = self.decoder(
+                dec_input, trg_mask, dec_hidden
             )
 
             # Get the h_tilde (hidden after attention) and attention weights
