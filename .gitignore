@@ -1,4 +1,5 @@
 # large files
+/source_data/
 data/*
 slurm_output/*
 model/*

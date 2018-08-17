@@ -88,7 +88,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         self.id2word = id2word
         self.pad_id = word2id[PAD_WORD]
         self.type = type
-        self.include_original = include_original
+        self.include_original_string = include_original
         self.shuffle_targets = shuffle_targets
 
     def __getitem__(self, index):
@@ -108,28 +108,31 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         """
         sequences = np.asarray(sequences)
         x_lens = [len(x_) for x_ in sequences]
-        max_seq_len = max(x_lens)
+        num_seq = len(x_lens)
+        max_len_seq = max(x_lens)
 
         # increase x_lens and max_seq_len to ensure they meet output_dim
-        if output_dim and output_dim[0] > len(x_lens):
-            x_lens.extend([0] * (output_dim[0] - len(x_lens)))
-        if output_dim and output_dim[1] > max_seq_len:
-            max_seq_len = output_dim[1]
+        if output_dim and output_dim[1] > max_len_seq:
+            max_len_seq = output_dim[1]
 
         # pad each sequence by concatenating extra PAD
-        x = [np.concatenate((x_, [self.pad_id] * (max_seq_len - len(x_)))) for x_ in sequences]
-        x_mask = [[1] * x_len + [0] * (max_seq_len - x_len) for x_len in x_lens]
+        x = [np.concatenate((x_, [self.pad_id] * (max_len_seq - len(x_)))) for x_ in sequences]
+        x_mask = [[1] * x_len + [0] * (max_len_seq - x_len) for x_len in x_lens]
+
         # pad extra sequences if output_dim is specified
-        if output_dim and output_dim[0] > len(x_lens):
-            x.extend([[self.pad_id] * max_seq_len] * (output_dim[0] - len(x_lens)))
-            x_mask.extend([[0] * max_seq_len] * (output_dim[0] - len(x_lens)))
-        # x = np.asarray(x)
-        # x_mask = np.array(x_mask)
+        if output_dim and output_dim[0] > num_seq:
+            x.extend([[self.pad_id] * max_len_seq] * (output_dim[0] - num_seq))
+            x_mask.extend([[0] * max_len_seq] * (output_dim[0] - num_seq))
+            x_lens.extend([0] * (output_dim[0] - num_seq))
+            num_seq = output_dim[0]
+
+        x = np.asarray(x, dtype=np.int64)
+        x_mask = np.array(x_mask, dtype=np.int64)
         x = Variable(torch.stack([torch.from_numpy(x_) for x_ in x], 0)).type('torch.LongTensor')
         x_mask = Variable(torch.stack([torch.from_numpy(m_) for m_ in x_mask], 0))
 
-        assert x.size(0) == len(x_lens)
-        assert x.size(1) == max_seq_len
+        assert x.size(0) == num_seq
+        assert x.size(1) == max_len_seq
 
         return x, x_lens, x_mask
 
@@ -137,10 +140,13 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         """
         To pad a 2d sequences. The *sequences* is a variable-length list and each element is a variable-length list.
         :param list_of_sequences:  (batch_size, len_list, len_each_seq)
-        :return: A padded tensor:  (batch_size, max_len_list, max_len_seq)
+        :return:
+            padded_seqs_list: A padded tensor (batch_size, max_len_list, max_len_seq)
+            seqs_mask_list: A padded mask tensor (batch_size, max_len_list, max_len_seq)
+            seqs_len_list: A list showing the real length of each sequence (batch_size, max_num_seq)
         """
-        max_len_list = max([len(l) for l in list_of_sequences])
-        max_len_seq = max([[len(seq) for seq in l] for l in list_of_sequences])
+        max_num_seq = max([len(l) for l in list_of_sequences])
+        max_len_seq = max(np.concatenate([[len(seq) for seq in l] for l in list_of_sequences]))
 
         padded_seqs_list = []
         seqs_len_list = []
@@ -149,15 +155,14 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         for sequences in list_of_sequences:
             padded_seqs, seqs_len, seqs_mask\
                 = self._pad_1d_sequences(sequences,
-                                         output_dim=(max_len_list, max_len_seq))
+                                         output_dim=(max_num_seq, max_len_seq))
             padded_seqs_list.append(padded_seqs)
             seqs_len_list.append(seqs_len)
             seqs_mask_list.append(seqs_mask)
 
         # convert them into tensors
-        padded_seqs_list = Variable(torch.stack([torch.from_numpy(m_) for m_ in padded_seqs_list], 0))
-        seqs_len_list = Variable(torch.stack([torch.from_numpy(m_) for m_ in seqs_len_list], 0))
-        seqs_mask_list = Variable(torch.stack([torch.from_numpy(m_) for m_ in seqs_mask_list], 0))
+        padded_seqs_list = torch.stack(padded_seqs_list, 0) # (batch_size, max_num_seq, max_len_seq)
+        seqs_mask_list = torch.stack(seqs_mask_list, 0) # (batch_size, max_num_seq, max_len_seq)
 
         return padded_seqs_list, seqs_len_list, seqs_mask_list
 
@@ -209,7 +214,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         oov_lists = [b['oov_list'] for b in batches]
 
         # for training, the trg_copy_target_o2o and trg_copy_target_o2m is the final target (no way to uncover really unseen words). for evaluation, the trg_str is the final target.
-        if self.include_original:
+        if self.include_original_string:
             src_str = [b['src_str'] for b in batches]
             trg_str = [b['trg_str'] for b in batches]
 
@@ -221,23 +226,27 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         trg_unk_for_loss = [trg_unk_for_loss[i] for i in ordered_by_src_len]
         trg_copy_for_loss = [trg_copy_for_loss[i] for i in ordered_by_src_len]
         oov_lists = [oov_lists[i] for i in ordered_by_src_len]
-        if self.include_original:
+        if self.include_original_string:
             src_str = [src_str[i] for i in ordered_by_src_len]
             trg_str = [trg_str[i] for i in ordered_by_src_len]
 
         # pad the one2many variables
-        src_unk_o2m, src_o2m_len, _ = self._pad_1d_sequences(src_unk)
+        src_unk_o2m, src_o2m_len, src_o2m_mask = self._pad_1d_sequences(src_unk)
         src_copy_o2m, _, _ = self._pad_1d_sequences(src_copy)
+
         # pad to be equal number of targets and equal length
-        trg_unk_o2m = self._pad_2d_sequences(trg_unk)
-        trg_unk_for_loss_o2m = self._pad_2d_sequences(trg_unk_for_loss)
-        trg_copy_for_loss_o2m = self._pad_2d_sequences(trg_copy_for_loss)
+        trg_unk_o2m, trg_o2m_len, trg_o2m_mask = self._pad_2d_sequences(trg_unk)
+        trg_unk_for_loss_o2m, _, _ = self._pad_2d_sequences(trg_unk_for_loss)
+        trg_copy_for_loss_o2m, _, _ = self._pad_2d_sequences(trg_copy_for_loss)
         oov_lists_o2m = oov_lists
 
         # unfold the one2many pairs to generate the one2one variables
-        src_unk_o2o, src_unk_o2o_len, _ = self._pad_1d_sequences(list(itertools.chain(*[[src_unk[idx]] * len(t) for idx, t in enumerate(trg_unk)])))
+        src_unk_o2o, src_o2o_len, src_o2o_mask = self._pad_1d_sequences(
+            list(itertools.chain(*
+                                 [[src_unk[idx]] * len(t) for idx, t in enumerate(trg_unk)]
+                                 )))
         src_copy_o2o, _, _ = self._pad_1d_sequences(list(itertools.chain(*[[src_copy[idx]] * len(t) for idx, t in enumerate(trg_unk)])))
-        trg_unk_o2o, _, _ = self._pad_1d_sequences(list(itertools.chain(*[t for t in trg_unk])))
+        trg_unk_o2o, trg_o2o_len, trg_o2o_mask = self._pad_1d_sequences(list(itertools.chain(*[t for t in trg_unk])))
         trg_unk_for_loss_o2o, _, _ = self._pad_1d_sequences(list(itertools.chain(*[t for t in trg_unk_for_loss])))
         trg_copy_for_loss_o2o, _, _ = self._pad_1d_sequences(list(itertools.chain(*[t for t in trg_copy_for_loss])))
         oov_lists_o2o = list(itertools.chain(*[[oov_lists[idx]] * len(t) for idx, t in enumerate(trg_unk)]))
@@ -248,31 +257,48 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         assert (src_unk_o2o.size() == src_copy_o2o.size())
         assert ([trg_unk_o2o.size(0), trg_unk_o2o.size(1) - 1] == list(trg_unk_for_loss_o2o.size()) == list(trg_copy_for_loss_o2o.size()))
 
+        o2m_data_dict = {}
+        o2m_data_dict['src_unk'] = src_unk_o2m
+        o2m_data_dict['src_copy'] = src_copy_o2m
+        o2m_data_dict['src_len'] = src_o2m_len
+        o2m_data_dict['src_mask'] = src_o2m_mask
+
+        o2m_data_dict['trg_unk'] = trg_unk_o2m
+        o2m_data_dict['trg_len'] = trg_o2m_len
+        o2m_data_dict['trg_mask'] = trg_o2m_mask
+        o2m_data_dict['trg_unk_for_loss'] = trg_unk_for_loss_o2m
+        o2m_data_dict['trg_copy_for_loss'] = trg_copy_for_loss_o2m
+
+        o2m_data_dict['oov_lists'] = oov_lists_o2m
+
+        if self.include_original_string:
+            o2m_data_dict['src_str'] = src_str
+            o2m_data_dict['trg_str'] = trg_str
+
+        o2o_data_dict = {}
+        o2o_data_dict['src_unk'] = src_unk_o2o
+        o2o_data_dict['src_copy'] = src_copy_o2o
+        o2o_data_dict['src_len'] = src_o2o_len
+        o2o_data_dict['src_mask'] = src_o2o_mask
+
+        o2o_data_dict['trg_unk'] = trg_unk_o2o
+        o2o_data_dict['trg_len'] = trg_o2o_len
+        o2o_data_dict['trg_mask'] = trg_o2o_mask
+        o2o_data_dict['trg_unk_for_loss'] = trg_unk_for_loss_o2o
+        o2o_data_dict['trg_copy_for_loss'] = trg_copy_for_loss_o2o
+
+        o2o_data_dict['oov_lists'] = oov_lists_o2o
+
+        # return two dicts, 1st for one2many and 2nd for one2one
+        return o2m_data_dict, o2o_data_dict
         '''
-        for s, s_o2m, t, s_str, t_str in zip(src, src_o2m.data.numpy(), trg, src_str, trg_str):
-            print('=' * 30)
-            print('[Source Str] %s' % s_str)
-            print('[Target Str] %s' % str(t_str))
-            print('[Source]     %s' % str([self.id2word[w] for w in s]))
-            print('[Source O2M] %s' % str([self.id2word[w] for w in s_o2m]))
-            print('[Targets]    %s' % str([[self.id2word[w] for w in tt] for tt in t]))
-
-
-        for s, s_o2o, t, t_o2o in zip(list(itertools.chain(*[[src[idx]]*len(t) for idx,t in enumerate(trg)])), src_o2o.data.numpy(), list(itertools.chain(*[t for t in trg])), trg_o2o.data.numpy()):
-            print('=' * 30)
-            print('[Source]        %s' % str([self.id2word[w] for w in s]))
-            print('[Target]        %s' % str([self.id2word[w] for w in t]))
-            print('[Source O2O]    %s' % str([self.id2word[w] for w in s_o2o]))
-            print('[Target O2O]    %s' % str([self.id2word[w] for w in t_o2o]))
-        '''
-
-        # return two tuples, 1st for one2many and 2nd for one2one (src, src_oov, trg, trg_target, trg_copy_target, oov_lists)
-        if self.include_original:
+        if self.include_original_string:
             return (src_unk_o2m, src_o2m_len, trg_unk_o2m, trg_unk_for_loss_o2m, trg_copy_for_loss_o2m, src_copy_o2m, oov_lists_o2m, src_str, trg_str), \
                    (src_unk_o2o, src_unk_o2o_len, trg_unk_o2o, trg_unk_for_loss_o2o, trg_copy_for_loss_o2o, src_copy_o2o, oov_lists_o2o)
         else:
             return (src_unk_o2m, src_o2m_len, trg_unk_o2m, trg_unk_for_loss_o2m, trg_copy_for_loss_o2m, src_copy_o2m, oov_lists_o2m), \
                    (src_unk_o2o, src_unk_o2o_len, trg_unk_o2o, trg_unk_for_loss_o2o, trg_copy_for_loss_o2o, src_copy_o2o, oov_lists_o2o)
+        '''
 
     def collate_fn_one2seq(self, batches):
         # source with oov words replaced by <unk>
@@ -310,7 +336,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         oov_lists = [b['oov_list'] for b in batches]
 
         # for training, the trg_copy_target_o2o and trg_copy_target_o2m is the final target (no way to uncover really unseen words). for evaluation, the trg_str is the final target.
-        if self.include_original:
+        if self.include_original_string:
             src_str = [b['src_str'] for b in batches]
             trg_str = [b['trg_str'] for b in batches]
 
@@ -322,7 +348,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         trg_target = [trg_target[i] for i in src_len_order]
         trg_copy_target = [trg_copy_target[i] for i in src_len_order]
         oov_lists = [oov_lists[i] for i in src_len_order]
-        if self.include_original:
+        if self.include_original_string:
             src_str = [src_str[i] for i in src_len_order]
             trg_str = [trg_str[i] for i in src_len_order]
 
@@ -346,7 +372,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         '''
 
         # return two tuples, 1st for one2many and 2nd for one2one (src, src_oov, trg, trg_target, trg_copy_target, oov_lists)
-        if self.include_original:
+        if self.include_original_string:
             return (src_o2s, src_o2s_len, trg_o2s, trg_target_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s, src_str, trg_str), (None,)
         else:
             return (src_o2s, src_o2s_len, trg_o2s, trg_target_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s), (None,)
