@@ -995,7 +995,7 @@ class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
             enc_context = enc_context * src_mask.view(src_mask.size() + (1,))
 
         # maximum length to unroll, ignore the last word (must be padding)
-        max_length = max_trg_len - 1
+        max_step = max_trg_len - 1
 
         # Teacher Forcing
         self.current_batch += 1
@@ -1016,7 +1016,7 @@ class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
             h_tilde = Variable(torch.zeros(batch_size, 1, trg_hidden_dim)).cuda() if torch.cuda.is_available() else Variable(torch.zeros(batch_size, 1, trg_hidden_dim))
             copy_h_tilde = Variable(torch.zeros(batch_size, 1, trg_hidden_dim)).cuda() if torch.cuda.is_available() else Variable(torch.zeros(batch_size, 1, trg_hidden_dim))
 
-            for di in range(max_length):
+            for di in range(max_step):
                 # initialize target embedding and reshape the targets to be time step first
                 trg_emb = self.embedding(trg_word)  # (batch_size, 1, embed_dim)
 

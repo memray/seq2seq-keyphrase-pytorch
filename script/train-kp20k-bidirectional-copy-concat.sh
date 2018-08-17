@@ -17,4 +17,4 @@
 export ATTENTION="concat";
 export EXP_NAME="attn_$ATTENTION.copy"
 export DATA_NAME="kp20k"
-srun python -m train -data data/$DATA_NAME/$DATA_NAME -vocab data/$DATA_NAME/$DATA_NAME.vocab.pt -exp_path "/zfs1/pbrusilovsky/rum20/seq2seq-keyphrase-pytorch/exp/$EXP_NAME/%s.%s" -exp "$DATA_NAME" -batch_size 64 -bidirectional -copy_model -run_valid_every 2000 -save_model_every 10000 -beam_size 16 -beam_search_batch_size 16 -train_ml -attention_mode $ATTENTION -copy_attention -must_teacher_forcing
+srun python -m train -data data/$DATA_NAME/$DATA_NAME -vocab_file data/$DATA_NAME/$DATA_NAME.vocab.pt -exp_path "/zfs1/pbrusilovsky/rum20/seq2seq-keyphrase-pytorch/exp/$EXP_NAME/%s.%s" -exp "$DATA_NAME" -batch_size 64 -bidirectional -copy_model -run_valid_every 2000 -save_model_every 10000 -beam_size 16 -beam_search_batch_size 16 -train_ml -attention_mode $ATTENTION -copy_attention -must_teacher_forcing
