@@ -144,3 +144,50 @@ class Concat(torch.nn.Module):
 
     def forward(self, x):
         return torch.cat(x, -1)
+
+
+
+class Embedding(torch.nn.Module):
+    '''
+    inputs: x:          batch x seq (x is post-padded by 0s)
+    outputs:embedding:  batch x seq x emb
+            mask:       batch x seq
+    '''
+
+    def __init__(self, vocab_size, embedding_size, pad_token_src=[]):
+        super(Embedding, self).__init__()
+        self.embedding_size = embedding_size
+        self.vocab_size = vocab_size
+        if not isinstance(pad_token_src, list):
+            pad_token_src = [pad_token_src]
+        self.pad_token_src = pad_token_src
+        self.embedding_layer = torch.nn.Embedding(self.vocab_size, self.embedding_size, padding_idx=0)
+        self.init_weights()
+
+    def init_weights(self):
+        init_embedding_matrix = self.embedding_init()
+        self.embedding_layer.weight = torch.nn.Parameter(init_embedding_matrix)
+        for idx in self.pad_token_src:
+            self.embedding_layer.weight[idx, :] = self.embedding_layer.weight[idx, :].detach()
+
+    def embedding_init(self):
+        # Embeddings
+        word_embedding_init = np.random.uniform(low=-0.05, high=0.05, size=(self.vocab_size, self.embedding_size))
+        for idx in self.pad_token_src:
+            word_embedding_init[idx, :] = 0.0
+        word_embedding_init = torch.from_numpy(word_embedding_init).float()
+        if torch.cuda.is_available():
+            word_embedding_init = word_embedding_init.cuda()
+        return word_embedding_init
+
+    def embed(self, words):
+        padding_idx = self.embedding_layer.padding_idx
+        X = self.embedding_layer._backend.Embedding.apply(
+            words, self.embedding_layer.weight,
+            padding_idx, self.embedding_layer.max_norm, self.embedding_layer.norm_type,
+            self.embedding_layer.scale_grad_by_freq, self.embedding_layer.sparse)
+        return X
+
+    def forward(self, x):
+        embeddings = self.embed(x)  # batch x time x emb
+        return embeddings

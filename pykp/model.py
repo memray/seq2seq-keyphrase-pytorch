@@ -11,7 +11,7 @@ import numpy as np
 import random
 
 import pykp
-from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat
+from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, Embedding
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -114,6 +114,7 @@ class Attention(nn.Module):
             energies = torch.bmm(hiddens, encoder_outputs.transpose(1, 2))  # (batch, trg_len, src_len)
         elif self.method == 'general':
             energies = self.attn(encoder_outputs)  # (batch, src_len, trg_hidden_dim)
+            energies = func.tanh(energies) # (batch, src_len, trg_hidden_dim)
             if encoder_mask is not None:
                 energies =  energies * encoder_mask.view(encoder_mask.size(0), encoder_mask.size(1), 1)
             # hidden (batch, trg_len, trg_hidden_dim) * encoder_outputs (batch, src_len, src_hidden_dim).transpose(1, 2) -> (batch, trg_len, src_len)
@@ -280,10 +281,10 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         self.get_mask = GetMask(self.pad_token_src)
 
-        self.embedding = nn.Embedding(
-            self.vocab_size,
-            self.emb_dim,
-            self.pad_token_src
+        self.embedding = Embedding(
+            vocab_size=self.vocab_size,
+            embedding_size=self.emb_dim,
+            pad_token_src=[self.pad_token_src, opt.word2id[pykp.io.SEP_WORD]]
         )
 
         self.encoder = nn.LSTM(
