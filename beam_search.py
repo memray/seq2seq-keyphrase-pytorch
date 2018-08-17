@@ -831,9 +831,8 @@ class SequenceGenerator(object):
                         if partial_seq.score != 0 and partial_seq.sentence[-1] == self.sep_id: # not new sent, greedy!
                             kps = split_list(partial_seq.sentence, delimiters=[self.sep_id])
                             kps = [item[0] for item in kps]
-                            if w in kps:
-                                if np.random.choice([0, 1], p=[0.25, 0.75]) == 1:
-                                    continue
+                            if w in kps and np.random.choice([0, 1], p=[0.25, 0.75]) == 1:
+                                continue
 
                         if partial_seq.score == 0:  # new sent
                             new_sent = []
