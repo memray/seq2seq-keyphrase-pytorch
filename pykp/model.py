@@ -284,7 +284,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.embedding = Embedding(
             vocab_size=self.vocab_size,
             embedding_size=self.emb_dim,
-            pad_token_src=self.pad_token_src,
+            padding_idx=self.pad_token_src,
             stay_zero=[opt.word2id[pykp.io.SEP_WORD]]
         )
 
