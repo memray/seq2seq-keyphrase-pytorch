@@ -546,12 +546,14 @@ class Seq2SeqLSTMAttention(nn.Module):
                     _, copy_weights, copy_logits = self.copy_attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=src_mask)
                 else:
                     copy_logits = attn_logits
+                    copy_weights = attn_weights
 
                 # merge the generative and copying probs, (batch_size, trg_len, vocab_size + max_oov_number)
                 decoder_log_probs = self.merge_copy_probs(decoder_logits, copy_logits, src_map, oov_list)  # (batch_size, trg_len, vocab_size + max_oov_number)
                 decoder_outputs = decoder_outputs.permute(1, 0, 2)  # (batch_size, trg_len, trg_hidden_dim)
             else:
                 decoder_log_probs = torch.nn.functional.log_softmax(decoder_logits, dim=-1).view(batch_size, -1, self.vocab_size)
+                copy_weights = None
 
         else:
             '''
