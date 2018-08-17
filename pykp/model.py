@@ -365,8 +365,6 @@ class Seq2SeqLSTMAttention(nn.Module):
 
     def init_weights(self):
         """Initialize weights."""
-        initrange = 0.1
-        self.embedding.embedding_layer.weight.data.uniform_(-initrange, initrange)
         # fill with fixed numbers for debugging
         # self.embedding.weight.data.fill_(0.01)
         self.encoder2decoder_hidden.bias.data.fill_(0)
