@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Python File Template 
+Python File Template
 """
 import logging
 import torch
@@ -138,7 +138,7 @@ class Attention(nn.Module):
 
         return energies.contiguous()
 
-    def forward(self, hidden, encoder_outputs, encoder_mask=None):
+    def forward(self, hidden, encoder_outputs, encoder_mask=None, sep=None):
         '''
         Compute the attention and h_tilde, inputs/outputs must be batch first
         :param hidden: (batch_size, trg_len, trg_hidden_dim)
@@ -186,6 +186,27 @@ class Attention(nn.Module):
         h_tilde = torch.cat((weighted_context, hidden), 2)
         # (batch_size * trg_len, src_hidden_dim + trg_hidden_dim) -> (batch_size * trg_len, trg_hidden_dim)
         h_tilde = self.tanh(self.linear_out(h_tilde.view(-1, context_dim + trg_hidden_dim)))
+
+        if sep is not None:
+            from train_cas import pairwise_cosine
+            presep = [s - 1 for s in sep]
+            postsep = [s + 1 for s in sep]
+            for i in range(len(sep)):
+                # print(torch.stack([
+                #     pairwise_cosine(hidden[i][presep[i]].t()),
+                #     pairwise_cosine(hidden[i][sep[i]].t()),
+                #     pairwise_cosine(hidden[i][postsep[i]].t())
+                #     ], 0))
+                # print(torch.stack([
+                #     pairwise_cosine(weighted_context[i][presep[i]].t()),
+                #     pairwise_cosine(weighted_context[i][sep[i]].t()),
+                #     pairwise_cosine(weighted_context[i][postsep[i]].t())
+                #     ], 0))
+                top10attention_weights = np.argsort(torch.stack([attn_weights[i][_ss[i]] for _ss in [presep, sep, postsep]]).detach().cpu(), 2)[:,:,-10:]
+                print(top10attention_weights)
+                taw = top10attention_weights.detach().cpu().numpy()
+                print([set.intersection(*map(set, [ss for ss in s])) for s in taw])
+                import pdb; pdb.set_trace()
 
         # return h_tilde (batch_size, trg_len, trg_hidden_dim), attn (batch_size, trg_len, src_len) and energies (before softmax)
         return h_tilde.view(batch_size, trg_len, trg_hidden_dim), attn_weights, attn_energies
@@ -303,7 +324,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             batch_first=False,
             dropout=self.dropout
         )
-        
+
         self.target_encoder = nn.LSTM(
             input_size=self.emb_dim,
             hidden_size=self.emb_dim if self.target_encoder_merge_mode == "mean" else self.target_encoder_dim,
@@ -561,7 +582,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         (2) Standard Attention
         '''
         # Get the h_tilde (batch_size, trg_len, trg_hidden_dim) and attention weights (batch_size, trg_len, src_len)
-        h_tildes, attn_weights, attn_logits = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
+        sep = [(t == 4).nonzero().squeeze() for t in trg_inputs]
+        h_tildes, attn_weights, attn_logits = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask, sep=None)
 
         # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde), (batch_size, trg_len, trg_hidden_size) -> (batch_size * trg_len, vocab_size)
         # h_tildes=(batch_size, trg_len, trg_hidden_size) -> decoder2vocab(h_tildes.view)=(batch_size * trg_len, vocab_size) -> decoder_logits=(batch_size, trg_len, vocab_size)

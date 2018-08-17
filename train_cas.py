@@ -172,17 +172,24 @@ def get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt):
     penalties = []
     for i in range(len(trg_copy_target_np)):
         seps = []
+        seps_m1 = []
+        seps_m2 = []
         for j in range(len(trg_copy_target_np[i])):  # len of target
             if trg_copy_target_np[i][j] == sep_id:
                 # j + 1 won't result in out of bound since sep cannot be the last word in target sequence
                 seps.append(decoder_outputs[i][j + opt.orthorgonal_sep_offset])
+                seps_m1.append(decoder_outputs[i][j - 1])
+                seps_m2.append(decoder_outputs[i][j - 2])
         if len(seps) > 0:
             seps = torch.stack(seps, -1)  # h x n
+            seps_m1 = torch.stack(seps_m1, -1)  # h x n
+            seps_m2 = torch.stack(seps_m2, -1)  # h x n
             identity = torch.eye(seps.size(-1))  # n x n
             if torch.cuda.is_available():
                 identity = identity.cuda()
             penalty = orthogonal_penalty(seps, identity, l_n_norm=2, mode=opt.orthogonal_metric)  # 1
             penalties.append(penalty)
+            # import pdb; pdb.set_trace()
 
     if len(penalties) > 0:
         penalties = torch.sum(torch.stack(penalties, -1)) / float(decoder_outputs.size(0))

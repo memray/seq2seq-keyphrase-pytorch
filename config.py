@@ -258,7 +258,7 @@ def train_opts(parser):
     parser.add_argument('-orthogonal_metric', default='cosine',
                         choices=['cosine', 'vanilla', 'ignore_diagonal'],
                         help="""metric for orthogonality""")
-    parser.add_argument('-orthorgonal_sep_offset', default=0,
+    parser.add_argument('-orthorgonal_sep_offset', default=1,
                         choices=[0, 1],
                         help="""orthogonal regularization on sep (0) or one timestep after (1)""")
     parser.add_argument('-replay_buffer_capacity', default=100, type=int,
