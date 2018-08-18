@@ -412,12 +412,12 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
         find_copy = np.any([x >= opt.vocab_size for x in src_wi])
         has_copy = np.any([x >= opt.vocab_size for x in trg_i])
 
-        sentence_source = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size] for x in
-                           src_wi]
-        sentence_pred = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size] for x in
-                         pred_wi]
-        sentence_real = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size] for x in
-                         trg_i]
+        sentence_source = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
+                           for x in src_wi]
+        sentence_pred = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
+                         for x in pred_wi]
+        sentence_real = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
+                         for x in trg_i]
 
         sentence_source = sentence_source[:sentence_source.index(
             '<pad>')] if '<pad>' in sentence_source else sentence_source
@@ -501,7 +501,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 report_loss.append(('PPL', loss_ml))
 
                 # Brief report
-                if batch_i % 1 == 0: #opt.report_every == 0:
+                if batch_i % opt.report_every == 0:
                     brief_report(epoch, batch_i, one2one_batch_dict, loss_ml, decoder_log_probs, opt)
 
             # do not apply rl in the first epoch, need to warm model up with MLE.
@@ -522,8 +522,18 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
                 # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
                 # valid_history_losses.append(valid_losses)
-                valid_score_dict = evaluate_beam_search(generator, valid_data_loader, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
-                test_score_dict = evaluate_beam_search(generator, test_data_loader, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                valid_score_dict = evaluate_beam_search(generator, valid_data_loader, opt,
+                                                        title='Validating, epoch=%d, batch=%d, total_batch=%d '
+                                                              % (epoch, batch_i, total_batch),
+                                                        epoch=epoch,
+                                                        predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d'
+                                                                                          % (epoch, batch_i, total_batch))
+                test_score_dict = evaluate_beam_search(generator, test_data_loader, opt,
+                                                       title='Testing, epoch=%d, batch=%d, total_batch=%d '
+                                                             % (epoch, batch_i, total_batch),
+                                                       epoch=epoch,
+                                                       predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d'
+                                                                                         % (epoch, batch_i, total_batch))
 
                 checkpoint_names.append('epoch=%d-batch=%d-total_batch=%d' % (epoch, batch_i, total_batch))
 

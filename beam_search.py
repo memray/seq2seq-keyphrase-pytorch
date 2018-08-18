@@ -257,7 +257,8 @@ class SequenceGenerator(object):
                 break
 
             # flatten 2d sequences (batch_size, beam_size) into 1d batches (batch_size * beam_size) to feed model
-            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(partial_sequences)
+            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists \
+                = self.sequence_to_batch(partial_sequences)
 
             # Run one-step generation. probs=(batch_size, 1, K), dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
             log_probs, new_dec_hiddens, attn_weights = self.model.generate(
@@ -299,7 +300,7 @@ class SequenceGenerator(object):
 
                     # check each new beam and decide to add to hypotheses or completed list
                     for beam_i in range(self.beam_size + 1):
-                        w = words[flattened_seq_id][beam_i]
+                        w = int(words[flattened_seq_id][beam_i])
                         # if w has appeared before, ignore current hypothese
                         # if w in partial_seq.vocab:
                         #     continue
@@ -310,11 +311,6 @@ class SequenceGenerator(object):
                         else:
                             new_sent = []
                         new_sent.append(w)
-
-                        # if w >= 50000 and len(partial_seq.oov_list)==0:
-                        #     print(new_sent)
-                        #     print(partial_seq.oov_list)
-                        #     pass
 
                         new_partial_seq = Sequence(
                             batch_id=partial_seq.batch_id,
@@ -370,7 +366,7 @@ class SequenceGenerator(object):
 
                 partial_sequences[batch_i] = new_partial_sequences
 
-                print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
+                # print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
                 '''
                 # print-out for debug
                 print('Source with OOV: \n\t %s' % ' '.join([str(w) for w in partial_seq.src_oov.cpu().data.numpy().tolist()]))
@@ -382,7 +378,7 @@ class SequenceGenerator(object):
                 print('*' * 50)
                 '''
 
-            print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
+            # print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
 
             # print('Round=%d' % (current_len))
             # print('\t#(hypothese) = %d' % (sum([len(batch_heap) for batch_heap in partial_sequences])))

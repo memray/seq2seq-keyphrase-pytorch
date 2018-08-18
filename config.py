@@ -10,8 +10,6 @@ def init_logging(logger_name, log_file, redirect_to_stdout=False):
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s',
                                   datefmt='%m/%d/%Y %H:%M:%S'   )
 
-    print('Making log output file: %s' % log_file)
-    print(log_file[: log_file.rfind(os.sep)])
     if not os.path.exists(log_file[: log_file.rfind(os.sep)]):
         os.makedirs(log_file[: log_file.rfind(os.sep)])
 
@@ -22,6 +20,9 @@ def init_logging(logger_name, log_file, redirect_to_stdout=False):
     logger = logging.getLogger(logger_name)
     logger.addHandler(fh)
     logger.setLevel(logging.INFO)
+
+    logger.info('Making log output file: %s' % log_file)
+    logger.info(log_file[: log_file.rfind(os.sep)])
 
     if redirect_to_stdout:
         ch = logging.StreamHandler(sys.stdout)
@@ -314,8 +315,8 @@ def train_opts(parser):
                         help='Beam size')
     parser.add_argument('-max_sent_length', type=int, default=20,
                         help='Maximum sentence length.')
-    parser.add_argument('-eval_method', type=str, default="greedy",
-                        help="Sampling, greedy, or beam search")
+    parser.add_argument('-eval_method', type=str, default="beam_search",
+                        help="Sampling, greedy, or beam_search")
 
 
 def predict_opts(parser):
