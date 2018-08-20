@@ -3,8 +3,8 @@
 #SBATCH --gres=gpu:1
 #SBATCH --partition=titanx
 #SBATCH --partition=gtx1080
-#SBATCH --job-name=train-kp20k-bidirectional.general.no_copy
-#SBATCH --output=slurm_output/train-kp20k-bidirectional.general.no_copy.out
+#SBATCH --job-name=kp20k.general.no_copy
+#SBATCH --output=slurm_output/kp20k.general.no_copy.out
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
