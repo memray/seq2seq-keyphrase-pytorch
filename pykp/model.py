@@ -410,8 +410,8 @@ class Seq2SeqLSTMAttention(nn.Module):
 
     def init_decoder_state(self, enc_h, enc_c):
         # prepare the init hidden vector for decoder, (batch_size, num_layers * num_directions * enc_hidden_dim) -> (num_layers * num_directions, batch_size, dec_hidden_dim)
-        decoder_init_hidden = nn.Tanh()(self.encoder2decoder_hidden(enc_h)).unsqueeze(0)
-        decoder_init_cell = nn.Tanh()(self.encoder2decoder_cell(enc_c)).unsqueeze(0)
+        decoder_init_hidden = nn.Tanh()(self.encoder2decoder_hidden(enc_h))
+        decoder_init_cell = nn.Tanh()(self.encoder2decoder_cell(enc_c))
 
         return decoder_init_hidden, decoder_init_cell
 

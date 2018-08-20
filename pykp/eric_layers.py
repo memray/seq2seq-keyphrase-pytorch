@@ -252,5 +252,5 @@ class FastUniLSTM(torch.nn.Module):
 
         output = output.contiguous() * mask.unsqueeze(-1)
         
-        x = x.transpose(0, 1)
+        output = output.transpose(0, 1)
         return output, mask, last_states
