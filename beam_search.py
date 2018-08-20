@@ -181,7 +181,19 @@ class SequenceGenerator(object):
         batch_size = len(flattened_sequences)
 
         # if it's oov, replace it with <unk> (batch_size, 1)
-        inputs = torch.cat([Variable(torch.LongTensor([seq.sentence[-1]] if seq.sentence[-1] < self.model.vocab_size else [self.model.unk_word])) for seq in flattened_sequences]).view(batch_size, -1)
+        inputs = []
+        for seq in flattened_sequences:
+            if seq.sentence[-1] < self.model.vocab_size:
+                if len(seq.sentence) > 1 and seq.sentence[-1].data.cpu().numpy()[0] == self.sep_id:
+                    tmp = [seq.sentence[-2]]
+                else:
+                    tmp = [seq.sentence[-1]]
+            else:
+                tmp = [self.model.unk_word]
+            inputs.append(Variable(torch.LongTensor(tmp))
+        inputs = torch.cat(inputs).view(batch_size, -1)
+
+        # inputs = torch.cat([Variable(torch.LongTensor([seq.sentence[-1]] if seq.sentence[-1] < self.model.vocab_size else [self.model.unk_word])) for seq in flattened_sequences]).view(batch_size, -1)
 
         # (batch_size, trg_hidden_dim)
         if isinstance(flattened_sequences[0].dec_hidden, tuple):

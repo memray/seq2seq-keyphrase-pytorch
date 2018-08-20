@@ -218,7 +218,10 @@ class KeyphraseDataset(torch.utils.data.Dataset):
                     tmp_trg_target += [self.word2id[EOS_WORD]]
                     tmp_trg_copy_target += [self.word2id[EOS_WORD]]
                 else:
-                    tmp_trg += [self.word2id[SEP_WORD]]
+                    if len(tmp_trg) == 0:
+                        tmp_trg += [self.word2id[SEP_WORD]]
+                    else:
+                        tmp_trg += [tmp_trg[-1]]
                     tmp_trg_target += [self.word2id[SEP_WORD]]
                     tmp_trg_copy_target += [self.word2id[SEP_WORD]]
             trg.append(tmp_trg)
