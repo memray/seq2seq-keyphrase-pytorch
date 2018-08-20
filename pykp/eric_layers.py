@@ -186,7 +186,7 @@ class FastUniLSTM(torch.nn.Module):
         x = x.transpose(0, 1)
         # Compute sorted sequence lengths
         batch_size = x.size(0)
-        lengths = mask.data.eq(1).long().sum(1).squeeze()
+        lengths = mask.data.eq(1).long().sum(1)  # .squeeze()
         _, idx_sort = torch.sort(lengths, dim=0, descending=True)
         _, idx_unsort = torch.sort(idx_sort, dim=0)
 
