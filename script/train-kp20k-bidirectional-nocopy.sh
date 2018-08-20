@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --cluster=gpu
 #SBATCH --gres=gpu:1
-#SBATCH --partition=titanx
 #SBATCH --partition=gtx1080
+#SBATCH --partition=titanx
 #SBATCH --job-name=kp20k.general.no_copy
 #SBATCH --output=slurm_output/kp20k.general.no_copy.out
 #SBATCH --nodes=1
