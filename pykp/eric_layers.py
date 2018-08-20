@@ -212,6 +212,8 @@ class FastUniLSTM(torch.nn.Module):
 
         # Transpose batch and sequence dims
         x = x.transpose(0, 1)
+        init_state = (init_state[0].view(1, init_state[0].size[0], init_state[0].size[1]),
+                      init_state[1].view(1, init_state[1].size[0], init_state[1].size[1]))
 
         # Pack it up
         rnn_input = torch.nn.utils.rnn.pack_padded_sequence(x, lengths)
