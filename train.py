@@ -116,8 +116,9 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
     trg_copy_for_loss = batch_data_dict['trg_copy_for_loss']
 
     oov_lists = batch_data_dict['oov_lists']
-
     max_oov_number = max([len(oov) for oov in oov_lists])
+
+    start_time = time.time()
 
     if torch.cuda.is_available():
         src = src.cuda()
@@ -133,7 +134,6 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
 
     # simply average losses of all the predicitons
     # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
-    start_time = time.time()
 
     if not opt.copy_attention:
         loss = criterion(
@@ -146,11 +146,10 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
             trg_copy_for_loss.contiguous().view(-1)
         )
     loss = loss * (1 - opt.loss_scale)
-    print("--loss calculation- %s seconds ---" % (time.time() - start_time))
+    print("--forward+loss- %s seconds ---" % (time.time() - start_time))
 
     start_time = time.time()
     loss.backward()
-    print("--backward- %s seconds ---" % (time.time() - start_time))
 
     if opt.max_grad_norm > 0:
         pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
@@ -158,6 +157,7 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
         # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
 
     optimizer.step()
+    print("--backward- %s seconds ---" % (time.time() - start_time))
 
     if torch.cuda.is_available():
         loss = loss.cpu().data.numpy()[0]
