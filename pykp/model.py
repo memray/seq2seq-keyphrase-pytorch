@@ -179,11 +179,10 @@ class Attention(nn.Module):
             expanded_mask = encoder_mask.unsqueeze(1).expand(batch_size, trg_len, src_len).long()
             attn_ones = Variable(torch.ones(attn_energies.shape).long())
             if torch.cuda.is_available():
+                expanded_mask = expanded_mask.cuda()
                 attn_ones = attn_ones.cuda()
-            neg_mask = -1e10 * torch.ne(expanded_mask, attn_ones).float()
-            if torch.cuda.is_available():
-                neg_mask = neg_mask.cuda()
 
+            neg_mask = -1e10 * torch.ne(expanded_mask, attn_ones).float()
             attn_energies = attn_energies + neg_mask  # (batch_size, trg_len, src_len)
             attn_weights = self.softmax(attn_energies)  # (batch_size, trg_len, src_len)
 
