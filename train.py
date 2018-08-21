@@ -27,7 +27,7 @@ from torch import cuda
 from beam_search import SequenceGenerator
 from evaluate import evaluate_beam_search, get_match_result, self_redundancy
 from pykp.dataloader import KeyphraseDataLoader
-from utils import Progbar, plot_learning_curve
+from utils import Progbar, plot_learning_curve_and_write_csv
 
 import pykp
 from pykp.io import KeyphraseDataset
@@ -143,9 +143,15 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
     else:
         loss = criterion(
             decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
+            # trg_copy_for_loss[:,0,:].contiguous().view(-1)
             trg_copy_for_loss.contiguous().view(-1)
         )
+
     loss = loss * (1 - opt.loss_scale)
+
+    print('src.shape=%s' % str(src.shape))
+    print('trg.shape=%s' % str(trg.shape))
+
     print("--forward+loss- %s seconds ---" % (time.time() - start_time))
 
     start_time = time.time()
@@ -154,7 +160,7 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
     if opt.max_grad_norm > 0:
         pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
         after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
-        # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
+        logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
 
     optimizer.step()
     print("--backward- %s seconds ---" % (time.time() - start_time))
@@ -561,11 +567,11 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
                 scores = [np.asarray(s) for s in scores]
                 # Plot the learning curve
-                plot_learning_curve(scores=scores,
-                                    curve_names=curve_names,
-                                    checkpoint_names=checkpoint_names,
-                                    title='Training Validation & Test',
-                                    save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve.png' % (epoch, batch_i, total_batch))
+                plot_learning_curve_and_write_csv(scores=scores,
+                                                  curve_names=curve_names,
+                                                  checkpoint_names=checkpoint_names,
+                                                  title='Training Validation & Test',
+                                                  save_path=opt.plot_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve' % (epoch, batch_i, total_batch))
 
                 '''
                 determine if early stop training (whether f-score increased, before is if valid error decreased)
@@ -644,7 +650,7 @@ def load_data_vocab(opt, load_train=True):
                                                     max_batch_pair=opt.batch_size,
                                                     pin_memory=True,
                                                     shuffle=True)
-        logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d, #(average examples/batch)=%.3f' % (len(train_one2many_loader.dataset), train_one2many_loader.one2one_number(), len(train_one2many_loader), train_one2many_loader.one2one_number() / len(train_one2many_loader)))
+        logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d, avg(one2many/batch)=%.3f, avg(one2one/batch)=%.3f' % (len(train_one2many_loader.dataset), train_one2many_loader.one2one_number(), len(train_one2many_loader), len(train_one2many_loader.dataset) / len(train_one2many_loader), train_one2many_loader.one2one_number() / len(train_one2many_loader)))
     else:
         train_one2many_loader = None
 

@@ -93,20 +93,28 @@ class Progbar(object):
         self.report_delay = 10
         self.last_report  = self.start_time
 
-    def update(self, current_epoch, current, values=[]):
+    def update(self, current_epoch, current_batch_num, values=[]):
         '''
-        @param current: index of current step
+        @param current_batch_num: index of current step
         @param values: list of tuples (name, value_for_last_step).
         The progress bar will display averages for these values.
         '''
+        # if data contains inf or nan, ignore this round
+        is_valid = True
         for k, v in values:
-            if k not in self.sum_values:
-                self.sum_values[k] = [v * (current - self.seen_so_far), current - self.seen_so_far]
-                self.unique_values.append(k)
-            else:
-                self.sum_values[k][0] += v * (current - self.seen_so_far)
-                self.sum_values[k][1] += (current - self.seen_so_far)
-        self.seen_so_far = current
+            if np.isinf(v) or np.isnan(v):
+                is_valid = False
+
+        if is_valid:
+            for k, v in values:
+                if k not in self.sum_values:
+                    self.sum_values[k] = [v * (current_batch_num - self.seen_so_far), current_batch_num - self.seen_so_far]
+                    self.unique_values.append(k)
+                else:
+                    self.sum_values[k][0] += v * (current_batch_num - self.seen_so_far)
+                    self.sum_values[k][1] += (current_batch_num - self.seen_so_far)
+
+        self.seen_so_far = current_batch_num
 
         now = time.time()
         if self.verbose == 1:
@@ -119,12 +127,12 @@ class Progbar(object):
             epoch_info = '%s Epoch=%d -' % (self.title, current_epoch) if current_epoch else '%s -' % (self.title)
 
             barstr = epoch_info + '%%%dd/%%%dd' % (numdigits, numdigits, ) + ' (%.2f%%)['
-            bar = barstr % (current, self.target, float(current)/float(self.target) * 100.0)
-            prog = float(current)/self.target
+            bar = barstr % (current_batch_num, self.target, float(current_batch_num) / float(self.target) * 100.0)
+            prog = float(current_batch_num) / self.target
             prog_width = int(self.width*prog)
             if prog_width > 0:
                 bar += ('.'*(prog_width-1))
-                if current < self.target:
+                if current_batch_num < self.target:
                     bar += '(-w-)'
                 else:
                     bar += '(-v-)!!'
@@ -133,15 +141,15 @@ class Progbar(object):
             # sys.stdout.write(bar)
             self.total_width = len(bar)
 
-            if current:
-                time_per_unit = (now - self.start) / current
+            if current_batch_num:
+                time_per_unit = (now - self.start) / current_batch_num
             else:
                 time_per_unit = 0
-            eta = time_per_unit*(self.target - current)
+            eta = time_per_unit*(self.target - current_batch_num)
 
             # info = ''
             info = bar
-            if current < self.target:
+            if current_batch_num < self.target:
                 info += ' - Run-time: %ds - ETA: %ds' % (now - self.start, eta)
             else:
                 info += ' - %ds' % (now - self.start)
@@ -175,11 +183,11 @@ class Progbar(object):
 
             self.logger.info(info)
 
-            if current >= self.target:
+            if current_batch_num >= self.target:
                 sys.stdout.write("\n")
 
         if self.verbose == 2:
-            if current >= self.target:
+            if current_batch_num >= self.target:
                 info = '%ds' % (now - self.start)
                 for k in self.unique_values:
                     info += ' - %s: %.4f' % (k, self.sum_values[k][0] / max(1, self.sum_values[k][1]))
@@ -197,7 +205,7 @@ class Progbar(object):
         self.seen_so_far = 0
 
 
-def plot_learning_curve(scores, curve_names, checkpoint_names, title, ylim=None, save_path=None):
+def plot_learning_curve_and_write_csv(scores, curve_names, checkpoint_names, title, ylim=None, save_path=None):
     """
     Generate a simple plot of the test and training learning curve.
 

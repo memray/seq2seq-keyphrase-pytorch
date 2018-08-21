@@ -312,6 +312,7 @@ class KeyphraseDataLoader(object):
 
         if batch_sampler is None:
             if sampler is None:
+                # As the seed is not manually set, the order might still be same every time we run
                 if shuffle:
                     sampler = RandomSampler(dataset)
                 else:
@@ -362,13 +363,13 @@ class One2ManyBatchSampler(object):
 
         batches = []
         batch = []
-        for idx in self.sampler:
+        for example_idx in self.sampler:
             # number of targets sequences in current batch
-            number_trgs = sum([self.num_trgs[id] for id in batch])
-            if len(batch) < self.max_batch_example and number_trgs + self.num_trgs[idx] < self.max_batch_pair:
-                batch.append(idx)
+            current_trg_num_in_batch = sum([self.num_trgs[id] for id in batch])
+            if len(batch) < self.max_batch_example and current_trg_num_in_batch + self.num_trgs[example_idx] < self.max_batch_pair:
+                batch.append(example_idx)
             elif len(batch) == 0: # if the batch_size is very small, return a batch of only one data sample
-                batch.append(idx)
+                batch.append(example_idx)
                 batches.append(batch)
                 # print('batch %d: #(src)=%d, #(trg)=%d \t\t %s' % (len(batches), len(batch), number_trgs, str(batch)))
                 batch = []
@@ -376,17 +377,17 @@ class One2ManyBatchSampler(object):
                 batches.append(batch)
                 # print('batch %d: #(src)=%d, #(trg)=%d \t\t %s' % (len(batches), len(batch), number_trgs, str(batch)))
                 batch = []
-                batch.append(idx)
+                batch.append(example_idx)
 
         if len(batch) > 0 and not self.drop_last:
             batches.append(batch)
 
         self.batches         = batches
-        self.final_num_batch = len(batches)
+        self.total_batch_num = len(batches)
 
     def __iter__(self):
         return self.batches.__iter__()
 
     def __len__(self):
-        return self.final_num_batch
+        return self.total_batch_num
 

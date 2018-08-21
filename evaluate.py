@@ -185,7 +185,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
             valid_and_present = np.asarray(pred_is_valid) * np.asarray(pred_is_present)
             match_list = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_pred_str_seqs)
-            print_out += '[PREDICTION] #(valid)=%d, #(present)=%d, #(retained&present)=%d, #(all)=%d\n' % (sum(pred_is_valid), sum(pred_is_present), sum(valid_and_present), len(pred_seq))
+            print_out += '[PREDICTION] #(valid)=%d, #(present)=%d, #(retained & present)=%d, #(all)=%d\n' % (sum(pred_is_valid), sum(pred_is_present), sum(valid_and_present), len(pred_seq))
             print_out += ''
             '''
             Print and export predictions
@@ -199,12 +199,13 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
                 preds_out += '%s\n' % (' '.join(word))
                 if is_present:
-                    print_phrase = '[%s]' % ' '.join(word)
-                else:
                     print_phrase = ' '.join(word)
+                    # print_phrase = '[%s]' % ' '.join(word)
+                else:
+                    print_phrase = '[absent] %s' % ' '.join(word)
 
-                if is_valid:
-                    print_phrase = '*%s' % print_phrase
+                if not is_valid:
+                    print_phrase = '[invalid] %s' % print_phrase
 
                 if match == 1.0:
                     correct_str = '[correct!]'
@@ -234,7 +235,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
                     print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
 
-            # logging.info(print_out)
+            logging.info(print_out)
 
             if predict_save_path:
                 if not os.path.exists(os.path.join(predict_save_path, title + '_detail')):

@@ -99,7 +99,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
 
     def _pad_1d_sequences(self, sequences, output_dim=None):
         """
-        Pad all the sequences in x_raw to equal length with pad_id (0)
+        Pad all the sequences in x_raw to equal length with pad_id (an integer 0)
         The output dim after padding by default is the max length of each dimension (batch_size, max_len_seq),
         otherwise it's the specified output_dim (specified_num_seq, specified_len_seq)
         :param sequences: a list of 1-D integer sequences

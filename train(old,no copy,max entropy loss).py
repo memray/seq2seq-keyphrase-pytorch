@@ -22,7 +22,7 @@ import copy
 import torch
 import torch.nn as nn
 from torch import cuda
-from utils import Progbar, plot_learning_curve
+from utils import Progbar, plot_learning_curve_and_write_csv
 
 import pykp
 from pykp.io import KeyphraseDatasetTorchText
@@ -246,9 +246,9 @@ def train_model(model, optimizer, criterion, training_data_loader, validation_da
                 train_losses = []
 
                 # Plot the learning curve
-                plot_learning_curve(train_history_losses, valid_history_losses, 'Training and Validation',
-                                    curve1_name='Training Error', curve2_name='Validation Error',
-                                    save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_curve.png' % (epoch, batch_i, total_batch))
+                plot_learning_curve_and_write_csv(train_history_losses, valid_history_losses, 'Training and Validation',
+                                                  curve1_name='Training Error', curve2_name='Validation Error',
+                                                  save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_curve.png' % (epoch, batch_i, total_batch))
 
                 '''
                 determine if early stop training

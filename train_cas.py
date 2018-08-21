@@ -27,7 +27,7 @@ from torch import cuda
 from beam_search import SequenceGenerator
 from evaluate import evaluate_beam_search, get_match_result, self_redundancy
 from pykp.dataloader import KeyphraseDataLoader
-from utils import Progbar, plot_learning_curve
+from utils import Progbar, plot_learning_curve_and_write_csv
 
 import pykp
 from pykp.io import KeyphraseDataset
@@ -256,11 +256,11 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
                 scores = [np.asarray(s) for s in scores]
                 # Plot the learning curve
-                plot_learning_curve(scores=scores,
-                                    curve_names=curve_names,
-                                    checkpoint_names=checkpoint_names,
-                                    title='Training Validation & Test',
-                                    save_path=opt.plot_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve.png' % (epoch, batch_i, total_batch))
+                plot_learning_curve_and_write_csv(scores=scores,
+                                                  curve_names=curve_names,
+                                                  checkpoint_names=checkpoint_names,
+                                                  title='Training Validation & Test',
+                                                  save_path=opt.plot_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve.png' % (epoch, batch_i, total_batch))
 
                 '''
                 determine if early stop training (whether f-score increased, before is if valid error decreased)

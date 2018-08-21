@@ -4,3 +4,5 @@
 
 sbatch script/train-kp20k-bidirectional.sh
 sbatch script/train-kp20k-bidirectional-nocopy.sh
+
+rsync -rav -e ssh --include='*.png' --include='*.csv' --include '*/' --exclude='*' rum20@crc:/zfs1/pbrusilovsky/rum20/seq2seq-keyphrase-pytorch/exp/ ~/Desktop/exp

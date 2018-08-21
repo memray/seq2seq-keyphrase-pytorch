@@ -15,7 +15,7 @@ from torch import cuda
 
 from beam_search import SequenceGenerator
 from train import load_data_vocab, init_model, init_optimizer_criterion
-from utils import Progbar, plot_learning_curve
+from utils import Progbar, plot_learning_curve_and_write_csv
 
 import pykp
 from pykp.io import KeyphraseDatasetTorchText
