@@ -187,7 +187,7 @@ class SequenceGenerator(object):
                 if len(seq.sentence) > 1 and seq.sentence[-1] == self.sep_id:
                     if seq.sentence[-2] < self.model.vocab:
                         tmp = [seq.sentence[-2]]
-                    else:s                
+                    else:
                         tmp = [self.model.unk_word]
                 else:
                     tmp = [seq.sentence[-1]]
