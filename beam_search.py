@@ -184,13 +184,16 @@ class SequenceGenerator(object):
         inputs = []
         for seq in flattened_sequences:
             if seq.sentence[-1] < self.model.vocab_size:
-                if len(seq.sentence) > 1 and seq.sentence[-1].data.cpu().numpy()[0] == self.sep_id:
-                    tmp = [seq.sentence[-2]]
+                if len(seq.sentence) > 1 and seq.sentence[-1] == self.sep_id:
+                    if seq.sentence[-2] < self.model.vocab:
+                        tmp = [seq.sentence[-2]]
+                    else:s                
+                        tmp = [self.model.unk_word]
                 else:
                     tmp = [seq.sentence[-1]]
             else:
                 tmp = [self.model.unk_word]
-            inputs.append(Variable(torch.LongTensor(tmp))
+            inputs.append(Variable(torch.LongTensor(tmp)))
         inputs = torch.cat(inputs).view(batch_size, -1)
 
         # inputs = torch.cat([Variable(torch.LongTensor([seq.sentence[-1]] if seq.sentence[-1] < self.model.vocab_size else [self.model.unk_word])) for seq in flattened_sequences]).view(batch_size, -1)
