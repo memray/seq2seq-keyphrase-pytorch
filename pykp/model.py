@@ -555,6 +555,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             decoder_input = self.target_encoding_merger([trg_enc_h, trg_emb])
         else:
             decoder_input = trg_emb
+            trg_enc_h_last = init_hidden_target_encoder[0]
 
         # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
         decoder_outputs, _ = self.decoder(
