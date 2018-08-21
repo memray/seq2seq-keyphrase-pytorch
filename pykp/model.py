@@ -242,6 +242,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.nlayers_trg = opt.dec_layers
         self.dropout = opt.dropout
         self.target_encoder_dim = opt.target_encoder_dim
+        self.enable_target_encoder = opt.target_encoder_lambda > 0.0
         if self.target_encoder_dim == 0:
             # use emb_dim, and average with emb
             self.target_encoder_merge_mode = "mean"
@@ -296,7 +297,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         )
 
         self.decoder = nn.LSTM(
-            input_size=self.emb_dim if self.target_encoder_merge_mode == "mean" else self.emb_dim + self.target_encoder_dim,
+            input_size=self.emb_dim if (not self.enable_target_encoder or self.target_encoder_merge_mode == "mean") else self.emb_dim + self.target_encoder_dim,
             hidden_size=self.trg_hidden_dim,
             num_layers=self.nlayers_trg,
             bidirectional=False,
@@ -546,11 +547,15 @@ class Seq2SeqLSTMAttention(nn.Module):
         trg_emb = self.embedding(trg_inputs)  # (batch_size, trg_len, embed_dim)
         trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
 
-        # target encoder
-        trg_enc_h, (trg_enc_h_last, _) = self.target_encoder(trg_emb, init_hidden_target_encoder)
-        trg_enc_h_last = trg_enc_h_last[0]  # bi directional
-        trg_enc_h = trg_enc_h.detach()
-        decoder_input = self.target_encoding_merger([trg_enc_h, trg_emb])
+        if self.enable_target_encoder:
+            # target encoder
+            trg_enc_h, (trg_enc_h_last, _) = self.target_encoder(trg_emb, init_hidden_target_encoder)
+            trg_enc_h_last = trg_enc_h_last[0]  # bi directional
+            trg_enc_h = trg_enc_h.detach()
+            decoder_input = self.target_encoding_merger([trg_enc_h, trg_emb])
+        else:
+            decoder_input = trg_emb
+            trg_enc_h_last = init_hidden_target_encoder[0]
 
         # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
         decoder_outputs, _ = self.decoder(
@@ -723,12 +728,15 @@ class Seq2SeqLSTMAttention(nn.Module):
             # Input-feeding, attentional vectors h˜t are concatenated with inputs at the next time steps
             trg_emb = self.merge_decode_inputs(trg_emb, h_tilde, copy_h_tilde)
 
-            # target encoder
-            trg_enc_h, trg_enc_hidden = self.target_encoder(
-                trg_emb, trg_enc_hidden
-            )
-            trg_enc_h = trg_enc_h.detach()
-            dec_input = self.target_encoding_merger([trg_enc_h, trg_emb])
+            if self.enable_target_encoder:
+                # target encoder
+                trg_enc_h, trg_enc_hidden = self.target_encoder(
+                    trg_emb, trg_enc_hidden
+                )
+                trg_enc_h = trg_enc_h.detach()
+                dec_input = self.target_encoding_merger([trg_enc_h, trg_emb])
+            else:
+                dec_input = trg_emb
 
             # (seq_len, batch_size, hidden_size * num_directions)
             decoder_output, dec_hidden = self.decoder(
