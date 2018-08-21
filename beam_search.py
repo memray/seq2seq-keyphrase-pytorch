@@ -209,7 +209,7 @@ class SequenceGenerator(object):
                 dec_hiddens = (dec_hiddens[0].cuda(), dec_hiddens[1].cuda())
             else:
                 dec_hiddens = dec_hiddens.cuda()
-            if isinstance(flattened_sequences[0].dec_hidden, tuple):
+            if isinstance(flattened_sequences[0].trg_enc_hidden, tuple):
                 trg_enc_hiddens = (trg_enc_hiddens[0].cuda(), trg_enc_hiddens[1].cuda())
             else:
                 trg_enc_hiddens = trg_enc_hiddens.cuda()
