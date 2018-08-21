@@ -185,7 +185,7 @@ class SequenceGenerator(object):
         for seq in flattened_sequences:
             if seq.sentence[-1] < self.model.vocab_size:
                 if len(seq.sentence) > 1 and seq.sentence[-1] == self.sep_id:
-                    if seq.sentence[-2] < self.model.vocab:
+                    if seq.sentence[-2] < self.model.vocab_size:
                         tmp = [seq.sentence[-2]]
                     else:
                         tmp = [self.model.unk_word]
