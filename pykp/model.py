@@ -462,10 +462,10 @@ class Seq2SeqLSTMAttention(nn.Module):
         if not trg_mask:
             trg_mask = self.get_mask(input_trg)  # same size as input_src
         src_h, (src_h_t, src_c_t) = self.encode(input_src, input_src_len)
-        decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights, trg_encoding_h_last = self.decode(trg_inputs=input_trg, src_map=input_src_ext,
+        decoder_probs, decoder_hiddens, decoder_logits, attn_weights, copy_attn_weights, trg_encoding_h_last = self.decode(trg_inputs=input_trg, src_map=input_src_ext,
                                                                                       oov_list=oov_lists, enc_context=src_h, enc_hidden=(src_h_t, src_c_t),
                                                                                       trg_mask=trg_mask, ctx_mask=ctx_mask)
-        return decoder_probs, decoder_hiddens, (attn_weights, copy_attn_weights), src_h_t, trg_encoding_h_last
+        return decoder_probs, decoder_hiddens, decoder_logits, (attn_weights, copy_attn_weights), src_h_t, trg_encoding_h_last
 
     def encode(self, input_src, input_src_len):
         """
@@ -606,7 +606,8 @@ class Seq2SeqLSTMAttention(nn.Module):
             decoder_log_probs = torch.nn.functional.log_softmax(decoder_logits, dim=-1).view(batch_size, -1, self.vocab_size)
 
         # Return final outputs (logits after log_softmax), hidden states, and attention weights (for visualization)
-        return decoder_log_probs, decoder_outputs, attn_weights, copy_weights, trg_enc_h_last
+        # import pdb; pdb.set_trace()
+        return decoder_log_probs, decoder_outputs, decoder_logits, attn_weights, copy_weights, trg_enc_h_last
 
     def merge_oov2unk(self, decoder_log_prob, max_oov_number):
         '''
@@ -833,7 +834,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         if not ctx_mask:
             ctx_mask = self.get_mask(input_src)  # same size as input_src
         src_h, (src_h_t, src_c_t) = self.encode(input_src, input_src_len)
-        decoder_log_probs, decoder_hiddens, attn_weights = self.decode(trg_inputs=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask)
+        decoder_log_probs, decoder_hiddens, decoder_logits, attn_weights = self.decode(trg_inputs=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask)
         return decoder_log_probs, decoder_hiddens, attn_weights
 
     def decode_without_copy(self, trg_inputs, enc_context, enc_hidden, trg_mask, ctx_mask):
