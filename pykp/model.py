@@ -9,6 +9,7 @@ import torch.nn.functional as func
 from torch.autograd import Variable
 import numpy as np
 import random
+import os
 
 import pykp
 from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat
@@ -572,6 +573,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         trg_enc_h_last = trg_enc_h_last[0]  # bi directional
         trg_enc_h = trg_enc_h.detach()
         decoder_input = self.target_encoding_merger([trg_enc_h, trg_emb])
+        os.environ['seps'] = str([(t==4).nonzero().cpu().numpy().squeeze().tolist()
+            for t in trg_inputs])
 
         # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
         decoder_outputs, _ = self.decoder(
