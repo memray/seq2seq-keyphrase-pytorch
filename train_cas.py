@@ -448,7 +448,7 @@ def load_data_vocab(opt, load_train=True):
     # one2many data loader
     if load_train:
         train_one2seq = torch.load(opt.data + '.train.one2many.pt', 'wb')
-        train_one2seq_dataset = KeyphraseDataset(train_one2seq, word2id=word2id, id2word=id2word, type='one2seq')
+        train_one2seq_dataset = KeyphraseDataset(train_one2seq, word2id=word2id, id2word=id2word, type='one2seq', ordering=opt.keyphrase_ordering)
         train_one2seq_loader = KeyphraseDataLoader(dataset=train_one2seq_dataset, collate_fn=train_one2seq_dataset.collate_fn_one2seq, num_workers=opt.batch_workers, max_batch_example=1024, max_batch_pair=opt.batch_size, pin_memory=True, shuffle=True)
         logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d, #(average examples/batch)=%.3f' % (len(train_one2seq_loader.dataset), train_one2seq_loader.one2one_number(), len(train_one2seq_loader), train_one2seq_loader.one2one_number() / len(train_one2seq_loader)))
     else:
@@ -461,8 +461,8 @@ def load_data_vocab(opt, load_train=True):
     valid_one2seq = valid_one2seq[:2000]
     test_one2seq = test_one2seq[:2000]
 
-    valid_one2seq_dataset = KeyphraseDataset(valid_one2seq, word2id=word2id, id2word=id2word, type='one2seq', include_original=True)
-    test_one2seq_dataset = KeyphraseDataset(test_one2seq, word2id=word2id, id2word=id2word, type='one2seq', include_original=True)
+    valid_one2seq_dataset = KeyphraseDataset(valid_one2seq, word2id=word2id, id2word=id2word, type='one2seq', include_original=True, ordering=opt.keyphrase_ordering)
+    test_one2seq_dataset = KeyphraseDataset(test_one2seq, word2id=word2id, id2word=id2word, type='one2seq', include_original=True, ordering=opt.keyphrase_ordering)
 
     """
     # temporary code, exporting test data for Theano model

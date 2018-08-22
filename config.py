@@ -247,6 +247,9 @@ def train_opts(parser):
     parser.add_argument('-n_negative_samples', default=20, type=int,
                         help="""how many negative samples""")
 
+    parser.add_argument('-keyphrase_ordering', default='sort', type=str,
+                        help="""sort keyphrases or randomly shuffle them""")
+
 
     parser.add_argument('-target_encoder_dim', default=256, type=int,
                         help="""target encoder dim, 0 means average""")
