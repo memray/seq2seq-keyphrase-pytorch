@@ -48,7 +48,7 @@ torchtext.vocab.Vocab.__setstate__ = __setstate__
 
 
 class KeyphraseDataset(torch.utils.data.Dataset):
-    def __init__(self, examples, word2id, id2word, type='one2many', include_original=False):
+    def __init__(self, examples, word2id, id2word, type='one2many', include_original=False, ordering="sort"):
         # keys of matter. `src_oov_map` is for mapping pointed word to dict, `oov_dict` is for determining the dim of predicted logit: dim=vocab_size+max_oov_dict_in_batch
         keys = ['src', 'trg', 'trg_copy', 'src_oov', 'oov_dict', 'oov_list']
         if include_original:
@@ -71,6 +71,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         self.word2id = word2id
         self.id2word = id2word
         self.pad_id = word2id[PAD_WORD]
+        self.ordering = ordering
         self.type = type
         self.include_original = include_original
 
@@ -220,13 +221,15 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             tmp_trg = [self.word2id[BOS_WORD]]
             tmp_trg_copy_target = []
             tmp_trg_target = []
-            # sort here
-            b_trg, b_trg_copy = self.sort_alphabet(b['trg'], b['trg_copy'])
-            # # shuffle here
-            # combined = list(zip(b['trg'], b['trg_copy']))
-            # random.shuffle(combined)
-            # b_trg, b_trg_copy = zip(*combined)
-            # b_trg, b_trg_copy = list(b_trg), list(b_trg_copy)
+            if self.ordering == "sort":
+                # sort here
+                b_trg, b_trg_copy = self.sort_alphabet(b['trg'], b['trg_copy'])
+            elif self.ordering == "shuffle":
+                # shuffle here
+                combined = list(zip(b['trg'], b['trg_copy']))
+                random.shuffle(combined)
+                b_trg, b_trg_copy = zip(*combined)
+                b_trg, b_trg_copy = list(b_trg), list(b_trg_copy)
             for i in range(len(b_trg)):
                 tmp_trg += b_trg[i]
                 tmp_trg_copy_target += b_trg_copy[i]
