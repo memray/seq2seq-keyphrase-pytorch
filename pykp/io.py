@@ -48,7 +48,7 @@ torchtext.vocab.Vocab.__setstate__ = __setstate__
 
 
 class KeyphraseDataset(torch.utils.data.Dataset):
-    def __init__(self, examples, word2id, id2word, type='one2many', include_original=False):
+    def __init__(self, examples, word2id, id2word, type='one2many', include_original=False, ordering="sort"):
         # keys of matter. `src_oov_map` is for mapping pointed word to dict, `oov_dict` is for determining the dim of predicted logit: dim=vocab_size+max_oov_dict_in_batch
         keys = ['src', 'trg', 'trg_copy', 'src_oov', 'oov_dict', 'oov_list']
         if include_original:
@@ -71,6 +71,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         self.word2id = word2id
         self.id2word = id2word
         self.pad_id = word2id[PAD_WORD]
+        self.ordering = ordering
         self.type = type
         self.include_original = include_original
 
@@ -194,6 +195,21 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         else:
             return (src_o2m, src_o2m_len, trg_o2m, None, trg_copy_target_o2m, src_oov_o2m, oov_lists_o2m), (src_o2o, src_o2o_len, trg_o2o, trg_target_o2o, trg_copy_target_o2o, src_oov_o2o, oov_lists_o2o)
 
+    def sort_alphabet(self, inp1, inp2):
+        # inp should be a list of list of word indices
+        if len(inp1) <= 1:
+            return inp1, inp2
+        kp_strings = []
+        for kp in inp1:
+            kp = " ".join([self.id2word[item] for item in kp])
+            kp_strings.append(kp)
+        idxs = list(np.argsort(kp_strings))
+        new_inp1, new_inp2 = [], []
+        for i in idxs:
+            new_inp1.append(inp1[i])
+            new_inp2.append(inp2[i])
+        return new_inp1, new_inp2
+
     def collate_fn_one2seq(self, batches):
         # source with oov words replaced by <unk>
         src = [[self.word2id[BOS_WORD]] + b['src'] + [self.word2id[EOS_WORD]] for b in batches]
@@ -205,11 +221,15 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             tmp_trg = [self.word2id[BOS_WORD]]
             tmp_trg_copy_target = []
             tmp_trg_target = []
-            # shuffle here
-            combined = list(zip(b['trg'], b['trg_copy']))
-            random.shuffle(combined)
-            b_trg, b_trg_copy = zip(*combined)
-            b_trg, b_trg_copy = list(b_trg), list(b_trg_copy)
+            if self.ordering == "sort":
+                # sort here
+                b_trg, b_trg_copy = self.sort_alphabet(b['trg'], b['trg_copy'])
+            elif self.ordering == "shuffle":
+                # shuffle here
+                combined = list(zip(b['trg'], b['trg_copy']))
+                random.shuffle(combined)
+                b_trg, b_trg_copy = zip(*combined)
+                b_trg, b_trg_copy = list(b_trg), list(b_trg_copy)
             for i in range(len(b_trg)):
                 tmp_trg += b_trg[i]
                 tmp_trg_copy_target += b_trg_copy[i]
