@@ -211,8 +211,10 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         return new_inp1, new_inp2
 
     def subfinder(self, mylist, pattern):
+        if len(pattern) == 0:
+            return 99999
         for i in range(len(mylist)):
-            if mylist[i] == pattern[0] and mylist[i:i+len(pattern)] == pattern:
+            if mylist[i] == pattern[0] and mylist[i: i + len(pattern)] == pattern:
                 return i
         return 99999
 
@@ -246,7 +248,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
                 b_trg, b_trg_copy = self.sort_alphabet(b['trg'], b['trg_copy'])
             elif self.ordering == "source":
                 # sort by appearance in source
-                b_trg, b_trg_copy = self.sort_alphabet(b['trg'], b['trg_copy'], b['src'])
+                b_trg, b_trg_copy = self.sort_by_source(b['trg'], b['trg_copy'], b['src'])
 
             elif self.ordering == "shuffle":
                 # shuffle here
