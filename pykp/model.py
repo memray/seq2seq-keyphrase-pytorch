@@ -540,6 +540,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 decoder_outputs = decoder_outputs.permute(1, 0, 2)  # (batch_size, trg_len, trg_hidden_dim)
             else:
                 decoder_log_probs = torch.nn.functional.log_softmax(decoder_logits, dim=-1).view(batch_size, -1, self.vocab_size)
+                copy_weights = []
 
         else:
             '''
