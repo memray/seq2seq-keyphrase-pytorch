@@ -5,4 +5,8 @@
 sbatch script/train-kp20k-bidirectional.sh
 sbatch script/train-kp20k-bidirectional-nocopy.sh
 
-rsync -rav -e ssh --include='*.png' --include='*.csv' --include '*/' --exclude='*' rum20@crc:/zfs1/pbrusilovsky/rum20/seq2seq-keyphrase-pytorch/exp/ ~/Desktop/exp
+rsync -rav --prune-empty-dirs -e ssh --include='*.'{png,csv} --include '*/' --exclude='*' rum20@crc:/zfs1/pbrusilovsky/rum20/seq2seq-keyphrase-pytorch/exp/ ~/Desktop/exp
+
+rsync -rav --prune-empty-dirs -e ssh --include='*.'{png,csv} --include '*/' --exclude='*' rum20@crc:/zfs1/pbrusilovsky/rum20/seq2seq-keyphrase-pytorch/prev_exp/ ~/Desktop/prev_exp
+
+rsync -rav --prune-empty-dirs -e ssh --include '*/' rum20@crc:/zfs1/pbrusilovsky/rum20/seq2seq-keyphrase-pytorch/exp/rnn.general.copy/kp20k.ml.copy.bi-directional.20180820-052823/pred/epoch3_batch906_total_batch88000/ ~/Desktop/exp

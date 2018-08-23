@@ -311,9 +311,9 @@ def train_opts(parser):
     parser.add_argument('-beam_search_batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')
 
-    parser.add_argument('-beam_size',  type=int, default=8,
+    parser.add_argument('-beam_size',  type=int, default=16,
                         help='Beam size')
-    parser.add_argument('-max_sent_length', type=int, default=20,
+    parser.add_argument('-max_sent_length', type=int, default=8,
                         help='Maximum sentence length.')
     parser.add_argument('-eval_method', type=str, default="beam_search",
                         help="Sampling, greedy, or beam_search")

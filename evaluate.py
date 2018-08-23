@@ -168,11 +168,11 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
                 in zip(src_list, src_str_list, trg_list, trg_str_list, trg_copy_for_loss_list, pred_seq_list, oov_list):
             # logging.info('======================  %d =========================' % (example_idx))
             print_out = ''
-            print_out += '[Source][%d]: %s \n' % (len(src_str), ' '.join(src_str))
+            print_out += '[Source][%d]\n %s \n\n' % (len(src_str), ' '.join(src_str))
             trg_str_is_present = if_present_duplicate_phrase(src_str, trg_str_seqs)
             print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(trg_str_is_present), len(trg_str_is_present))
             print_out += '\n'.join(['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in zip(trg_str_seqs, trg_str_is_present)])
-            print_out += '\noov_list:   \n\t\t%s \n' % str(oov)
+            print_out += '\n\noov_list:   \n\t\t%s \n\n' % str(oov)
 
             # 1st filtering
             pred_is_valid, processed_pred_seqs, processed_pred_str_seqs, processed_pred_score = process_predseqs(pred_seq, oov, opt.id2word, opt)
@@ -185,22 +185,58 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
             valid_and_present = np.asarray(pred_is_valid) * np.asarray(pred_is_present)
             match_list = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_pred_str_seqs)
-            print_out += '[PREDICTION] #(valid)=%d, #(present)=%d, #(retained & present)=%d, #(all)=%d\n' % (sum(pred_is_valid), sum(pred_is_present), sum(valid_and_present), len(pred_seq))
-            print_out += ''
+
             '''
-            Print and export predictions
+            Evaluate predictions w.r.t different metrics
             '''
-            preds_out = ''
+            print_out += '[SCORES]\n'
+            topk_range = [5, 10]
+            score_names = ['precision', 'recall', 'f_score']
+            match_list = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_pred_str_seqs)
+
+            num_oneword_seq = -1
+            for topk in topk_range:
+                results = evaluate(match_list, processed_pred_str_seqs, trg_str_seqs, topk=topk)
+                for k, v in zip(score_names, results):
+                    if '%s@%d#oneword=%d' % (k, topk, num_oneword_seq) not in score_dict:
+                        score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)] = []
+                    score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)].append(v)
+
+                    print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
+            '''
+            Print valid predicted phrases that count for evaluation
+            '''
+            print_out += '\n[PREDICTION for EVAL] #(pred)=%d\n' % (sum(valid_and_present))
 
             for p_id, (seq, word, score, match, is_valid, is_present) in enumerate(
                     zip(processed_pred_seqs, processed_pred_str_seqs, processed_pred_score, match_list, pred_is_valid, pred_is_present)):
-                # if p_id > 5:
-                #     break
+                if is_present and is_valid:
+                    print_phrase = ' '.join(word)
+                else:
+                    continue
 
-                preds_out += '%s\n' % (' '.join(word))
+                if match == 1.0:
+                    correct_str = '[correct!]'
+                else:
+                    correct_str = ''
+                if any([t >= opt.vocab_size for t in seq.sentence]):
+                    copy_str = '[copied!]'
+                else:
+                    copy_str = ''
+
+                print_out += '\t\t[%.4f]\t%s \t %s %s%s\n' % (-score, print_phrase, str(seq.sentence), correct_str, copy_str)
+
+            print_out += '\n[ALL PREDICTIONs] #(valid)=%d, #(present)=%d, #(retained & present)=%d, #(all)=%d\n' % (sum(pred_is_valid), sum(pred_is_present), sum(valid_and_present), len(pred_seq))
+
+            print_out += ''
+            '''
+            Print all predictions for debug
+            '''
+            for p_id, (seq, word, score, match, is_valid, is_present) in enumerate(
+                    zip(processed_pred_seqs, processed_pred_str_seqs, processed_pred_score, match_list, pred_is_valid, pred_is_present)):
+
                 if is_present:
                     print_phrase = ' '.join(word)
-                    # print_phrase = '[%s]' % ' '.join(word)
                 else:
                     print_phrase = '[absent] %s' % ' '.join(word)
 
@@ -217,23 +253,6 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
                     copy_str = ''
 
                 print_out += '\t\t[%.4f]\t%s \t %s %s%s\n' % (-score, print_phrase, str(seq.sentence), correct_str, copy_str)
-
-            '''
-            Evaluate predictions w.r.t different filterings and metrics
-            '''
-            topk_range = [5, 10]
-            score_names = ['precision', 'recall', 'f_score']
-            match_list = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_pred_str_seqs)
-
-            num_oneword_seq = -1
-            for topk in topk_range:
-                results = evaluate(match_list, processed_pred_str_seqs, trg_str_seqs, topk=topk)
-                for k, v in zip(score_names, results):
-                    if '%s@%d#oneword=%d' % (k, topk, num_oneword_seq) not in score_dict:
-                        score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)] = []
-                    score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)].append(v)
-
-                    print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
 
             logging.info(print_out)
 

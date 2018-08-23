@@ -529,13 +529,13 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
                 # valid_history_losses.append(valid_losses)
                 valid_score_dict = evaluate_beam_search(generator, valid_data_loader, opt,
-                                                        title='Validating, epoch=%d, batch=%d, total_batch=%d '
+                                                        title='Validating-epoch=%d-batch=%d-total_batch=%d'
                                                               % (epoch, batch_i, total_batch),
                                                         epoch=epoch,
                                                         predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d'
                                                                                           % (epoch, batch_i, total_batch))
                 test_score_dict = evaluate_beam_search(generator, test_data_loader, opt,
-                                                       title='Testing, epoch=%d, batch=%d, total_batch=%d '
+                                                       title='Testing-epoch=%d-batch=%d-total_batch=%d'
                                                              % (epoch, batch_i, total_batch),
                                                        epoch=epoch,
                                                        predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d'
@@ -806,10 +806,10 @@ def process_opt(opt):
     if hasattr(opt, 'copy_attention') and opt.copy_attention:
         opt.exp += '.copy'
 
-    if hasattr(opt, 'bidirectional') and opt.bidirectional:
-        opt.exp += '.bi-directional'
-    else:
-        opt.exp += '.uni-directional'
+    # if hasattr(opt, 'bidirectional') and opt.bidirectional:
+    #     opt.exp += '.bi-directional'
+    # else:
+    #     opt.exp += '.uni-directional'
 
     # fill time into the name
     if opt.exp_path.find('%s') > 0:
@@ -866,7 +866,7 @@ def main():
     opt.input_feeding = False
     opt.copy_input_feeding = False
 
-    logging = config.init_logging(logger_name=None, log_file=opt.exp_path + '/output.log', redirect_to_stdout=False)
+    logging = config.init_logging(logger_name=None, log_file=opt.log_file, redirect_to_stdout=False)
 
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
