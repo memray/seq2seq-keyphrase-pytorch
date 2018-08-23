@@ -86,7 +86,7 @@ def model_opts(parser):
                         help="whether the encoder is bidirectional")
 
     # Attention options
-    parser.add_argument('-attention_mode', type=str, default='concat',
+    parser.add_argument('-attention_mode', type=str, default='general',
                         choices=['dot', 'general', 'concat'],
                         help="""The attention type to use:
                         dot or general (Luong) or concat (Bahdanau)""")
@@ -95,7 +95,7 @@ def model_opts(parser):
     parser.add_argument('-copy_attention', action="store_true",
                         help='Train a copy model.')
 
-    parser.add_argument('-copy_mode', type=str, default='concat',
+    parser.add_argument('-copy_mode', type=str, default='general',
                         choices=['dot', 'general', 'concat'],
                         help="""The attention type to use: dot or general (Luong) or concat (Bahdanau)""")
 

@@ -4,6 +4,7 @@ slurm_output/*
 model/*
 .model
 *.model
+/source_data/
 
 data/
 /exp/

@@ -299,7 +299,7 @@ class SequenceGenerator(object):
 
                     # check each new beam and decide to add to hypotheses or completed list
                     for beam_i in range(self.beam_size + 1):
-                        w = words[flattened_seq_id][beam_i]
+                        w = int(words[flattened_seq_id][beam_i])
                         # if w has appeared before, ignore current hypothese
                         # if w in partial_seq.vocab:
                         #     continue

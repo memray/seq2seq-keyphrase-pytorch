@@ -135,7 +135,8 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
             decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
             trg_copy_target.contiguous().view(-1)
         )
-    loss = loss * (1 - opt.loss_scale)
+    if opt.train_rl:
+        loss = loss * (1 - opt.loss_scale)
     print("--loss calculation- %s seconds ---" % (time.time() - start_time))
 
     start_time = time.time()
@@ -149,7 +150,12 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
 
     optimizer.step()
 
-    return loss.data[0], decoder_log_probs
+    if torch.cuda.is_available():
+        loss_val = loss.cpu().data.numpy()[0]
+    else:
+        loss_val = loss.data.numpy()[0]
+
+    return loss_val, decoder_log_probs
 
 
 def train_rl_0(one2many_batch, model, optimizer, generator, opt):
@@ -467,7 +473,6 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
             # Training
             if opt.train_ml:
                 loss_ml, decoder_log_probs = train_ml(one2one_batch, model, optimizer_ml, criterion, opt)
-                loss_ml = loss_ml.cpu().data.numpy()
                 train_ml_losses.append(loss_ml)
                 report_loss.append(('train_ml_loss', loss_ml))
                 report_loss.append(('PPL', loss_ml))
