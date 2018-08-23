@@ -32,7 +32,7 @@ def process_predseqs(pred_seqs, oov, id2word, opt):
     :return:
     '''
     processed_seqs = []
-    if_valid = []
+    valid_flags = []
 
     for seq in pred_seqs:
         # convert to words and remove the EOS token
@@ -49,14 +49,14 @@ def process_predseqs(pred_seqs, oov, id2word, opt):
         if keep_flag and any([w == '.' or w == ',' for w in processed_seq]):
             keep_flag = False
 
-        if_valid.append(keep_flag)
+        valid_flags.append(keep_flag)
         processed_seqs.append((seq, processed_seq, seq.score))
 
     unzipped = list(zip(*(processed_seqs)))
     processed_seqs, processed_str_seqs, processed_scores = unzipped if len(processed_seqs) > 0 and len(unzipped) == 3 else ([], [], [])
 
-    assert len(processed_seqs) == len(processed_str_seqs) == len(processed_scores) == len(if_valid)
-    return if_valid, processed_seqs, processed_str_seqs, processed_scores
+    assert len(processed_seqs) == len(processed_str_seqs) == len(processed_scores) == len(valid_flags)
+    return valid_flags, processed_seqs, processed_str_seqs, processed_scores
 
 
 def post_process_predseqs(seqs, num_oneword_seq=1):
@@ -128,14 +128,17 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
     score_dict = {}  # {'precision@5':[],'recall@5':[],'f1score@5':[], 'precision@10':[],'recall@10':[],'f1score@10':[]}
 
     for i, batch in enumerate(data_loader):
+        if (i + 1) % 20 == 0:
+            break
 
         one2many_batch_dict, _ = batch
+
         # src_list, src_len, trg_list, trg_unk_for_loss, trg_copy_for_loss_list, src_copy_list, oov_list, src_str_list, trg_str_list = one2many_batch_dict
 
         src_list = one2many_batch_dict['src_unk']
         src_copy_list = one2many_batch_dict['src_copy']
         src_len = one2many_batch_dict['src_len']
-        src_mask = one2many_batch_dict['src_mask']
+        src_mask_list = one2many_batch_dict['src_mask']
 
         trg_list = one2many_batch_dict['trg_unk']
         trg_len = one2many_batch_dict['trg_len']
@@ -151,15 +154,71 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
             src_list = src_list.cuda()
             src_copy_list = src_copy_list.cuda()
 
-        # list(batch) of list(beam size) of Sequence
+        generator.model.eval()
+        batch_size = len(src_list)
+        '''
+        Get the encoding of source text
+        '''
+        src_encoding, (src_h, src_c) = generator.model.encode(src_list, src_len)
+
+        '''
+        Initialize decoder
+        '''
+        # prepare the init hidden vector, (batch_size, 1, dec_hidden_dim)
+        initial_input = [opt.word2id[pykp.io.BOS_WORD]] * batch_size
+        dec_hidden = generator.model.init_decoder_state(src_h, src_c) # (1, batch_size, dec_hidden_dim)
+        if isinstance(dec_hidden, tuple):
+            dec_hidden = (dec_hidden[0].squeeze(0), dec_hidden[1].squeeze(0))
+            dec_hidden = [(dec_hidden[0][i], dec_hidden[1][i]) for i in range(batch_size)]
+        elif isinstance(dec_hidden, list):
+            dec_hidden = dec_hidden
+        '''
+        Predict sequences
+        '''
         if opt.eval_method == 'beam_search':
-            pred_seq_list = generator.beam_search(src_list, src_len, src_copy_list, oov_list, opt.word2id)
-        # elif opt.eval_method == 'sampling':
-        #     pred_seq_list = generator.sample(src_list, src_len, src_copy_list, oov_list, opt.word2id, k=1, is_greedy=False)
-        # elif opt.eval_method == 'greedy':
-        #     pred_seq_list = generator.sample(src_list, src_len, src_copy_list, oov_list, opt.word2id, k=1, is_greedy=True)
-        else:
+            if opt.cascading_model:
+                pred_seq_list = [[] for i in range(batch_size)]
+                pred_seq_set = [set() for i in range(batch_size)]
+                # run opt.beam_search_round_number rounds of beam search
+                for r_id in range(opt.beam_search_round_number):
+                    # for each beam, get opt.beam_size sequences (batch_size, beam_size)
+                    pred_seqs = generator.beam_search(src_encoding, initial_input,
+                                                      dec_hidden,
+                                                      src_list, src_len, src_mask_list,
+                                                      src_copy_list, oov_list,
+                                                      opt.word2id)
+
+                    # for each beam, only store the Top 1 prediction
+                    new_dec_hidden = []
+                    for b_id in range(batch_size):
+                        for seq_id, seq in enumerate(pred_seqs[b_id]):
+                            seq_key = ' '.join([str(sw) for sw in seq.sentence])
+                            if seq_key not in pred_seq_set[b_id]: # TODO +present and valid and not duplicate after stemming
+                                pred_seq_list[b_id].append(seq)
+                                pred_seq_set[b_id].add(seq_key)
+                                new_dec_hidden.append(seq.dec_hidden)
+                                break
+                        if seq_id == len(pred_seqs[b_id]) - 1:
+                            print('Error: cannot find new unique sequence. Use the hidden state of first pred.')
+                            new_dec_hidden.append(pred_seqs[b_id][0].dec_hidden)
+
+                    print(len(pred_seq_list[b_id]))
+                    dec_hidden = new_dec_hidden
+                    assert len(dec_hidden) == batch_size
+            else:
+                # a list(len=batch_size) of lists (len=beam size), each element is a predicted Sequence
+                pred_seqs = generator.beam_search(src_encoding, initial_input,
+                                                  dec_hidden,
+                                                  src_list, src_len, src_mask_list,
+                                                  src_copy_list, oov_list,
+                                                  opt.word2id)
+                pred_seq_list = pred_seqs
+        elif opt.eval_method == 'sampling':
             raise NotImplemented
+            pred_seq_list = generator.sample(src_list, src_len, src_copy_list, oov_list, opt.word2id, k=1, is_greedy=False)
+        elif opt.eval_method == 'greedy':
+            raise NotImplemented
+            pred_seq_list = generator.sample(src_list, src_len, src_copy_list, oov_list, opt.word2id, k=1, is_greedy=True)
 
         '''
         process each example in current batch
@@ -317,8 +376,7 @@ def evaluate_greedy(model, data_loader, test_examples, opt):
         if torch.cuda.is_available():
             src.cuda()
 
-        # trg = Variable(torch.from_numpy(np.zeros((src.size(0), opt.max_sent_length), dtype='int64')))
-        trg = Variable(torch.LongTensor([[opt.word2id[pykp.io.BOS_WORD]] * opt.max_sent_length]))
+        trg = Variable(torch.LongTensor([[opt.word2id[pykp.io.BOS_WORD]] * opt.beam_search_max_length]))
 
         max_words_pred = model.greedy_predict(src, trg)
         progbar.update(None, i, [])

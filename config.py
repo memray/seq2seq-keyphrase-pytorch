@@ -222,7 +222,7 @@ def train_opts(parser):
     parser.add_argument('-optim', default='adam',
                         choices=['sgd', 'adagrad', 'adadelta', 'adam'],
                         help="""Optimization method.""")
-    parser.add_argument('-max_grad_norm', type=float, default=5,
+    parser.add_argument('-max_grad_norm', type=float, default=2,
                         help="""If the norm of the gradient vector exceeds this,
                         renormalize it to have the norm equal to
                         max_grad_norm""")
@@ -306,15 +306,17 @@ def train_opts(parser):
     # beam search setting
     parser.add_argument('-beam_search_batch_example', type=int, default=8,
                         help='Maximum of examples for one batch, should be disabled for training')
-    parser.add_argument('-beam_search_batch_size', type=int, default=32,
+    parser.add_argument('-beam_search_batch_size', type=int, default=64,
                         help='Maximum batch size')
     parser.add_argument('-beam_search_batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')
 
-    parser.add_argument('-beam_size',  type=int, default=16,
+    parser.add_argument('-beam_size',  type=int, default=4,
                         help='Beam size')
-    parser.add_argument('-max_sent_length', type=int, default=8,
-                        help='Maximum sentence length.')
+    parser.add_argument('-beam_search_max_length', type=int, default=6,
+                        help='Maximum sentence length for beam search.')
+    parser.add_argument('-beam_search_round_number', type=int, default=10,
+                        help='Number of search rounds for beam search, mainly used in cascading model.')
     parser.add_argument('-eval_method', type=str, default="beam_search",
                         help="Sampling, greedy, or beam_search")
 

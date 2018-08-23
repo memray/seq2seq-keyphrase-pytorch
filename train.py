@@ -131,10 +131,6 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
 
     decoder_log_probs, _, _ = model.forward(src, src_len, trg, trg_len, src_copy, oov_lists, src_mask, trg_mask)
 
-
-    # simply average losses of all the predicitons
-    # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
-
     if not opt.copy_attention:
         loss = criterion(
             decoder_log_probs.contiguous().view(-1, opt.vocab_size),
@@ -143,11 +139,11 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
     else:
         loss = criterion(
             decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
-            # trg_copy_for_loss[:,0,:].contiguous().view(-1)
             trg_copy_for_loss.contiguous().view(-1)
         )
 
-    loss = loss * (1 - opt.loss_scale)
+    if opt.train_rl:
+        loss = loss * (1 - opt.loss_scale)
 
     print('src.shape=%s' % str(src.shape))
     print('trg.shape=%s' % str(trg.shape))
@@ -198,7 +194,7 @@ def train_rl_0(one2many_batch, model, optimizer, generator, opt):
 
         # pad trg seqs with EOS to the same length
         trg_seqs = [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq] for seq in trg_copy]
-        # trg_seqs            =  [seq + [pykp.IO.EOS_WORD] * (opt.max_sent_length - len(seq)) for seq in trg_seqs]
+        # trg_seqs            =  [seq + [pykp.IO.EOS_WORD] * (opt.beam_search_max_length - len(seq)) for seq in trg_seqs]
 
         # local rewards (bleu)
         bleu_baselines = get_match_result(true_seqs=trg_seqs, pred_seqs=baseline_str_seqs, type='bleu')
@@ -288,7 +284,7 @@ def train_rl_1(one2many_batch, model, optimizer, generator, opt, reward_cache):
 
         # pad trg seqs with EOS to the same length
         trg_seqs = [[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq] for seq in trg_copy]
-        # trg_seqs            =  [seq + [pykp.IO.EOS_WORD] * (opt.max_sent_length - len(seq)) for seq in trg_seqs]
+        # trg_seqs            =  [seq + [pykp.IO.EOS_WORD] * (opt.beam_search_max_length - len(seq)) for seq in trg_seqs]
 
         # local rewards (bleu)
         bleu_samples = get_match_result(true_seqs=trg_seqs, pred_seqs=sampled_str_seqs, type='bleu')
@@ -377,8 +373,6 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
     sampled_size = 2
     logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
-    # src, _, trg, trg_unk_for_loss, trg_copy_for_loss, src_copy, oov_lists = one2one_batch
-
     src = one2one_batch['src_unk']
     src_copy = one2one_batch['src_copy']
 
@@ -407,8 +401,9 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
     max_words_pred = [max_words_pred[i] for i in sampled_trg_idx]
     decoder_log_probs = decoder_log_probs[sampled_trg_idx]
     if not opt.copy_attention:
-        trg_unk_for_loss = [trg_unk_for_loss[i] for i in
-                      sampled_trg_idx]  # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
+        # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
+        trg_unk_for_loss = [trg_unk_for_loss[i]
+                            for i in sampled_trg_idx]
     else:
         trg_unk_for_loss = [trg_copy_for_loss[i] for i in sampled_trg_idx]
 
@@ -444,7 +439,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     generator = SequenceGenerator(model,
                                   eos_id=opt.word2id[pykp.io.EOS_WORD],
                                   beam_size=opt.beam_size,
-                                  max_sequence_length=opt.max_sent_length
+                                  max_sequence_length=opt.beam_search_max_length
                                   )
 
     logging.info('======================  Checking GPU Availability  =========================')
