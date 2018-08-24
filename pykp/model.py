@@ -541,7 +541,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         dec_hidden = init_hidden
         trg_enc_hidden = init_hidden_target_encoder
 
-        for di in range(trg_inputs.size(1)):
+        for di in range(0, trg_inputs.size(1) - 1):
             # initialize target embedding and reshape the targets to be time step first
             trg_emb = self.embedding(trg_input)  # (batch_size, 1, embed_dim)
             trg_emb = trg_emb.permute(1, 0, 2)  # (1, batch_size, embed_dim)
@@ -560,7 +560,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
             # run RNN decoder with inputs (trg_len first)
             decoder_output, dec_hidden = self.decoder(
-                dec_input, trg_mask[di: di + 1], dec_hidden
+                dec_input, trg_mask[:, di: di + 1], dec_hidden
             )
 
             '''
