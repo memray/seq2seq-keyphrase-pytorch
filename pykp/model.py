@@ -300,15 +300,6 @@ class Seq2SeqLSTMAttention(nn.Module):
                                nhid=self.trg_hidden_dim,
                                dropout_between_rnn_hiddens=0.,
                                use_layernorm=False)
-
-        # self.decoder = nn.LSTM(
-        #     input_size=self.emb_dim if (not self.enable_target_encoder or self.target_encoder_merge_mode == "mean") else self.emb_dim + self.target_encoder_dim,
-        #     hidden_size=self.trg_hidden_dim,
-        #     num_layers=self.nlayers_trg,
-        #     bidirectional=False,
-        #     batch_first=False,
-        #     dropout=self.dropout
-        # )
         
         self.target_encoder = nn.LSTM(
             input_size=self.emb_dim,
