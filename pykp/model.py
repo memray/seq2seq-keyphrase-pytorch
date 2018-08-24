@@ -702,7 +702,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return do_tf
 
-    def generate(self, trg_input, dec_hidden, enc_context, trg_enc_hidden, ctx_mask=None, trg_mask=None, src_map=None, oov_list=None, max_len=1, return_attention=False):
+    def generate(self, trg_input, dec_hidden, enc_context, trg_enc_hidden, ctx_mask=None, coverage_cache=None, trg_mask=None, src_map=None, oov_list=None, max_len=1, return_attention=False):
         '''
         Given the initial input, state and the source contexts, return the top K restuls for each time step
         :param trg_input: just word indexes of target texts (usually zeros indicating BOS <s>)
@@ -722,9 +722,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         # trg_len = trg_input.size(1)
         context_dim = enc_context.size(2)
         trg_hidden_dim = self.trg_hidden_dim
-
-        h_tilde = Variable(torch.zeros(batch_size, 1, trg_hidden_dim)).cuda() if torch.cuda.is_available() else Variable(torch.zeros(batch_size, 1, trg_hidden_dim))
-        copy_h_tilde = Variable(torch.zeros(batch_size, 1, trg_hidden_dim)).cuda() if torch.cuda.is_available() else Variable(torch.zeros(batch_size, 1, trg_hidden_dim))
         attn_weights = []
         copy_weights = []
         log_probs = []
@@ -733,61 +730,45 @@ class Seq2SeqLSTMAttention(nn.Module):
         if self.attention_layer.method == 'dot':
             enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
 
-        for i in range(max_len):
-            # print('TRG_INPUT: %s' % str(trg_input.size()))
-            # print(trg_input.data.numpy())
-            trg_emb = self.embedding(trg_input)  # (batch_size, trg_len = 1, emb_dim)
+        trg_emb = self.embedding(trg_input)  # (batch_size, trg_len = 1, emb_dim)
+        trg_emb = trg_emb.permute(1, 0, 2)  # (1, batch_size, embed_dim)
 
-            # Input-feeding, attentional vectors h˜t are concatenated with inputs at the next time steps
-            trg_emb = self.merge_decode_inputs(trg_emb, h_tilde, copy_h_tilde)
+        if self.enable_target_encoder:
+            # target encoder
+            trg_enc_h, trg_enc_hidden = self.target_encoder(trg_emb, trg_enc_hidden)
+            trg_enc_h = trg_enc_h.detach()
+            dec_input = self.target_encoding_merger([trg_enc_h, trg_emb])
+        else:
+            dec_input = trg_emb
 
-            if self.enable_target_encoder:
-                # target encoder
-                trg_enc_h, trg_enc_hidden = self.target_encoder(
-                    trg_emb, trg_enc_hidden
-                )
-                trg_enc_h = trg_enc_h.detach()
-                dec_input = self.target_encoding_merger([trg_enc_h, trg_emb])
+        decoder_output, dec_hidden, coverage_cache, attn_weight, attn_logit = self.decoder(dec_input, trg_mask, coverage_cache, enc_context, ctx_mask, dec_hidden)
+
+        decoder_logit = self.decoder2vocab(decoder_output.view(-1, trg_hidden_dim)).view(batch_size, 1, -1)  # batch x 1 x vocab
+
+        if not self.copy_attention:
+            decoder_log_prob = torch.nn.functional.log_softmax(decoder_logit, dim=-1).view(batch_size, 1, self.vocab_size)
+        else:
+            # copy_weights and copy_logits is (batch_size, trg_len, src_len)
+            if self.reuse_copy_attn:
+                copy_weight, copy_logit = attn_weight, attn_logit
             else:
-                dec_input = trg_emb
+                _, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
+            copy_weights.append(copy_weight)  # (batch_size, 1, src_len)
+            # merge the generative and copying probs (batch_size, 1, vocab_size + max_unk_word)
+            decoder_log_prob = self.merge_copy_probs(decoder_logit, copy_logit, src_map, oov_list)
 
-            # (seq_len, batch_size, hidden_size * num_directions)
-            decoder_output, dec_hidden = self.decoder(
-                dec_input, trg_mask, dec_hidden
-            )
+        # Prepare for the next iteration, get the top word, top_idx and next_index are (batch_size, K)
+        _, top_1_idx = decoder_log_prob.data.topk(1, dim=-1)  # (batch_size, 1)
+        trg_input = Variable(top_1_idx.squeeze(2))
+        # trg_input           = Variable(top_1_idx).cuda() if torch.cuda.is_available() else Variable(top_1_idx) # (batch_size, 1)
 
-            # Get the h_tilde (hidden after attention) and attention weights
-            h_tilde, attn_weight, attn_logit = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
-
-            # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
-            # (batch_size, trg_len, trg_hidden_size) -> (batch_size, 1, vocab_size)
-            decoder_logit = self.decoder2vocab(h_tilde.view(-1, trg_hidden_dim))
-
-            if not self.copy_attention:
-                decoder_log_prob = torch.nn.functional.log_softmax(decoder_logit, dim=-1).view(batch_size, 1, self.vocab_size)
-            else:
-                decoder_logit = decoder_logit.view(batch_size, 1, self.vocab_size)
-                # copy_weights and copy_logits is (batch_size, trg_len, src_len)
-                if not self.reuse_copy_attn:
-                    copy_h_tilde, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
-                else:
-                    copy_h_tilde, copy_weight, copy_logit = h_tilde, attn_weight, attn_logit
-                copy_weights.append(copy_weight.permute(1, 0, 2))  # (1, batch_size, src_len)
-                # merge the generative and copying probs (batch_size, 1, vocab_size + max_unk_word)
-                decoder_log_prob = self.merge_copy_probs(decoder_logit, copy_logit, src_map, oov_list)
-
-            # Prepare for the next iteration, get the top word, top_idx and next_index are (batch_size, K)
-            _, top_1_idx = decoder_log_prob.data.topk(1, dim=-1)  # (batch_size, 1)
-            trg_input = Variable(top_1_idx.squeeze(2))
-            # trg_input           = Variable(top_1_idx).cuda() if torch.cuda.is_available() else Variable(top_1_idx) # (batch_size, 1)
-
-            # append to return lists
-            log_probs.append(decoder_log_prob.permute(1, 0, 2))  # (1, batch_size, vocab_size)
-            attn_weights.append(attn_weight.permute(1, 0, 2))  # (1, batch_size, src_len)
+        # append to return lists
+        log_probs.append(decoder_log_prob)  # (batch_size, 1, vocab_size)
+        attn_weights.append(attn_weight)  # (batch_size, 1, src_len)
 
         # permute to trg_len first, otherwise the cat operation would mess up things
-        log_probs = torch.cat(log_probs, 0).permute(1, 0, 2)  # (batch_size, max_len, K)
-        attn_weights = torch.cat(attn_weights, 0).permute(1, 0, 2)  # (batch_size, max_len, src_seq_len)
+        log_probs = torch.cat(log_probs, 1)  # (batch_size, max_len, K)
+        attn_weights = torch.cat(attn_weights, 1)  # (batch_size, max_len, src_seq_len)
 
         # Only return the hidden vectors of the last time step.
         #   tuple of (num_layers * num_directions, batch_size, trg_hidden_dim)=(1, batch_size, trg_hidden_dim)
@@ -795,12 +776,12 @@ class Seq2SeqLSTMAttention(nn.Module):
         # Return final outputs, hidden states, and attention weights (for visualization)
         if return_attention:
             if not self.copy_attention:
-                return log_probs, dec_hidden, trg_enc_hidden, attn_weights
+                return log_probs, dec_hidden, trg_enc_hidden, attn_weights, coverage_cache
             else:
-                copy_weights = torch.cat(copy_weights, 0).permute(1, 0, 2)  # (batch_size, max_len, src_seq_len)
-                return log_probs, dec_hidden, trg_enc_hidden, (attn_weights, copy_weights)
+                copy_weights = torch.cat(copy_weights, 1)  # (batch_size, max_len, src_seq_len)
+                return log_probs, dec_hidden, trg_enc_hidden, (attn_weights, copy_weights), coverage_cache
         else:
-            return log_probs, dec_hidden, trg_enc_hidden
+            return log_probs, dec_hidden, trg_enc_hidden, coverage_cache
 
     def greedy_predict(self, input_src, input_trg, trg_mask=None, ctx_mask=None):
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
