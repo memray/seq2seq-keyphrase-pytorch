@@ -298,7 +298,6 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         self.decoder = UniLSTM(nemb=self.emb_dim if (not self.enable_target_encoder or self.target_encoder_merge_mode == "mean") else self.emb_dim + self.target_encoder_dim,
                                nhid=self.trg_hidden_dim,
-                               dropout_between_rnn_hiddens=0.,
                                use_layernorm=False)
         
         self.target_encoder = nn.LSTM(
