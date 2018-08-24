@@ -455,6 +455,11 @@ class SequenceGenerator(object):
         dec_hiddens = self.model.init_decoder_state(src_h, src_c)
         
         trg_enc_hiddens = self.model.init_target_encoder_state(batch_size) 
+        trg_mask = np.array([1.0] * batch_size, dtype='float32') 
+        trg_mask = torch.autograd.Variable(torch.from_numpy(trg_mask).type(torch.FloatTensor))
+        trg_mask = trg_mask.unsqueeze(-1)
+        if torch.cuda.is_available():
+            trg_mask =  trg_mask.cuda()
 
         # each dec_hidden is (trg_seq_len, dec_hidden_dim)
         initial_input = [word2id[pykp.io.BOS_WORD]] * batch_size
@@ -499,6 +504,7 @@ class SequenceGenerator(object):
                 trg_enc_hidden=trg_enc_hiddens,
                 enc_context=contexts,
                 ctx_mask=ctx_mask,
+                trg_mask=trg_mask,
                 src_map=src_oovs,
                 oov_list=oov_lists,
                 max_len=1,

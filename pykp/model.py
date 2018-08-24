@@ -297,7 +297,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         )
 
         self.decoder = UniLSTM(nemb=self.emb_dim if (not self.enable_target_encoder or self.target_encoder_merge_mode == "mean") else self.emb_dim + self.target_encoder_dim,
-                               nhid=[self.trg_hidden_dim],
+                               nhid=self.trg_hidden_dim,
                                dropout_between_rnn_hiddens=0.,
                                use_layernorm=False)
 
@@ -445,7 +445,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         if not ctx_mask:
             ctx_mask = self.get_mask(input_src)  # same size as input_src
         if not trg_mask:
-            trg_mask = self.get_mask(input_trg)  # same size as input_src
+            trg_mask = self.get_mask(input_trg)  # same size as input_trg
         src_h, (src_h_t, src_c_t) = self.encode(input_src, input_src_len)
         decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights, trg_encoding_h_last = self.decode(trg_inputs=input_trg, src_map=input_src_ext,
                                                                                       oov_list=oov_lists, enc_context=src_h, enc_hidden=(src_h_t, src_c_t),
@@ -564,7 +564,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
         decoder_outputs, _ = self.decoder(
-            decoder_input, init_hidden
+            decoder_input, trg_mask, init_hidden
         )
 
         '''
@@ -694,7 +694,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return do_tf
 
-    def generate(self, trg_input, dec_hidden, enc_context, trg_enc_hidden, ctx_mask=None, src_map=None, oov_list=None, max_len=1, return_attention=False):
+    def generate(self, trg_input, dec_hidden, enc_context, trg_enc_hidden, ctx_mask=None, trg_mask=None, src_map=None, oov_list=None, max_len=1, return_attention=False):
         '''
         Given the initial input, state and the source contexts, return the top K restuls for each time step
         :param trg_input: just word indexes of target texts (usually zeros indicating BOS <s>)
@@ -745,7 +745,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
             # (seq_len, batch_size, hidden_size * num_directions)
             decoder_output, dec_hidden = self.decoder(
-                dec_input, dec_hidden
+                dec_input, trg_mask, dec_hidden
             )
 
             # Get the h_tilde (hidden after attention) and attention weights
