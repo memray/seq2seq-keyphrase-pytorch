@@ -577,7 +577,11 @@ class Seq2SeqLSTMAttention(nn.Module):
             (2) Copy Attention
             '''
             if self.copy_attention:
-                _, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
+                if self.reuse_copy_attn:
+                    copy_weight, copy_logit = attn_weight, attn_logit
+                else:
+                    _, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
+
                 # merge the generative and copying probs (batch_size, 1, vocab_size + max_oov_number)
                 decoder_log_prob = self.merge_copy_probs(decoder_logit, copy_logit, src_map, oov_list)
             else:
