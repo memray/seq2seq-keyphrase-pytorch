@@ -167,9 +167,6 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
     score_dict = {}  # {'precision@5':[],'recall@5':[],'f1score@5':[], 'precision@10':[],'recall@10':[],'f1score@10':[]}
 
     for i, batch in enumerate(data_loader):
-        if (i + 1) % 20 == 0:
-            break
-
         one2many_batch_dict, _ = batch
 
         # src_list, src_len, trg_list, trg_unk_for_loss, trg_copy_for_loss_list, src_copy_list, oov_list, src_str_list, trg_str_list = one2many_batch_dict
@@ -255,7 +252,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
                         else:
                             if first_nonduplicate_seq_id == -1:
                                 first_nonduplicate_seq_id = 0
-                            #     print('Error: cannot find new unique sequence. Use the first pred: %s.' % seq_key)
+                                # print('Error: cannot find new unique sequence. Use the first pred: %s.' % seq_key)
                             # print('len(pred_seq_strs_batch[b_id])=%d' % len(pred_seq_strs_batch[b_id]))
                             # print('first_nonduplicate_seq_id=%d' % first_nonduplicate_seq_id)
                             seq_key = ' '.join(pred_seq_strs_batch[b_id][first_nonduplicate_seq_id])
