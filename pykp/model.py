@@ -532,8 +532,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         # Teacher Forcing
         self.current_batch += 1
 
-        # take the first word (should be BOS <s>) of each target sequence (batch_size, 1)
-        trg_input = trg_inputs[:, 0: 1]
         decoder_log_probs = []
         decoder_outputs = []
         attn_weights = []
@@ -541,7 +539,9 @@ class Seq2SeqLSTMAttention(nn.Module):
         dec_hidden = init_hidden
         trg_enc_hidden = init_hidden_target_encoder
 
-        for di in range(0, trg_inputs.size(1) - 1):
+        for di in range(trg_inputs.size(1)):
+                
+            trg_input = trg_inputs[:, di: di + 1]
             # initialize target embedding and reshape the targets to be time step first
             trg_emb = self.embedding(trg_input)  # (batch_size, 1, embed_dim)
             trg_emb = trg_emb.permute(1, 0, 2)  # (1, batch_size, embed_dim)
@@ -589,10 +589,6 @@ class Seq2SeqLSTMAttention(nn.Module):
                 decoder_log_prob = torch.nn.functional.log_softmax(decoder_logit, dim=-1).view(batch_size, -1, self.vocab_size)
                 copy_weight = None
 
-            '''
-            Prepare for the next iteration
-            '''
-            trg_input = trg_inputs[:, di + 1: di + 2]
             # Save results of current step. Permute to trg_len first, otherwise the cat operation would mess up things
             decoder_log_probs.append(decoder_log_prob)
             decoder_outputs.append(decoder_output.permute(1, 0, 2))
