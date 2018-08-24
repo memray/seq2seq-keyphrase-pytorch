@@ -185,8 +185,8 @@ class SequenceGenerator(object):
 
         # (batch_size, trg_hidden_dim)
         if isinstance(flattened_sequences[0].dec_hidden, tuple):
-            h_states = torch.cat([seq.dec_hidden[0] for seq in flattened_sequences]).view(1, batch_size, -1)
-            c_states = torch.cat([seq.dec_hidden[1] for seq in flattened_sequences]).view(1, batch_size, -1)
+            h_states = torch.cat([seq.dec_hidden[0] for seq in flattened_sequences]).view(batch_size, -1)
+            c_states = torch.cat([seq.dec_hidden[1] for seq in flattened_sequences]).view(batch_size, -1)
             dec_hiddens = (h_states, c_states)
         else:
             dec_hiddens = torch.cat([seq.state for seq in flattened_sequences])
@@ -459,7 +459,6 @@ class SequenceGenerator(object):
         # each dec_hidden is (trg_seq_len, dec_hidden_dim)
         initial_input = [word2id[pykp.io.BOS_WORD]] * batch_size
         if isinstance(dec_hiddens, tuple):
-            dec_hiddens = (dec_hiddens[0].squeeze(0), dec_hiddens[1].squeeze(0))
             dec_hiddens = [(dec_hiddens[0][i], dec_hiddens[1][i]) for i in range(batch_size)]
         elif isinstance(dec_hiddens, list):
             dec_hiddens = dec_hiddens
@@ -539,9 +538,7 @@ class SequenceGenerator(object):
 
             # tuple of (num_layers * num_directions, batch_size, trg_hidden_dim)=(1, hyp_seq_size, trg_hidden_dim), squeeze the first dim
             if isinstance(new_dec_hiddens, tuple):
-                new_dec_hiddens1 = new_dec_hiddens[0].squeeze(0)
-                new_dec_hiddens2 = new_dec_hiddens[1].squeeze(0)
-                new_dec_hiddens = [(new_dec_hiddens1[i], new_dec_hiddens2[i]) for i in range(num_partial_sequences)]
+                new_dec_hiddens = [(new_dec_hiddens[0][i], new_dec_hiddens[1][i]) for i in range(num_partial_sequences)]
 
             if isinstance(new_trg_enc_hiddens, tuple):
                 new_trg_enc_hiddens1 = new_trg_enc_hiddens[0].squeeze(0)

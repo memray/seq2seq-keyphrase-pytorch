@@ -11,7 +11,7 @@ import numpy as np
 import random
 
 import pykp
-from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat
+from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, UniLSTM
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -296,14 +296,19 @@ class Seq2SeqLSTMAttention(nn.Module):
             dropout=self.dropout
         )
 
-        self.decoder = nn.LSTM(
-            input_size=self.emb_dim if (not self.enable_target_encoder or self.target_encoder_merge_mode == "mean") else self.emb_dim + self.target_encoder_dim,
-            hidden_size=self.trg_hidden_dim,
-            num_layers=self.nlayers_trg,
-            bidirectional=False,
-            batch_first=False,
-            dropout=self.dropout
-        )
+        self.decoder = UniLSTM(nemb=self.emb_dim if (not self.enable_target_encoder or self.target_encoder_merge_mode == "mean") else self.emb_dim + self.target_encoder_dim,
+                               nhid=[self.trg_hidden_dim],
+                               dropout_between_rnn_hiddens=0.,
+                               use_layernorm=False)
+
+        # self.decoder = nn.LSTM(
+        #     input_size=self.emb_dim if (not self.enable_target_encoder or self.target_encoder_merge_mode == "mean") else self.emb_dim + self.target_encoder_dim,
+        #     hidden_size=self.trg_hidden_dim,
+        #     num_layers=self.nlayers_trg,
+        #     bidirectional=False,
+        #     batch_first=False,
+        #     dropout=self.dropout
+        # )
         
         self.target_encoder = nn.LSTM(
             input_size=self.emb_dim,
@@ -416,8 +421,8 @@ class Seq2SeqLSTMAttention(nn.Module):
 
     def init_decoder_state(self, enc_h, enc_c):
         # prepare the init hidden vector for decoder, (batch_size, num_layers * num_directions * enc_hidden_dim) -> (num_layers * num_directions, batch_size, dec_hidden_dim)
-        decoder_init_hidden = nn.Tanh()(self.encoder2decoder_hidden(enc_h)).unsqueeze(0)
-        decoder_init_cell = nn.Tanh()(self.encoder2decoder_cell(enc_c)).unsqueeze(0)
+        decoder_init_hidden = nn.Tanh()(self.encoder2decoder_hidden(enc_h))
+        decoder_init_cell = nn.Tanh()(self.encoder2decoder_cell(enc_c))
 
         return decoder_init_hidden, decoder_init_cell
 

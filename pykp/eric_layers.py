@@ -250,3 +250,154 @@ class FastUniLSTM(torch.nn.Module):
 
         output = output.contiguous() * mask.unsqueeze(-1)
         return output, mask, last_states
+
+
+class LayerNorm(torch.nn.Module):
+
+    def __init__(self, input_dim):
+        super(LayerNorm, self).__init__()
+        self.gamma = torch.nn.Parameter(torch.ones(input_dim))
+        self.beta = torch.nn.Parameter(torch.zeros(input_dim))
+        self.eps = 1e-6
+
+    def forward(self, x, mask):
+        # x:        nbatch x hidden
+        # mask:     nbatch
+        mean = x.mean(-1, keepdim=True)
+        std = torch.sqrt(x.var(dim=1, keepdim=True) + self.eps)
+        output = self.gamma * (x - mean) / (std + self.eps) + self.beta
+        return output * mask.unsqueeze(1)
+
+class LSTMCell(torch.nn.Module):
+
+    """A basic LSTM cell."""
+
+    def __init__(self, input_size, hidden_size, use_layernorm=False, use_bias=True):
+        """
+        Most parts are copied from torch.nn.LSTMCell.
+        """
+
+        super(LSTMCell, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.use_bias = use_bias
+        self.use_layernorm = use_layernorm
+        self.weight_ih = torch.nn.Parameter(torch.FloatTensor(input_size, 4 * hidden_size))
+        self.weight_hh = torch.nn.Parameter(torch.FloatTensor(hidden_size, 4 * hidden_size))
+        if use_bias:
+            self.bias_f = torch.nn.Parameter(torch.FloatTensor(hidden_size))
+            self.bias_iog = torch.nn.Parameter(torch.FloatTensor(3 * hidden_size))
+        else:
+            self.register_parameter('bias', None)
+        if self.use_layernorm:
+            self.layernorm_i = LayerNorm(input_dim=self.hidden_size * 4)
+            self.layernorm_h = LayerNorm(input_dim=self.hidden_size * 4)
+            self.layernorm_c = LayerNorm(input_dim=self.hidden_size)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        torch.nn.init.orthogonal(self.weight_hh.data)
+        torch.nn.init.xavier_uniform(self.weight_ih.data, gain=1)
+        if self.use_bias:
+            self.bias_f.data.fill_(1.0)
+            self.bias_iog.data.fill_(0.0)
+
+    def forward(self, input_, mask_, h_0, c_0, dropped_h_0):
+        """
+        Args:
+            input_:     A (batch, input_size) tensor containing input features.
+            mask_:      (batch)
+            hx:         A tuple (h_0, c_0), which contains the initial hidden
+                        and cell state, where the size of both states is
+                        (batch, hidden_size).
+        Returns:
+            h_1, c_1: Tensors containing the next hidden and cell state.
+        """
+        wh = torch.mm(dropped_h_0, self.weight_hh)
+        wi = torch.mm(input_, self.weight_ih)
+        if self.use_layernorm:
+            wi = self.layernorm_i(wi, mask_)
+            wh = self.layernorm_h(wh, mask_)
+        pre_act = wi + wh
+        if self.use_bias:
+            pre_act = pre_act + torch.cat([self.bias_f, self.bias_iog]).unsqueeze(0)
+
+        f, i, o, g = torch.split(pre_act, split_size=self.hidden_size, dim=1)
+        expand_mask_ = mask_.unsqueeze(1)  # batch x None
+        c_1 = torch.sigmoid(f) * c_0 + torch.sigmoid(i) * torch.tanh(g)
+        c_1 = c_1 * expand_mask_ + c_0 * (1 - expand_mask_)
+        if self.use_layernorm:
+            h_1 = torch.sigmoid(o) * torch.tanh(self.layernorm_c(c_1, mask_))
+        else:
+            h_1 = torch.sigmoid(o) * torch.tanh(c_1)
+        h_1 = h_1 * expand_mask_ + h_0 * (1 - expand_mask_)
+        return h_1, c_1
+
+    def __repr__(self):
+        s = '{name}({input_size}, {hidden_size})'
+        return s.format(name=self.__class__.__name__, **self.__dict__)
+
+
+class UniLSTM(torch.nn.Module):
+    '''
+    inputs: x:          time x batch x emb
+            mask:       batch x time
+    outputs:
+            encoding:   time x batch x h
+            mask:       batch x time
+    Dropout types:
+        dropout_between_rnn_hiddens -- across time step
+    '''
+
+    def __init__(self, nemb, nhid, dropout_between_rnn_hiddens=0.,
+                 use_layernorm=False):
+        super(UniLSTM, self).__init__()
+        self.nhid = nhid
+        self.nemb = nemb
+        self.dropout_between_rnn_hiddens = dropout_between_rnn_hiddens
+        self.use_layernorm = use_layernorm
+        self.rnn = LSTMCell(self.nemb, self.nhid, use_layernorm=self.use_layernorm, use_bias=True)
+
+    def get_init_hidden(self, bsz):
+        if torch.cuda.is_available():
+            return [(torch.autograd.Variable(torch.zeros(bsz, self.nhid)).cuda(),\
+                   torch.autograd.Variable(torch.zeros(bsz, self.nhid)).cuda())]
+        else:
+            return [(torch.autograd.Variable(torch.zeros(bsz, self.nhid)),\
+                   torch.autograd.Variable(torch.zeros(bsz, self.nhid)))]
+
+    def get_dropout_mask(self, x, _rate=0.5):
+        mask = torch.ones(x.size())
+        if self.training and _rate > 0.05:
+            mask = mask.bernoulli_(1 - _rate) / (1 - _rate)
+        mask = torch.autograd.Variable(mask, requires_grad=False)
+        if torch.cuda.is_available():
+            mask = mask.cuda()
+        return mask
+
+    def forward(self, x, mask, init_states=None):
+        x = x.permute(1, 0, 2)  # batch x time x emb
+        if init_states is None:
+            state_stp = self.get_init_hidden(x.size(0))
+        else:
+            state_stp = [init_states]
+        hidden_to_hidden_dropout_masks = None
+
+        for t in range(x.size(1)):
+            input_mask = mask[:, t]
+            curr_input = x[:, t]
+            previous_h, previous_c = state_stp[t]
+            if t == 0:
+                # get hidden to hidden dropout mask at 0th time step of each rnn layer, and freeze them at teach time step
+                hidden_to_hidden_dropout_masks = self.get_dropout_mask(previous_h, _rate=self.dropout_between_rnn_hiddens)
+            dropped_previous_h = hidden_to_hidden_dropout_masks * previous_h
+
+            new_h, new_c = self.rnn.forward(curr_input, input_mask, previous_h, previous_c, dropped_previous_h)
+            state_stp.append((new_h, new_c))
+
+        hidden_states = [hc[0] for hc in state_stp[1:]]  # list of batch x hid
+        hidden_states = torch.stack(hidden_states, 1)  # batch x time x hid
+        last_states = (state_stp[-1][0], state_stp[-1][1])  # (batch x hid, batch x hid)
+        hidden_states = hidden_states * mask.unsqueeze(-1)  # batch x time x hid
+        hidden_states = hidden_states.permute(1, 0, 2)  # time x batch x hid
+        return hidden_states, last_states
