@@ -322,7 +322,7 @@ class LSTMCell(torch.nn.Module):
         if self.use_bias:
             pre_act = pre_act + torch.cat([self.bias_f, self.bias_iog]).unsqueeze(0)
 
-        f, i, o, g = torch.split(pre_act, split_size=self.hidden_size, dim=1)
+        f, i, o, g = torch.split(pre_act, split_size_or_sections=self.hidden_size, dim=1)
         expand_mask_ = mask_.unsqueeze(1)  # batch x None
         c_1 = torch.sigmoid(f) * c_0 + torch.sigmoid(i) * torch.tanh(g)
         c_1 = c_1 * expand_mask_ + c_0 * (1 - expand_mask_)
