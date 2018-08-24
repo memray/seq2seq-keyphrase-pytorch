@@ -401,3 +401,75 @@ class UniLSTM(torch.nn.Module):
         hidden_states = hidden_states * mask.unsqueeze(-1)  # batch x time x hid
         hidden_states = hidden_states.permute(1, 0, 2)  # time x batch x hid
         return hidden_states, last_states
+
+
+class CoverageLSTMCell(torch.nn.Module):
+
+    """A basic LSTM cell with coverage mechanism."""
+
+    def __init__(self, input_size, hidden_size, c_size, use_layernorm=False, use_bias=True):
+        """
+        Most parts are copied from torch.nn.LSTMCell.
+        """
+
+        super(CoverageLSTMCell, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.c_size = c_size
+        self.use_bias = use_bias
+        self.use_layernorm = use_layernorm
+        self.weight_ih = torch.nn.Parameter(torch.FloatTensor(input_size, 4 * hidden_size))
+        self.weight_hh = torch.nn.Parameter(torch.FloatTensor(hidden_size, 4 * hidden_size))
+        self.weight_ch = torch.nn.Parameter(torch.FloatTensor(c_size, 4 * hidden_size))
+        if use_bias:
+            self.bias_f = torch.nn.Parameter(torch.FloatTensor(hidden_size))
+            self.bias_iog = torch.nn.Parameter(torch.FloatTensor(3 * hidden_size))
+        else:
+            self.register_parameter('bias', None)
+        if self.use_layernorm:
+            self.layernorm_i = LayerNorm(input_dim=self.hidden_size * 4)
+            self.layernorm_h = LayerNorm(input_dim=self.hidden_size * 4)
+            self.layernorm_c = LayerNorm(input_dim=self.hidden_size)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        torch.nn.init.orthogonal(self.weight_hh.data)
+        torch.nn.init.xavier_uniform(self.weight_ih.data, gain=1)
+        if self.use_bias:
+            self.bias_f.data.fill_(1.0)
+            self.bias_iog.data.fill_(0.0)
+
+    def forward(self, input_, mask_, h_0, c_0, dropped_h_0):
+        """
+        Args:
+            input_:     A (batch, input_size) tensor containing input features.
+            mask_:      (batch)
+            hx:         A tuple (h_0, c_0), which contains the initial hidden
+                        and cell state, where the size of both states is
+                        (batch, hidden_size).
+        Returns:
+            h_1, c_1: Tensors containing the next hidden and cell state.
+        """
+        wh = torch.mm(dropped_h_0, self.weight_hh)
+        wi = torch.mm(input_, self.weight_ih)
+        if self.use_layernorm:
+            wi = self.layernorm_i(wi, mask_)
+            wh = self.layernorm_h(wh, mask_)
+        pre_act = wi + wh
+        if self.use_bias:
+            pre_act = pre_act + torch.cat([self.bias_f, self.bias_iog]).unsqueeze(0)
+
+        f, i, o, g = torch.split(pre_act, split_size_or_sections=self.hidden_size, dim=1)
+        expand_mask_ = mask_.unsqueeze(1)  # batch x None
+        c_1 = torch.sigmoid(f) * c_0 + torch.sigmoid(i) * torch.tanh(g)
+        c_1 = c_1 * expand_mask_ + c_0 * (1 - expand_mask_)
+        if self.use_layernorm:
+            h_1 = torch.sigmoid(o) * torch.tanh(self.layernorm_c(c_1, mask_))
+        else:
+            h_1 = torch.sigmoid(o) * torch.tanh(c_1)
+        h_1 = h_1 * expand_mask_ + h_0 * (1 - expand_mask_)
+        return h_1, c_1
+
+    def __repr__(self):
+        s = '{name}({input_size}, {hidden_size})'
+        return s.format(name=self.__class__.__name__, **self.__dict__)
