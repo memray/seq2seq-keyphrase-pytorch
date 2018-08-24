@@ -21,42 +21,75 @@ from pykp.metric.bleu import bleu
 
 stemmer = PorterStemmer()
 
-
-def process_predseqs(pred_seqs, oov, id2word, opt):
+def process_predseqs_batch(pred_seqs_batch, src_str_batch, oov_batch, id2word, vocab_size, must_appear_in_src):
     '''
+    Check the validity and presence of predicted phrases of each example in batch
+    :return:
+    '''
+    pred_seq_strs_batch = []
+    seq_scores_batch = []
+    valid_flags_batch = []
+    present_flags_batch = []
+    for src_str, pred_seqs, oov \
+            in zip(src_str_batch, pred_seqs_batch, oov_batch):
+        pred_seq_strs, seq_scores, valid_flags, present_flags = process_predseqs_example(src_str, pred_seqs, oov, id2word, vocab_size)
+        pred_seq_strs_batch.append(pred_seq_strs)
+        seq_scores_batch.append(seq_scores)
+        valid_flags_batch.append(valid_flags)
+        if not must_appear_in_src:
+            present_flags = [True] * len(present_flags)
+
+        present_flags_batch.append(present_flags)
+
+    return pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch
+
+def process_predseqs_example(src_str, pred_seqs, oov, id2word, vocab_size):
+    '''
+    1. Convert word indices of predicted phrases to strings
+    2. Check the validity of predicted phrases (1. length=1; 2. contains UNK; 3. contains ./,)
+    3. Check whether a phrase appears in the source text or not
     :param pred_seqs:
     :param src_str:
     :param oov:
     :param id2word:
-    :param opt:
+    :param vocab_size:
     :return:
     '''
-    processed_seqs = []
-    valid_flags = []
 
+    '''
+    1. convert word_id to strings
+    '''
+    pred_seq_strs = []
     for seq in pred_seqs:
         # convert to words and remove the EOS token
-        processed_seq = [id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq.sentence[:-1]]
+        seq_str = [id2word[x] if x < vocab_size else oov[x - vocab_size] for x in seq.sentence[:-1]]
+        pred_seq_strs.append(seq_str)
+    '''
+    2. check if the phrase is valid
+    '''
+    valid_flags = []
+    seq_scores = []
+    for seq, seq_str in zip(pred_seqs, pred_seq_strs):
+        valid_flag = True
 
-        keep_flag = True
+        if len(seq_str) == 0:
+            valid_flag = False
 
-        if len(processed_seq) == 0:
-            keep_flag = False
+        if valid_flag and any([w == pykp.io.UNK_WORD for w in seq_str]):
+            valid_flag = False
 
-        if keep_flag and any([w == pykp.io.UNK_WORD for w in processed_seq]):
-            keep_flag = False
+        if valid_flag and any([w == '.' or w == ',' for w in seq_str]):
+            valid_flag = False
 
-        if keep_flag and any([w == '.' or w == ',' for w in processed_seq]):
-            keep_flag = False
+        valid_flags.append(valid_flag)
+        seq_scores.append(seq.score)
 
-        valid_flags.append(keep_flag)
-        processed_seqs.append((seq, processed_seq, seq.score))
+    '''
+    3. check if the phrase appears in the source text
+    '''
+    present_flags = if_present_duplicate_phrase(src_str, pred_seq_strs)
 
-    unzipped = list(zip(*(processed_seqs)))
-    processed_seqs, processed_str_seqs, processed_scores = unzipped if len(processed_seqs) > 0 and len(unzipped) == 3 else ([], [], [])
-
-    assert len(processed_seqs) == len(processed_str_seqs) == len(processed_scores) == len(valid_flags)
-    return valid_flags, processed_seqs, processed_str_seqs, processed_scores
+    return pred_seq_strs, seq_scores, valid_flags, present_flags
 
 
 def post_process_predseqs(seqs, num_oneword_seq=1):
@@ -86,8 +119,14 @@ def post_process_predseqs(seqs, num_oneword_seq=1):
 
 
 def if_present_duplicate_phrase(src_str, phrase_seqs):
+    """
+    Given a source text and a list of phrases, check whether each phrase appears in the text or not
+    :param src_str: a list of words, each word is a string
+    :param phrase_seqs: a list of phrases, each phrase is a list of words (string)
+    :return:
+    """
     stemmed_src_str = stem_word_list(src_str)
-    present_index = []
+    present_flags = []
     phrase_set = set()  # some phrases are duplicate after stemming, like 'model' and 'models' would be same after stemming, thus we ignore the following ones
 
     for phrase_seq in phrase_seqs:
@@ -95,7 +134,7 @@ def if_present_duplicate_phrase(src_str, phrase_seqs):
 
         # check if it is duplicate
         if '_'.join(stemmed_pred_seq) in phrase_set:
-            present_index.append(False)
+            present_flags.append(False)
             continue
 
         # check if it appears in source text
@@ -111,12 +150,12 @@ def if_present_duplicate_phrase(src_str, phrase_seqs):
 
         # if it reaches the end of source and no match, means it doesn't appear in the source, thus discard
         if match:
-            present_index.append(True)
+            present_flags.append(True)
         else:
-            present_index.append(False)
+            present_flags.append(False)
         phrase_set.add('_'.join(stemmed_pred_seq))
 
-    return present_index
+    return present_flags
 
 
 def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict_save_path=None):
@@ -135,31 +174,31 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
         # src_list, src_len, trg_list, trg_unk_for_loss, trg_copy_for_loss_list, src_copy_list, oov_list, src_str_list, trg_str_list = one2many_batch_dict
 
-        src_list = one2many_batch_dict['src_unk']
-        src_copy_list = one2many_batch_dict['src_copy']
-        src_len = one2many_batch_dict['src_len']
-        src_mask_list = one2many_batch_dict['src_mask']
+        src_batch = one2many_batch_dict['src_unk']
+        src_copy_batch = one2many_batch_dict['src_copy']
+        src_len_batch = one2many_batch_dict['src_len']
+        src_mask_batch = one2many_batch_dict['src_mask']
 
-        trg_list = one2many_batch_dict['trg_unk']
-        trg_len = one2many_batch_dict['trg_len']
-        trg_mask = one2many_batch_dict['trg_mask']
-        trg_unk_for_loss_list = one2many_batch_dict['trg_unk_for_loss']
-        trg_copy_for_loss_list = one2many_batch_dict['trg_copy_for_loss']
+        trg_batch = one2many_batch_dict['trg_unk']
+        trg_len_batch = one2many_batch_dict['trg_len']
+        trg_mask_batch = one2many_batch_dict['trg_mask']
+        trg_unk_for_loss_batch = one2many_batch_dict['trg_unk_for_loss']
+        trg_copy_for_loss_batch = one2many_batch_dict['trg_copy_for_loss']
 
-        src_str_list = one2many_batch_dict['src_str']
-        trg_str_list = one2many_batch_dict['trg_str']
-        oov_list = one2many_batch_dict['oov_lists']
+        src_str_batch = one2many_batch_dict['src_str']
+        trg_str_batch = one2many_batch_dict['trg_str']
+        oov_batch = one2many_batch_dict['oov_lists']
 
         if torch.cuda.is_available():
-            src_list = src_list.cuda()
-            src_copy_list = src_copy_list.cuda()
+            src_batch = src_batch.cuda()
+            src_copy_batch = src_copy_batch.cuda()
 
         generator.model.eval()
-        batch_size = len(src_list)
+        batch_size = len(src_batch)
         '''
         Get the encoding of source text
         '''
-        src_encoding, (src_h, src_c) = generator.model.encode(src_list, src_len)
+        src_encoding, (src_h, src_c) = generator.model.encode(src_batch, src_len_batch)
 
         '''
         Initialize decoder
@@ -182,49 +221,79 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
                 # run opt.beam_search_round_number rounds of beam search
                 for r_id in range(opt.beam_search_round_number):
                     # for each beam, get opt.beam_size sequences (batch_size, beam_size)
-                    pred_seqs = generator.beam_search(src_encoding, initial_input,
+                    pred_seqs_batch = generator.beam_search(src_encoding, initial_input,
                                                       dec_hidden,
-                                                      src_list, src_len, src_mask_list,
-                                                      src_copy_list, oov_list,
+                                                      src_batch, src_len_batch, src_mask_batch,
+                                                      src_copy_batch, oov_batch,
                                                       opt.word2id)
 
-                    # for each beam, only store the Top 1 prediction
+                    # for each beam, only keep the Top 1 prediction
                     new_dec_hidden = []
+                    pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch\
+                        = process_predseqs_batch(pred_seqs_batch, src_str_batch,
+                                                 oov_batch, opt.id2word,
+                                                 opt.vocab_size, opt.must_appear_in_src)
+
+                    # iterate each example in batch
                     for b_id in range(batch_size):
-                        for seq_id, seq in enumerate(pred_seqs[b_id]):
-                            seq_key = ' '.join([str(sw) for sw in seq.sentence])
-                            if seq_key not in pred_seq_set[b_id]: # TODO +present and valid and not duplicate after stemming
+                        # iterate each predicted sequence of current example
+                        first_nonduplicate_seq_id = -1
+                        for seq_id, seq in enumerate(pred_seqs_batch[b_id]):
+                            seq_key = ' '.join(pred_seq_strs_batch[b_id][seq_id])
+                            # print('[batch %d][seq %d] %s %s%s' % (b_id, seq_id, seq_key,
+                            #                    '' if valid_flags_batch[b_id][seq_id] else '[invalid]',
+                            #                    '' if present_flags_batch[b_id][seq_id] else '[absent]'))
+                            if seq_key not in pred_seq_set[b_id] and first_nonduplicate_seq_id == -1:
+                                first_nonduplicate_seq_id = seq_id
+                            if seq_key not in pred_seq_set[b_id] \
+                                    and valid_flags_batch[b_id][seq_id] \
+                                    and present_flags_batch[b_id][seq_id]:
                                 pred_seq_list[b_id].append(seq)
                                 pred_seq_set[b_id].add(seq_key)
                                 new_dec_hidden.append(seq.dec_hidden)
                                 break
-                        if seq_id == len(pred_seqs[b_id]) - 1:
-                            print('Error: cannot find new unique sequence. Use the hidden state of first pred.')
-                            new_dec_hidden.append(pred_seqs[b_id][0].dec_hidden)
+                        else:
+                            if first_nonduplicate_seq_id == -1:
+                                first_nonduplicate_seq_id = 0
+                            #     print('Error: cannot find new unique sequence. Use the first pred: %s.' % seq_key)
+                            # print('len(pred_seq_strs_batch[b_id])=%d' % len(pred_seq_strs_batch[b_id]))
+                            # print('first_nonduplicate_seq_id=%d' % first_nonduplicate_seq_id)
+                            seq_key = ' '.join(pred_seq_strs_batch[b_id][first_nonduplicate_seq_id])
+                            pred_seq_list[b_id].append(pred_seqs_batch[b_id][first_nonduplicate_seq_id])
+                            pred_seq_set[b_id].add(seq_key)
+                            new_dec_hidden.append(pred_seqs_batch[b_id][first_nonduplicate_seq_id].dec_hidden)
 
-                    print(len(pred_seq_list[b_id]))
                     dec_hidden = new_dec_hidden
                     assert len(dec_hidden) == batch_size
             else:
-                # a list(len=batch_size) of lists (len=beam size), each element is a predicted Sequence
-                pred_seqs = generator.beam_search(src_encoding, initial_input,
+                # a list (len=batch_size) of lists (len=beam size), each element is a predicted Sequence
+                pred_seq_list = generator.beam_search(src_encoding, initial_input,
                                                   dec_hidden,
-                                                  src_list, src_len, src_mask_list,
-                                                  src_copy_list, oov_list,
+                                                  src_batch, src_len_batch, src_mask_batch,
+                                                  src_copy_batch, oov_batch,
                                                   opt.word2id)
-                pred_seq_list = pred_seqs
+
+            pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch \
+                = process_predseqs_batch(pred_seq_list, src_str_batch,
+                                         oov_batch, opt.id2word,
+                                         opt.vocab_size, opt.must_appear_in_src)
+
         elif opt.eval_method == 'sampling':
             raise NotImplemented
-            pred_seq_list = generator.sample(src_list, src_len, src_copy_list, oov_list, opt.word2id, k=1, is_greedy=False)
+            pred_seq_list = generator.sample(src_batch, src_len_batch, src_copy_batch, oov_batch, opt.word2id, k=1, is_greedy=False)
         elif opt.eval_method == 'greedy':
             raise NotImplemented
-            pred_seq_list = generator.sample(src_list, src_len, src_copy_list, oov_list, opt.word2id, k=1, is_greedy=True)
+            pred_seq_list = generator.sample(src_batch, src_len_batch, src_copy_batch, oov_batch, opt.word2id, k=1, is_greedy=True)
 
         '''
-        process each example in current batch
+        evaluate and output each example in current batch
         '''
-        for src, src_str, trg, trg_str_seqs, trg_copy, pred_seq, oov \
-                in zip(src_list, src_str_list, trg_list, trg_str_list, trg_copy_for_loss_list, pred_seq_list, oov_list):
+
+        for pred_seqs, pred_seq_strs, seq_scores, valid_flags, present_flags, \
+            src, src_str, trg, trg_str_seqs, trg_copy, pred_seq, oov \
+                in zip(pred_seq_list, pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch,
+                       src_batch, src_str_batch, trg_batch, trg_str_batch, trg_copy_for_loss_batch,
+                       pred_seq_list, oov_batch):
             # logging.info('======================  %d =========================' % (example_idx))
             print_out = ''
             print_out += '[Source][%d]\n %s \n\n' % (len(src_str), ' '.join(src_str))
@@ -233,29 +302,20 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
             print_out += '\n'.join(['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in zip(trg_str_seqs, trg_str_is_present)])
             print_out += '\n\noov_list:   \n\t\t%s \n\n' % str(oov)
 
-            # 1st filtering
-            pred_is_valid, processed_pred_seqs, processed_pred_str_seqs, processed_pred_score = process_predseqs(pred_seq, oov, opt.id2word, opt)
-            # 2nd filtering: if filter out phrases that don't appear in text, and keep unique ones after stemming
-            if opt.must_appear_in_src:
-                pred_is_present = if_present_duplicate_phrase(src_str, processed_pred_str_seqs)
-                trg_str_seqs = np.asarray(trg_str_seqs)[trg_str_is_present]
-            else:
-                pred_is_present = [True] * len(processed_pred_str_seqs)
-
-            valid_and_present = np.asarray(pred_is_valid) * np.asarray(pred_is_present)
-            match_list = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_pred_str_seqs)
-
             '''
             Evaluate predictions w.r.t different metrics
             '''
+            # Get the match list (if a predicted phrase is correct, appears in ground-truth)
+            match_flags = get_match_result(true_seqs=trg_str_seqs, pred_seqs=pred_seq_strs)
+            valid_and_present = np.asarray(valid_flags) * np.asarray(present_flags)
+
             print_out += '[SCORES]\n'
             topk_range = [5, 10]
             score_names = ['precision', 'recall', 'f_score']
-            match_list = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_pred_str_seqs)
 
             num_oneword_seq = -1
             for topk in topk_range:
-                results = evaluate(match_list, processed_pred_str_seqs, trg_str_seqs, topk=topk)
+                results = evaluate(match_flags, pred_seq_strs, trg_str_seqs, topk=topk)
                 for k, v in zip(score_names, results):
                     if '%s@%d#oneword=%d' % (k, topk, num_oneword_seq) not in score_dict:
                         score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)] = []
@@ -268,7 +328,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
             print_out += '\n[PREDICTION for EVAL] #(pred)=%d\n' % (sum(valid_and_present))
 
             for p_id, (seq, word, score, match, is_valid, is_present) in enumerate(
-                    zip(processed_pred_seqs, processed_pred_str_seqs, processed_pred_score, match_list, pred_is_valid, pred_is_present)):
+                    zip(pred_seqs, pred_seq_strs, seq_scores, match_flags, valid_flags, present_flags)):
                 if is_present and is_valid:
                     print_phrase = ' '.join(word)
                 else:
@@ -285,14 +345,15 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
                 print_out += '\t\t[%.4f]\t%s \t %s %s%s\n' % (-score, print_phrase, str(seq.sentence), correct_str, copy_str)
 
-            print_out += '\n[ALL PREDICTIONs] #(valid)=%d, #(present)=%d, #(retained & present)=%d, #(all)=%d\n' % (sum(pred_is_valid), sum(pred_is_present), sum(valid_and_present), len(pred_seq))
+            print_out += '\n[ALL PREDICTIONs] #(valid)=%d, #(present)=%d, #(retained & present)=%d, #(all)=%d\n' % (sum(valid_flags), sum(present_flags), sum(valid_and_present), len(pred_seq))
 
             print_out += ''
+
             '''
             Print all predictions for debug
             '''
             for p_id, (seq, word, score, match, is_valid, is_present) in enumerate(
-                    zip(processed_pred_seqs, processed_pred_str_seqs, processed_pred_score, match_list, pred_is_valid, pred_is_present)):
+                    zip(pred_seqs, pred_seq_strs, seq_scores, match_flags, valid_flags, present_flags)):
 
                 if is_present:
                     print_phrase = ' '.join(word)
@@ -321,15 +382,23 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
                 with open(os.path.join(predict_save_path, title + '_detail', str(example_idx) + '_print.txt'), 'w') as f_:
                     f_.write(print_out)
 
-            progbar.update(epoch, example_idx, [('f_score@5#oneword=-1', np.average(score_dict['f_score@5#oneword=-1'])), ('f_score@10#oneword=-1', np.average(score_dict['f_score@10#oneword=-1']))])
+            progbar.update(epoch, example_idx,
+                           [('f_score@5#oneword=-1', np.average(score_dict['f_score@5#oneword=-1'])),
+                            ('f_score@10#oneword=-1', np.average(score_dict['f_score@10#oneword=-1']))])
 
             example_idx += 1
 
-    print('#(f_score@5#oneword=-1)=%d, sum=%f' % (len(score_dict['f_score@5#oneword=-1']), sum(score_dict['f_score@5#oneword=-1'])))
-    print('#(f_score@10#oneword=-1)=%d, sum=%f' % (len(score_dict['f_score@10#oneword=-1']), sum(score_dict['f_score@10#oneword=-1'])))
+    print('#(f_score@5#oneword=-1)=%d, sum=%f' %
+          (len(score_dict['f_score@5#oneword=-1']),
+           sum(score_dict['f_score@5#oneword=-1'])))
+
+    print('#(f_score@10#oneword=-1)=%d, sum=%f' %
+          (len(score_dict['f_score@10#oneword=-1']),
+           sum(score_dict['f_score@10#oneword=-1'])))
 
     if predict_save_path:
-        # export scores. Each row is scores (precision, recall and f-score) of different way of filtering predictions (how many one-word predictions to keep)
+        # export scores, each row is scores (precision, recall and f-score)
+        # with different way of filtering predictions (how many one-word predictions to keep)
         with open(predict_save_path + os.path.sep + title + '_result.csv', 'w') as result_csv:
             csv_lines = []
             num_oneword_seq = -1

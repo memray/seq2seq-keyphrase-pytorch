@@ -228,7 +228,7 @@ def train_opts(parser):
                         max_grad_norm""")
     parser.add_argument('-truncated_decoder', type=int, default=0,
                         help="""Truncated bptt.""")
-    parser.add_argument('-dropout', type=float, default=0.5,
+    parser.add_argument('-dropout', type=float, default=0.0,
                         help="Dropout probability; applied in LSTM stacks.")
 
     # Learning options
