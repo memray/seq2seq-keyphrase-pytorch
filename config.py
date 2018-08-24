@@ -63,6 +63,8 @@ def model_opts(parser):
 
     parser.add_argument('-rnn_size', type=int, default=512,
                         help='Size of LSTM hidden states')
+    parser.add_argument('-attention_hidden_dim', type=int, default=256,
+                        help='Size of LSTM hidden states')
     # parser.add_argument('-input_feed', type=int, default=1,
     #                     help="""Feed the context vector at each time step as
     #                     additional input (via concatenation with the word

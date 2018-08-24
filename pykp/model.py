@@ -11,7 +11,7 @@ import numpy as np
 import random
 
 import pykp
-from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, UniLSTM
+from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, UniCoverageLSTM
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -236,6 +236,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.src_hidden_dim = opt.rnn_size
         self.trg_hidden_dim = opt.rnn_size
         self.ctx_hidden_dim = opt.rnn_size
+        self.attention_hidden_dim = opt.attention_hidden_dim
         self.batch_size = opt.batch_size
         self.bidirectional = opt.bidirectional
         self.nlayers_src = opt.enc_layers
@@ -296,9 +297,12 @@ class Seq2SeqLSTMAttention(nn.Module):
             dropout=self.dropout
         )
 
-        self.decoder = UniLSTM(nemb=self.emb_dim if (not self.enable_target_encoder or self.target_encoder_merge_mode == "mean") else self.emb_dim + self.target_encoder_dim,
-                               nhid=self.trg_hidden_dim,
-                               use_layernorm=False)
+        self.decoder = UniCoverageLSTM(nemb=self.emb_dim if (not self.enable_target_encoder or self.target_encoder_merge_mode == "mean")\
+                                                         else self.emb_dim + self.target_encoder_dim,
+                                       nhid=self.trg_hidden_dim,
+                                       source_hid=self.src_hidden_dim * self.num_directions,
+                                       attention_hid=self.attention_hidden_dim,
+                                       use_layernorm=False)
         
         self.target_encoder = nn.LSTM(
             input_size=self.emb_dim,
@@ -416,6 +420,12 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return decoder_init_hidden, decoder_init_cell
 
+    def init_coverage_cache(self, batch_size, source_length):
+        coverage_cache = torch.autograd.Variable(torch.zeros(batch_size, source_length).type(torch.FloatTensor))
+        if torch.cuda.is_available():
+            coverage_cache =  coverage_cache.cuda()
+        return coverage_cache
+
     def forward(self, input_src, input_src_len, input_trg, input_src_ext, oov_lists, trg_mask=None, ctx_mask=None):
         '''
         The differences of copy model from normal seq2seq here are:
@@ -522,6 +532,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         # prepare the init hidden vector, (batch_size, dec_hidden_dim) -> 2 * (1, batch_size, dec_hidden_dim)
         init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
         init_hidden_target_encoder = self.init_target_encoder_state(batch_size)  # (self.encoder.num_layers * self.num_directions, batch_size, self.src_hidden_dim)
+        init_coverage_cache = self.init_coverage_cache(batch_size, src_len)  # batch x src_len
 
         # enc_context has to be reshaped before dot attention (batch_size, src_len, context_dim) -> (batch_size, src_len, trg_hidden_dim)
         if self.attention_layer.method == 'dot':
@@ -537,6 +548,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         copy_weights = []
         dec_hidden = init_hidden
         trg_enc_hidden = init_hidden_target_encoder
+        coverage_cache = init_coverage_cache
 
         for di in range(trg_inputs.size(1)):
                 
@@ -558,9 +570,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 trg_enc_h_last = init_hidden_target_encoder[0]
 
             # run RNN decoder with inputs (trg_len first)
-            decoder_output, dec_hidden = self.decoder(
-                dec_input, trg_mask[:, di: di + 1], dec_hidden
-            )
+            decoder_output, dec_hidden, coverage_cache = self.decoder(dec_input, trg_mask[:, di: di + 1], coverage_cache, enc_context, ctx_mask, dec_hidden)
 
             '''
             (2) Standard Attention
