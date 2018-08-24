@@ -72,6 +72,7 @@ class TimeDistributedDense(torch.nn.Module):
 
     def forward(self, x, mask=None):
         x_size = x.size()
+        x = x.contiguous()
         x = x.view(-1, x_size[-1])  # batch*time x a
         y = self.mlp.forward(x)  # batch*time x b
         y = y.view(x_size[:-1] + (y.size(-1),))  # batch x time x b
@@ -490,11 +491,12 @@ class CoverageLSTMAttention(torch.nn.Module):
         e_s = self.W_s(prev_target_encoding) * target_mask.unsqueeze(-1)  # batch x h_attn
         e_c = self.W_c(coverage_cache.unsqueeze(-1), source_mask)  # batch x time_source x h_attn
         e = e_h + torch.stack([e_s] * source_encodings.size(1), 1) + e_c  # batch x time_source x h_attn
+        e = F.tanh(e)  # batch x time_source x h_attn
         e = self.v(e, source_mask).squeeze(-1)  # batch x time_source
         alpha = masked_softmax(e, source_mask, axis=-1)  # batch x time_source
         c = torch.bmm(alpha.unsqueeze(1), source_encodings)  # batch x 1 x h_enc
         c = c.squeeze(1)  # batch x h_enc
-        return c, alpha
+        return c, alpha, e
 
 class UniCoverageLSTM(torch.nn.Module):
     '''
@@ -538,20 +540,25 @@ class UniCoverageLSTM(torch.nn.Module):
             state_stp = self.get_init_hidden(x.size(0))
         else:
             state_stp = [init_states]
+        output_attention, output_attention_logit = [], []
 
         for t in range(x.size(1)):
             input_mask = mask[:, t]
             curr_input = x[:, t]
             previous_h, previous_c = state_stp[t]
 
-            source_representation, attention = self.attention(source_encodings, source_mask, previous_h, input_mask, coverage_cache)
+            source_representation, attention, attention_logit = self.attention(source_encodings, source_mask, previous_h, input_mask, coverage_cache)
             new_h, new_c = self.rnn.forward(curr_input, input_mask, previous_h, previous_c, source_representation)
             state_stp.append((new_h, new_c))
             coverage_cache = coverage_cache + attention  # batch x source_time
+            output_attention.append(attention)
+            output_attention_logit.append(attention_logit)
 
         hidden_states = [hc[0] for hc in state_stp[1:]]  # list of batch x hid
         hidden_states = torch.stack(hidden_states, 1)  # batch x time x hid
         last_states = (state_stp[-1][0], state_stp[-1][1])  # (batch x hid, batch x hid)
         hidden_states = hidden_states * mask.unsqueeze(-1)  # batch x time x hid
         hidden_states = hidden_states.permute(1, 0, 2)  # time x batch x hid
-        return hidden_states, last_states, coverage_cache
+        output_attention = torch.stack(output_attention, 1)  # batch x time x source_time
+        output_attention_logit = torch.stack(output_attention_logit, 1)  # batch x time x source_time
+        return hidden_states, last_states, coverage_cache, output_attention, output_attention_logit

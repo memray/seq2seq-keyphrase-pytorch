@@ -570,28 +570,14 @@ class Seq2SeqLSTMAttention(nn.Module):
                 trg_enc_h_last = init_hidden_target_encoder[0]
 
             # run RNN decoder with inputs (trg_len first)
-            decoder_output, dec_hidden, coverage_cache = self.decoder(dec_input, trg_mask[:, di: di + 1], coverage_cache, enc_context, ctx_mask, dec_hidden)
+            decoder_output, dec_hidden, coverage_cache, attn_weight, attn_logit = self.decoder(dec_input, trg_mask[:, di: di + 1], coverage_cache, enc_context, ctx_mask, dec_hidden)
+            decoder_logit = self.decoder2vocab(decoder_output.view(-1, trg_hidden_dim)).view(batch_size, 1, -1)  # batch x 1 x vocab
 
             '''
-            (2) Standard Attention
-            '''
-            # Get the h_tilde (hidden after attention) and attention weights. h_tilde (batch_size,1,trg_hidden), attn_weight & attn_logit(batch_size,1,src_len)
-            h_tilde, attn_weight, attn_logit = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
-
-            # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
-            # h_tilde=(batch_size, 1, trg_hidden_size) -> decoder2vocab(h_tilde.view)=(batch_size * 1, vocab_size) -> decoder_logit=(batch_size, 1, vocab_size)
-            decoder_logit = self.decoder2vocab(h_tilde.view(-1, trg_hidden_dim)).view(batch_size, 1, -1)
-
-            '''
-            (3) Copy Attention
+            (2) Copy Attention
             '''
             if self.copy_attention:
-                # copy_weights and copy_logits is (batch_size, trg_len, src_len)
-                if not self.reuse_copy_attn:
-                    _, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
-                else:
-                    copy_logit = attn_logit
-
+                copy_logit = attn_logit
                 # merge the generative and copying probs (batch_size, 1, vocab_size + max_oov_number)
                 decoder_log_prob = self.merge_copy_probs(decoder_logit, copy_logit, src_map, oov_list)
             else:
