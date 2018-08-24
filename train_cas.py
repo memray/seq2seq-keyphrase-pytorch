@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Python File Template 
+Python File Template
 """
 import json
 import os
@@ -69,11 +69,33 @@ def to_np(x):
     return x.data.cpu().numpy()
 
 
-def orthogonal_penalty(_m, I, l_n_norm=2):
+def pairwise_cosine(m):
+    '''
+    m: h x N
+    '''
+    nom = torch.mm(torch.t(m), m)  # N x N
+    norms = torch.norm(m, p=2, dim=0, keepdim=True)  # 1 x N
+    denom = torch.mm(torch.t(norms), norms)  # N x N
+    return nom / denom  # N x N
+
+
+def orthogonal_penalty(_m, I, l_n_norm=2, mode='vanilla'):
     # _m: h x n
     # I:  n x n
-    m = torch.mm(torch.t(_m), _m)  # n x n
-    return torch.norm((m - I), p=l_n_norm)
+    assert mode in ['vanilla', 'ignore_diagonal', 'cosine']
+
+    if 'cosine' == mode:
+        m = pairwise_cosine(_m)  # n x n
+    else:  # inner prod
+        m = torch.mm(torch.t(_m), _m)
+
+    if 'ignore_diagonal' == mode:
+        # zero out diagonal
+        m *= 1.0 - I
+    else:
+        # for vanilla and cosine: distance from identity
+        m -= I
+    return torch.norm(m, p=l_n_norm)
 
 
 class ReplayMemory(object):
@@ -141,7 +163,6 @@ def get_target_encoder_loss(model, source_representations, target_representation
     loss = loss * coef
     return loss
 
-
 def get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt):
     orth_coef = opt.orthogonal_regularization_lambda
     if orth_coef == 0:
@@ -151,16 +172,24 @@ def get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt):
     penalties = []
     for i in range(len(trg_copy_target_np)):
         seps = []
+        seps_m1 = []
+        seps_m2 = []
         for j in range(len(trg_copy_target_np[i])):  # len of target
             if trg_copy_target_np[i][j] == sep_id:
-                seps.append(decoder_outputs[i][j]) 
+                # j + 1 won't result in out of bound since sep cannot be the last word in target sequence
+                seps.append(decoder_outputs[i][j + opt.orthorgonal_sep_offset])
+                seps_m1.append(decoder_outputs[i][j - 1])
+                seps_m2.append(decoder_outputs[i][j - 2])
         if len(seps) > 0:
             seps = torch.stack(seps, -1)  # h x n
+            seps_m1 = torch.stack(seps_m1, -1)  # h x n
+            seps_m2 = torch.stack(seps_m2, -1)  # h x n
             identity = torch.eye(seps.size(-1))  # n x n
             if torch.cuda.is_available():
                 identity = identity.cuda()
-            penalty = orthogonal_penalty(seps, identity, 2)  # 1
+            penalty = orthogonal_penalty(seps, identity, l_n_norm=2, mode=opt.orthogonal_metric)  # 1
             penalties.append(penalty)
+            # import pdb; pdb.set_trace()
 
     if len(penalties) > 0:
         penalties = torch.sum(torch.stack(penalties, -1)) / float(decoder_outputs.size(0))
@@ -186,10 +215,12 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
         trg_copy_target = trg_copy_target.cuda()
         src_oov = src_oov.cuda()
 
-    decoder_log_probs, decoder_outputs, _, source_representations, target_representations = model.forward(src, src_len, trg, src_oov, oov_lists)
+    decoder_log_probs, decoder_outputs, decoder_logits, (reg_attn_weights, copy_attn_weights), source_representations, target_representations = model.forward(src, src_len, trg, src_oov, oov_lists)
 
     te_loss = get_target_encoder_loss(model, source_representations, target_representations, replay_memory, criterion, opt)
-    penalties = get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt)
+    # penalties = get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt)
+    # penalties += get_orthogonal_penalty(trg_copy_target_np, reg_attn_weights, opt)
+    penalties = get_orthogonal_penalty(trg_copy_target_np, decoder_logits, opt)
 
     # simply average losses of all the predicitons
     # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!

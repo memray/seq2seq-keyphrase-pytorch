@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Python File Template 
+Python File Template
 """
 import logging
 import torch
@@ -9,6 +9,7 @@ import torch.nn.functional as func
 from torch.autograd import Variable
 import numpy as np
 import random
+import os
 
 import pykp
 from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat
@@ -138,7 +139,7 @@ class Attention(nn.Module):
 
         return energies.contiguous()
 
-    def forward(self, hidden, encoder_outputs, encoder_mask=None):
+    def forward(self, hidden, encoder_outputs, encoder_mask=None, sep=None):
         '''
         Compute the attention and h_tilde, inputs/outputs must be batch first
         :param hidden: (batch_size, trg_len, trg_hidden_dim)
@@ -186,6 +187,27 @@ class Attention(nn.Module):
         h_tilde = torch.cat((weighted_context, hidden), 2)
         # (batch_size * trg_len, src_hidden_dim + trg_hidden_dim) -> (batch_size * trg_len, trg_hidden_dim)
         h_tilde = self.tanh(self.linear_out(h_tilde.view(-1, context_dim + trg_hidden_dim)))
+
+        if sep is not None:
+            from train_cas import pairwise_cosine
+            presep = [s - 1 for s in sep]
+            postsep = [s + 1 for s in sep]
+            for i in range(len(sep)):
+                # print(torch.stack([
+                #     pairwise_cosine(hidden[i][presep[i]].t()),
+                #     pairwise_cosine(hidden[i][sep[i]].t()),
+                #     pairwise_cosine(hidden[i][postsep[i]].t())
+                #     ], 0))
+                # print(torch.stack([
+                #     pairwise_cosine(weighted_context[i][presep[i]].t()),
+                #     pairwise_cosine(weighted_context[i][sep[i]].t()),
+                #     pairwise_cosine(weighted_context[i][postsep[i]].t())
+                #     ], 0))
+                top10attention_weights = np.argsort(torch.stack([attn_weights[i][_ss[i]] for _ss in [presep, sep, postsep]]).detach().cpu(), 2)[:,:,-10:]
+                print(top10attention_weights)
+                taw = top10attention_weights.detach().cpu().numpy()
+                print([set.intersection(*map(set, [ss for ss in s])) for s in taw])
+                import pdb; pdb.set_trace()
 
         # return h_tilde (batch_size, trg_len, trg_hidden_dim), attn (batch_size, trg_len, src_len) and energies (before softmax)
         return h_tilde.view(batch_size, trg_len, trg_hidden_dim), attn_weights, attn_energies
@@ -304,7 +326,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             batch_first=False,
             dropout=self.dropout
         )
-        
+
         self.target_encoder = nn.LSTM(
             input_size=self.emb_dim,
             hidden_size=self.emb_dim if self.target_encoder_merge_mode == "mean" else self.target_encoder_dim,
@@ -442,10 +464,10 @@ class Seq2SeqLSTMAttention(nn.Module):
         if not trg_mask:
             trg_mask = self.get_mask(input_trg)  # same size as input_src
         src_h, (src_h_t, src_c_t) = self.encode(input_src, input_src_len)
-        decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights, trg_encoding_h_last = self.decode(trg_inputs=input_trg, src_map=input_src_ext,
+        decoder_probs, decoder_hiddens, decoder_logits, attn_weights, copy_attn_weights, trg_encoding_h_last = self.decode(trg_inputs=input_trg, src_map=input_src_ext,
                                                                                       oov_list=oov_lists, enc_context=src_h, enc_hidden=(src_h_t, src_c_t),
                                                                                       trg_mask=trg_mask, ctx_mask=ctx_mask)
-        return decoder_probs, decoder_hiddens, (attn_weights, copy_attn_weights), src_h_t, trg_encoding_h_last
+        return decoder_probs, decoder_hiddens, decoder_logits, (attn_weights, copy_attn_weights), src_h_t, trg_encoding_h_last
 
     def encode(self, input_src, input_src_len):
         """
@@ -557,6 +579,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             decoder_input = trg_emb
             trg_enc_h_last = init_hidden_target_encoder[0]
 
+        os.environ['seps'] = str([(t==4).nonzero().cpu().numpy().squeeze().tolist()
         # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
         decoder_outputs, _ = self.decoder(
             decoder_input, init_hidden
@@ -566,7 +589,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         (2) Standard Attention
         '''
         # Get the h_tilde (batch_size, trg_len, trg_hidden_dim) and attention weights (batch_size, trg_len, src_len)
-        h_tildes, attn_weights, attn_logits = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
+        sep = [(t == 4).nonzero().squeeze() for t in trg_inputs]
+        h_tildes, attn_weights, attn_logits = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask, sep=None)
 
         # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde), (batch_size, trg_len, trg_hidden_size) -> (batch_size * trg_len, vocab_size)
         # h_tildes=(batch_size, trg_len, trg_hidden_size) -> decoder2vocab(h_tildes.view)=(batch_size * trg_len, vocab_size) -> decoder_logits=(batch_size, trg_len, vocab_size)
@@ -589,7 +613,8 @@ class Seq2SeqLSTMAttention(nn.Module):
             decoder_log_probs = torch.nn.functional.log_softmax(decoder_logits, dim=-1).view(batch_size, -1, self.vocab_size)
 
         # Return final outputs (logits after log_softmax), hidden states, and attention weights (for visualization)
-        return decoder_log_probs, decoder_outputs, attn_weights, copy_weights, trg_enc_h_last
+        # import pdb; pdb.set_trace()
+        return decoder_log_probs, decoder_outputs, decoder_logits, attn_weights, copy_weights, trg_enc_h_last
 
     def merge_oov2unk(self, decoder_log_prob, max_oov_number):
         '''
@@ -819,7 +844,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         if not ctx_mask:
             ctx_mask = self.get_mask(input_src)  # same size as input_src
         src_h, (src_h_t, src_c_t) = self.encode(input_src, input_src_len)
-        decoder_log_probs, decoder_hiddens, attn_weights = self.decode(trg_inputs=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask)
+        decoder_log_probs, decoder_hiddens, decoder_logits, attn_weights = self.decode(trg_inputs=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask)
         return decoder_log_probs, decoder_hiddens, attn_weights
 
     def decode_without_copy(self, trg_inputs, enc_context, enc_hidden, trg_mask, ctx_mask):
