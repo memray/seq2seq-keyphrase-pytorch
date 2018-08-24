@@ -517,7 +517,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         '''
         batch_size = trg_inputs.size(0)
         src_len = enc_context.size(1)
-        trg_len = trg_inputs.size(1)
         context_dim = enc_context.size(2)
         trg_hidden_dim = self.trg_hidden_dim
 
@@ -529,8 +528,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         if self.attention_layer.method == 'dot':
             enc_context = nn.Tanh()(self.encoder2decoder_hidden(enc_context.contiguous().view(-1, context_dim))).view(batch_size, src_len, trg_hidden_dim)
             enc_context = enc_context * ctx_mask.view(ctx_mask.size() + (1,))
-
-        max_length = trg_inputs.size(1)
 
         # Teacher Forcing
         self.current_batch += 1
@@ -544,7 +541,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         dec_hidden = init_hidden
         trg_enc_hidden = init_hidden_target_encoder
 
-        for di in range(max_length):
+        for di in range(trg_inputs.size(1)):
             # initialize target embedding and reshape the targets to be time step first
             trg_emb = self.embedding(trg_input)  # (batch_size, 1, embed_dim)
             trg_emb = trg_emb.permute(1, 0, 2)  # (1, batch_size, embed_dim)
@@ -597,18 +594,18 @@ class Seq2SeqLSTMAttention(nn.Module):
             '''
             trg_input = trg_inputs[:, di + 1: di + 2]
             # Save results of current step. Permute to trg_len first, otherwise the cat operation would mess up things
-            decoder_log_probs.append(decoder_log_prob.permute(1, 0, 2))
-            decoder_outputs.append(decoder_output)
-            attn_weights.append(attn_weight.permute(1, 0, 2))
+            decoder_log_probs.append(decoder_log_prob)
+            decoder_outputs.append(decoder_output.permute(1, 0, 2))
+            attn_weights.append(attn_weight)
             if self.copy_attention:
-                copy_weights.append(copy_weight.permute(1, 0, 2))
+                copy_weights.append(copy_weight)
 
         # convert output into the right shape and make batch first
-        decoder_log_probs = torch.cat(decoder_log_probs, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, vocab_size + max_oov_number)
-        decoder_outputs = torch.cat(decoder_outputs, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, hidden_size)
-        attn_weights = torch.cat(attn_weights, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, src_seq_len)
+        decoder_log_probs = torch.cat(decoder_log_probs, 1)  # (batch_size, trg_seq_len, vocab_size + max_oov_number)
+        decoder_outputs = torch.cat(decoder_outputs, 1)  # (batch_size, trg_seq_len, hidden_size)
+        attn_weights = torch.cat(attn_weights, 1)  # (batch_size, trg_seq_len, src_seq_len)
         if self.copy_attention:
-            copy_weights = torch.cat(copy_weights, 0).permute(1, 0, 2)  # (batch_size, trg_seq_len, src_seq_len)
+            copy_weights = torch.cat(copy_weights, 1)  # (batch_size, trg_seq_len, src_seq_len)
 
         return decoder_log_probs, decoder_outputs, attn_weights, copy_weights, trg_enc_h_last
 
