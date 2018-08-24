@@ -210,6 +210,28 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             new_inp2.append(inp2[i])
         return new_inp1, new_inp2
 
+    def subfinder(self, mylist, pattern):
+        if len(pattern) == 0:
+            return 99999
+        for i in range(len(mylist)):
+            if mylist[i] == pattern[0] and mylist[i: i + len(pattern)] == pattern:
+                return i
+        return 99999
+
+    def sort_by_source(self, inp1, inp2, src):
+        if len(inp1) <= 1:
+            return inp1, inp2
+        indicies = []
+        for kp in inp1:
+            idx = self.subfinder(src, kp)
+            indicies.append(idx)
+        order = np.argsort(indicies)
+        new_inp1, new_inp2 = [], []
+        for o in order:
+            new_inp1.append(inp1[o])
+            new_inp2.append(inp2[o])
+        return new_inp1, new_inp2
+
     def collate_fn_one2seq(self, batches):
         # source with oov words replaced by <unk>
         src = [[self.word2id[BOS_WORD]] + b['src'] + [self.word2id[EOS_WORD]] for b in batches]
@@ -221,9 +243,13 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             tmp_trg = [self.word2id[BOS_WORD]]
             tmp_trg_copy_target = []
             tmp_trg_target = []
-            if self.ordering == "sort":
-                # sort here
+            if self.ordering == "alphabet":
+                # sort alphabetically
                 b_trg, b_trg_copy = self.sort_alphabet(b['trg'], b['trg_copy'])
+            elif self.ordering == "source":
+                # sort by appearance in source
+                b_trg, b_trg_copy = self.sort_by_source(b['trg'], b['trg_copy'], b['src'])
+
             elif self.ordering == "shuffle":
                 # shuffle here
                 combined = list(zip(b['trg'], b['trg_copy']))
