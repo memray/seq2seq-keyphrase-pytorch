@@ -318,7 +318,7 @@ class KeyphraseDataLoader(object):
                 else:
                     sampler = SequentialSampler(dataset)
 
-        batch_sampler = One2ManyBatchSampler(sampler, self.num_trgs, max_batch_example=max_batch_example, max_batch_pair=max_batch_pair, drop_last=drop_last)
+        batch_sampler = One2ManyBatchSampler(sampler, self.num_trgs, max_num_example_in_batch=max_batch_example, max_batch_pair=max_batch_pair, drop_last=drop_last)
 
         self.sampler = sampler
         self.batch_sampler = batch_sampler
@@ -354,11 +354,11 @@ class One2ManyBatchSampler(object):
         [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
     """
 
-    def __init__(self, sampler, num_trgs, max_batch_example, max_batch_pair, drop_last):
+    def __init__(self, sampler, num_trgs, max_num_example_in_batch, max_batch_pair, drop_last):
         self.sampler            = sampler
         self.num_trgs           = num_trgs
         self.max_batch_pair     = max_batch_pair
-        self.max_batch_example  = max_batch_example
+        self.max_num_example_in_batch  = max_num_example_in_batch
         self.drop_last          = drop_last
 
         batches = []
@@ -366,7 +366,7 @@ class One2ManyBatchSampler(object):
         for example_idx in self.sampler:
             # number of targets sequences in current batch
             current_trg_num_in_batch = sum([self.num_trgs[id] for id in batch])
-            if len(batch) < self.max_batch_example and current_trg_num_in_batch + self.num_trgs[example_idx] < self.max_batch_pair:
+            if len(batch) < self.max_num_example_in_batch and current_trg_num_in_batch + self.num_trgs[example_idx] < self.max_batch_pair:
                 batch.append(example_idx)
             elif len(batch) == 0: # if the batch_size is very small, return a batch of only one data sample
                 batch.append(example_idx)
