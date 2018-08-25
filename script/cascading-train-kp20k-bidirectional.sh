@@ -20,4 +20,4 @@ export ROOT_PATH="/zfs1/pbrusilovsky/rum20/seq2seq-keyphrase-pytorch"
 export DATA_NAME="kp20k"
 
 export EXP_NAME="cascading.rnn.general.copy"
-srun python -m train -data data/$DATA_NAME/$DATA_NAME -vocab_file data/$DATA_NAME/$DATA_NAME.vocab.pt -exp_path "$ROOT_PATH/exp/$EXP_NAME/%s.%s" -exp "$DATA_NAME" -batch_size 16 -bidirectional -run_valid_every 2000 -save_model_every 10000 -beam_size 16 -beam_search_batch_size 8 -train_ml -attention_mode $ATTENTION -copy_attention -copy_mode $ATTENTION -cascading_model
+srun python -m train -data data/$DATA_NAME/$DATA_NAME -vocab_file data/$DATA_NAME/$DATA_NAME.vocab.pt -exp_path "$ROOT_PATH/exp/$EXP_NAME/%s.%s" -exp "$DATA_NAME" -batch_size 32 -bidirectional -run_valid_every 2000 -save_model_every 10000 -beam_size 16 -beam_search_batch_size 8 -train_ml -attention_mode $ATTENTION -copy_attention -copy_mode $ATTENTION -cascading_model

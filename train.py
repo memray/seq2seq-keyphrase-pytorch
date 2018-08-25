@@ -633,6 +633,7 @@ def load_data_vocab(opt, load_train=True):
         train_one2many = torch.load(opt.data_path_prefix + '.train.one2many.pt', 'wb')
         # sort by number of targets to speed up training
         if opt.cascading_model:
+            train_one2many = list(filter(lambda x: len(x['trg']) < 10, train_one2many))
             train_one2many = sorted(train_one2many, key=lambda x: len(x['trg']))
         train_one2many_dataset = KeyphraseDataset(train_one2many,
                                                   word2id=word2id, id2word=id2word,
