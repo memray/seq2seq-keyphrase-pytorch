@@ -416,8 +416,8 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
 
             sentence_source = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
                                for x in src_wi]
-            print(oov_i)
-            print(pred_wi)
+            logging.info(oov_i)
+            logging.info(pred_wi)
             sentence_pred = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
                              for x in pred_wi]
             sentence_real = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
@@ -437,7 +437,7 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
             logging.info('\t\tReal : %s ' % (' '.join(sentence_real)) + (
                 ' [HAS COPY]' + str(trg_i) if has_copy else ''))
     except Exception:
-        print('Encountered an error when generating brief report.')
+        logging.error('Encountered an error when generating brief report.')
         pass
 
 def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt):
