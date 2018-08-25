@@ -407,33 +407,38 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
     else:
         trg_unk_for_loss = [trg_copy_for_loss[i] for i in sampled_trg_idx]
 
-    for i, (src_wi, pred_wi, trg_i, oov_i) in enumerate(
-            zip(src, max_words_pred, trg_unk_for_loss, oov_lists)):
-        nll_prob = -np.sum([decoder_log_probs[i][l][pred_wi[l]] for l in range(len(trg_i))])
-        find_copy = np.any([x >= opt.vocab_size for x in src_wi])
-        has_copy = np.any([x >= opt.vocab_size for x in trg_i])
+    try:
+        for i, (src_wi, pred_wi, trg_i, oov_i) in enumerate(
+                zip(src, max_words_pred, trg_unk_for_loss, oov_lists)):
+            nll_prob = -np.sum([decoder_log_probs[i][l][pred_wi[l]] for l in range(len(trg_i))])
+            find_copy = np.any([x >= opt.vocab_size for x in src_wi])
+            has_copy = np.any([x >= opt.vocab_size for x in trg_i])
 
-        sentence_source = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
-                           for x in src_wi]
-        sentence_pred = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
-                         for x in pred_wi]
-        sentence_real = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
-                         for x in trg_i]
+            sentence_source = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
+                               for x in src_wi]
+            print(oov_i)
+            print(pred_wi)
+            sentence_pred = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
+                             for x in pred_wi]
+            sentence_real = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
+                             for x in trg_i]
 
-        sentence_source = sentence_source[:sentence_source.index(
-            '<pad>')] if '<pad>' in sentence_source else sentence_source
-        sentence_pred = sentence_pred[
-            :sentence_pred.index('<pad>')] if '<pad>' in sentence_pred else sentence_pred
-        sentence_real = sentence_real[
-            :sentence_real.index('<pad>')] if '<pad>' in sentence_real else sentence_real
+            sentence_source = sentence_source[:sentence_source.index(
+                '<pad>')] if '<pad>' in sentence_source else sentence_source
+            sentence_pred = sentence_pred[
+                :sentence_pred.index('<pad>')] if '<pad>' in sentence_pred else sentence_pred
+            sentence_real = sentence_real[
+                :sentence_real.index('<pad>')] if '<pad>' in sentence_real else sentence_real
 
-        logging.info('==================================================')
-        logging.info('Source: %s ' % (' '.join(sentence_source)))
-        logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob) + (
-            ' [FIND COPY]' if find_copy else ''))
-        logging.info('\t\tReal : %s ' % (' '.join(sentence_real)) + (
-            ' [HAS COPY]' + str(trg_i) if has_copy else ''))
-
+            logging.info('==================================================')
+            logging.info('Source: %s ' % (' '.join(sentence_source)))
+            logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob) + (
+                ' [FIND COPY]' if find_copy else ''))
+            logging.info('\t\tReal : %s ' % (' '.join(sentence_real)) + (
+                ' [HAS COPY]' + str(trg_i) if has_copy else ''))
+    except Exception:
+        print('Encountered an error when generating brief report.')
+        pass
 
 def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt):
     generator = SequenceGenerator(model,
@@ -485,6 +490,9 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                           total_examples=len(train_data_loader.dataset.examples))
 
         for batch_i, batch in enumerate(train_data_loader):
+            if batch_i < 149:
+                continue
+
             model.train()
             total_batch += 1
             one2many_batch_dict, one2one_batch_dict = batch
