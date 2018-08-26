@@ -64,16 +64,20 @@ class Sequence(object):
         else:
             return 1
     '''
+    def normalized_score(self):
+        if len(self.sentence) == 0:
+            return self.score
+        return self.score / float(len(self.sentence))
 
     # For Python 3 compatibility (__cmp__ is deprecated).
     def __lt__(self, other):
         assert isinstance(other, Sequence)
-        return self.score < other.score
+        return self.normalized_score() < other.normalized_score()
 
     # Also for Python 3 compatibility.
     def __eq__(self, other):
         assert isinstance(other, Sequence)
-        return self.score == other.score
+        return self.normalized_score() == other.normalized_score()
 
 
 class TopN_heap(object):
@@ -111,11 +115,11 @@ class TopN_heap(object):
           A list of data; the top n elements provided to the set.
         """
         assert self._data is not None
-        data = self._data
-        for i in range(len(data)):
-            if len(data[i].sentence) == 0:
-                continue
-            data[i].score = data[i].score / float(len(data[i].sentence))
+        # data = self._data
+        # for i in range(len(data)):
+        #     if len(data[i].sentence) == 0:
+        #         continue
+        #     data[i].score = data[i].score / float(len(data[i].sentence))
         if sort:
             data.sort(reverse=True)
         return data
