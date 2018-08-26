@@ -115,14 +115,9 @@ class TopN_heap(object):
           A list of data; the top n elements provided to the set.
         """
         assert self._data is not None
-        # data = self._data
-        # for i in range(len(data)):
-        #     if len(data[i].sentence) == 0:
-        #         continue
-        #     data[i].score = data[i].score / float(len(data[i].sentence))
         if sort:
-            data.sort(reverse=True)
-        return data
+            self._data.sort(reverse=True)
+        return self._data
 
     def reset(self):
         """Returns the TopN to an empty state."""
