@@ -132,7 +132,7 @@ def keyphrase_ranking(list_of_beams, max_kps=50, sep_ids=[0, 1, 2, 3, 4]):
             if len(res) == 0:
                 res += kp
             else:
-                res += [4] + [kp]
+                res += [4] + kp
             already_in.add(key)
             if len(already_in) >= max_kps:
                 return res
