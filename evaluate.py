@@ -120,7 +120,7 @@ def splitz(iterable, sep_ids):
     return result
 
 
-def keyphrase_ranking(list_of_beams, max_kps=50, sep_ids=[4]):
+def keyphrase_ranking(list_of_beams, max_kps=20, sep_ids=[4]):
     res = []
     already_in = set()
     for beam in list_of_beams:
