@@ -260,7 +260,8 @@ class SequenceGenerator(object):
             trg_enc_hiddens = trg_enc_hiddens
 
         partial_sequences = [TopN_heap(self.beam_size) for _ in range(batch_size)]
-        complete_sequences = [TopN_heap(sys.maxsize) for _ in range(batch_size)]
+        complete_sequences = [TopN_heap(self.beam_size) for _ in range(batch_size)]
+        # complete_sequences = [TopN_heap(sys.maxsize) for _ in range(batch_size)]
 
         for batch_i in range(batch_size):
             seq = Sequence(
