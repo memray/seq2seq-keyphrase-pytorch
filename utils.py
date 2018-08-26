@@ -205,7 +205,7 @@ class Progbar(object):
         self.seen_so_far = 0
 
 
-def plot_learning_curve_and_write_csv(scores, curve_names, checkpoint_names, title, ylim=None, save_path=None):
+def plot_learning_curve_and_write_csv(scores, curve_names, checkpoint_names, title, ylim=None, save_path_prefix=None):
     """
     Generate a simple plot of the test and training learning curve.
 
@@ -254,15 +254,15 @@ def plot_learning_curve_and_write_csv(scores, curve_names, checkpoint_names, tit
 
     plt.legend(loc="best", prop={'size': 6})
     # plt.show()
-    if save_path:
-        plt.savefig(save_path + '.png', bbox_inches='tight')
+    if save_path_prefix:
+        plt.savefig(save_path_prefix + '.png', bbox_inches='tight')
 
         csv_lines = ['time, ' + ','.join(curve_names)]
         for t_id, time in enumerate(checkpoint_names):
             csv_line = time + ',' + ','.join([str(means[c_name][t_id]) for c_name in curve_names])
             csv_lines.append(csv_line)
 
-        with open(save_path + '.csv', 'w') as result_csv:
+        with open(save_path_prefix + '.csv', 'w') as result_csv:
             result_csv.write('\n'.join(csv_lines))
 
     plt.close()

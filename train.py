@@ -367,6 +367,17 @@ def train_rl(one2many_batch, model, optimizer, generator, opt, reward_cache):
 
 
 def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt):
+    """
+    Given many examples in one2one_batch and the predicted decoder_log_probs,
+    we randomly select a few examples and print their corresponding outputs
+    :param epoch:
+    :param batch_i:
+    :param one2one_batch:
+    :param loss_ml:
+    :param decoder_log_probs: (batch_size * trg_num, trg_max_len, vocab_size)
+    :param opt:
+    :return:
+    """
     logging.info('======================  %d  =========================' % (batch_i))
 
     logging.info('Epoch : %d Minibatch : %d, Loss=%.5f' % (epoch, batch_i, np.mean(loss_ml)))
@@ -374,7 +385,6 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
     logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
     src = one2one_batch['src_unk']
-    src_copy = one2one_batch['src_copy']
 
     trg = one2one_batch['trg_unk']
     trg_unk_for_loss = one2one_batch['trg_unk_for_loss']
@@ -383,18 +393,19 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
     oov_lists = one2one_batch['oov_lists']
 
     if torch.cuda.is_available():
-        src = src.data.cpu().numpy()
-        decoder_log_probs = decoder_log_probs.data.cpu().numpy()
-        max_words_pred = decoder_log_probs.argmax(axis=-1)
-        trg_unk_for_loss = trg_unk_for_loss.data.cpu().numpy()
-        trg_copy_for_loss = trg_copy_for_loss.data.cpu().numpy()
-    else:
-        src = src.data.numpy()
-        decoder_log_probs = decoder_log_probs.data.numpy()
-        max_words_pred = decoder_log_probs.argmax(axis=-1)
-        trg_unk_for_loss = trg_unk_for_loss.data.numpy()
-        trg_copy_for_loss = trg_copy_for_loss.data.numpy()
+        src = src.data.cpu()
+        decoder_log_probs = decoder_log_probs.data.cpu()
+        trg_unk_for_loss = trg_unk_for_loss.data.cpu()
+        trg_copy_for_loss = trg_copy_for_loss.data.cpu()
 
+    src = src.data.numpy()
+    decoder_log_probs = decoder_log_probs.data.numpy()
+    # TODO Greedily get the top-1 word as prediction (batch_size * trg_num, trg_max_len, 1)
+    max_words_pred = decoder_log_probs.argmax(axis=-1)
+    trg_unk_for_loss = trg_unk_for_loss.data.numpy()
+    trg_copy_for_loss = trg_copy_for_loss.data.numpy()
+
+    # sample a few indices of targets to print
     sampled_trg_idx = np.random.random_integers(low=0, high=len(trg) - 1, size=sampled_size)
     src = src[sampled_trg_idx]
     oov_lists = [oov_lists[i] for i in sampled_trg_idx]
@@ -416,8 +427,8 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
 
             sentence_source = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
                                for x in src_wi]
-            logging.info(oov_i)
-            logging.info(pred_wi)
+            logging.info('oov list: %s' % str(oov_i))
+            logging.info('greedy pred_wi: %s' % str(pred_wi))
             sentence_pred = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
                              for x in pred_wi]
             sentence_real = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
@@ -574,7 +585,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                                                   curve_names=curve_names,
                                                   checkpoint_names=checkpoint_names,
                                                   title='Training Validation & Test',
-                                                  save_path=opt.plot_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve' % (epoch, batch_i, total_batch))
+                                                  save_path_prefix=opt.plot_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve' % (epoch, batch_i, total_batch))
 
                 '''
                 determine if early stop training (whether f-score increased, before is if valid error decreased)

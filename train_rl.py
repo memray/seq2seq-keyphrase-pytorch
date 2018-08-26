@@ -290,7 +290,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                                                   curve_names=curve_names,
                                                   checkpoint_names=checkpoint_names,
                                                   title='Training Validation & Test',
-                                                  save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve.png' % (epoch, batch_i, total_batch))
+                                                  save_path_prefix=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve.png' % (epoch, batch_i, total_batch))
 
                 '''
                 determine if early stop training (whether f-score increased, before is if valid error decreased)
