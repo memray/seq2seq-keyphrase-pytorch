@@ -120,11 +120,15 @@ def splitz(iterable, sep_ids):
     return result
 
 
-def keyphrase_ranking(list_of_beams, max_kps=50, sep_ids=[0, 1, 2, 3, 4]):
+def keyphrase_ranking(list_of_beams, max_kps=50, sep_ids=[4]):
     res = []
     already_in = set()
     for beam in list_of_beams:
         kps = splitz(beam, sep_ids=sep_ids)
+        if kps[-1][-1] == 2:
+            kps[-1] = kps[-1][:-1]
+        else:
+            kps = kps[:-1]
         for kp in kps:
             key = str(kp)
             if key in already_in:
@@ -197,7 +201,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             # 1st filtering
             if opt.eval_method == "beam_search":
                 pred_seq = [extract_to_list(seq) for seq in pred_seq]
-                pred_seq = keyphrase_ranking(pred_seq, sep_ids=[opt.word2id[pykp.io.SEP_WORD], opt.word2id[pykp.io.EOS_WORD]])
+                pred_seq = keyphrase_ranking(pred_seq, sep_ids=[opt.word2id[pykp.io.SEP_WORD]])
             else:
                 pred_seq = extract_to_list(pred_seq)
             processed_strings = process_predseqs(pred_seq, oov, opt.id2word, opt)
