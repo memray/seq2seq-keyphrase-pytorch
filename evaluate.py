@@ -29,9 +29,8 @@ def has_special_token(seq, special_tokens):
     return False
 
 
-def process_predseqs(pred_seq, oov, id2word, opt):
+def process_predseqs(seq_sentence_np, oov, id2word, opt):
     # pred_seq is a sequence of word indices, key phrases are separated by special token
-    seq_sentence_np = [int(x.cpu().data.numpy()) for x in pred_seq.sentence]
     if seq_sentence_np[-1] == opt.word2id[EOS_WORD]:
         seq_sentence_np = seq_sentence_np[:-1]
 
@@ -140,8 +139,9 @@ def keyphrase_ranking(list_of_beams, max_kps=50, sep_ids=[0, 1, 2, 3, 4]):
     return res
         
 
-    
-
+def extract_to_list(pred_seq):
+    seq_sentence = [int(x.cpu().data.numpy()) for x in pred_seq.sentence]
+    return seq_sentence
 
 
 def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_path=None):
@@ -168,7 +168,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         # list(batch) of list(beam size) of Sequence
         if opt.eval_method == "beam_search":
             pred_seq_list = generator.beam_search(src_list, src_len, src_oov_map_list, oov_list, opt.word2id)
-            best_pred_seq = [keyphrase_ranking(b, sep_ids=[opt.word2id[pykp.io.SEP_WORD], opt.word2id[pykp.io.EOS_WORD]]) for b in pred_seq_list]
+            best_pred_seq = pred_seq_list
             eval_topk = 5
         elif opt.eval_method in ["sampling", "greedy", "hybrid"]:
             pred_seq_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=1, mode=opt.eval_method)        
@@ -195,6 +195,11 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             # print_out += '\noov_list:   \n\t\t%s \n' % str(oov)
 
             # 1st filtering
+            if opt.eval_method == "beam_search":
+                pred_seq = [extract_to_list(seq) for seq in pred_seq]
+                pred_seq = keyphrase_ranking(pred_seq, sep_ids=[opt.word2id[pykp.io.SEP_WORD], opt.word2id[pykp.io.EOS_WORD]])
+            else:
+                pred_seq = extract_to_list(pred_seq)
             processed_strings = process_predseqs(pred_seq, oov, opt.id2word, opt)
             '''
             Evaluate predictions w.r.t different filterings and metrics
