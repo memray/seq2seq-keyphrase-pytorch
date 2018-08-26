@@ -218,13 +218,13 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
                 # run opt.beam_search_round_number rounds of beam search
                 for r_id in range(opt.beam_search_round_number):
                     # for each beam, get opt.beam_size sequences (batch_size, beam_size)
+                    # for cascading, in each round we only take the Top 1 prediction
                     pred_seqs_batch = generator.beam_search(src_encoding, initial_input,
                                                       dec_hidden,
                                                       src_batch, src_len_batch, src_mask_batch,
                                                       src_copy_batch, oov_batch,
                                                       opt.word2id)
 
-                    # for each beam, only keep the Top 1 prediction
                     new_dec_hidden = []
                     pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch\
                         = process_predseqs_batch(pred_seqs_batch, src_str_batch,
@@ -235,26 +235,37 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
                     for b_id in range(batch_size):
                         # iterate each predicted sequence of current example
                         first_nonduplicate_seq_id = -1
+                        # try to find the first valid/present/non-duplicate prediction
                         for seq_id, seq in enumerate(pred_seqs_batch[b_id]):
-                            seq_key = ' '.join(pred_seq_strs_batch[b_id][seq_id])
-                            # print('[batch %d][seq %d] %s %s%s' % (b_id, seq_id, seq_key,
-                            #                    '' if valid_flags_batch[b_id][seq_id] else '[invalid]',
-                            #                    '' if present_flags_batch[b_id][seq_id] else '[absent]'))
+                            flag = True
+                            seq_key = ' '.join(stem_word_list(pred_seq_strs_batch[b_id][seq_id]))
+                            logging.debug('[batch %d][seq %d] %s %s%s' % (b_id, seq_id, seq_key,
+                                               '' if valid_flags_batch[b_id][seq_id] else '[invalid]',
+                                               '' if present_flags_batch[b_id][seq_id] else '[absent]'))
+                            # find the 1st non-duplicate prediction in case there's no valid prediction
                             if seq_key not in pred_seq_set[b_id] and first_nonduplicate_seq_id == -1:
                                 first_nonduplicate_seq_id = seq_id
-                            if seq_key not in pred_seq_set[b_id] \
-                                    and valid_flags_batch[b_id][seq_id] \
-                                    and present_flags_batch[b_id][seq_id]:
+
+                            if seq_key in pred_seq_set[b_id]:
+                                flag = False
+                            if not valid_flags_batch[b_id][seq_id]:
+                                flag = False
+                            if not present_flags_batch[b_id][seq_id] and opt.must_appear_in_src:
+                                flag = False
+
+                            if flag:
                                 pred_seq_list[b_id].append(seq)
                                 pred_seq_set[b_id].add(seq_key)
                                 new_dec_hidden.append(seq.dec_hidden)
                                 break
                         else:
+                            # if cannot find any valid prediction, take something not that bad (1st non-duplicate) as output
                             if first_nonduplicate_seq_id == -1:
                                 first_nonduplicate_seq_id = 0
-                                # print('Error: cannot find new unique sequence. Use the first pred: %s.' % seq_key)
-                            # print('len(pred_seq_strs_batch[b_id])=%d' % len(pred_seq_strs_batch[b_id]))
-                            # print('first_nonduplicate_seq_id=%d' % first_nonduplicate_seq_id)
+                                logging.error('Error: cannot find any valid and non-duplicate sequence. '
+                                              'Use the first pred: %s.' % seq_key)
+                            # logging.debug('len(pred_seq_strs_batch[b_id])=%d' % len(pred_seq_strs_batch[b_id]))
+                            # logging.debug('first_nonduplicate_seq_id=%d' % first_nonduplicate_seq_id)
                             seq_key = ' '.join(pred_seq_strs_batch[b_id][first_nonduplicate_seq_id])
                             pred_seq_list[b_id].append(pred_seqs_batch[b_id][first_nonduplicate_seq_id])
                             pred_seq_set[b_id].add(seq_key)
@@ -294,7 +305,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
             # logging.info('======================  %d =========================' % (example_idx))
             print_out = ''
             print_out += '[Source][%d]\n %s \n\n' % (len(src_str), ' '.join(src_str))
-            trg_str_is_present = if_present_duplicate_phrase(src_str, trg_str_seqs)
+            if opt.must_appear_in_src:
+                trg_str_seqs = if_present_duplicate_phrase(src_str, trg_str_seqs)
             print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(trg_str_is_present), len(trg_str_is_present))
             print_out += '\n'.join(['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in zip(trg_str_seqs, trg_str_is_present)])
             print_out += '\n\noov_list:   \n\t\t%s \n\n' % str(oov)
@@ -385,11 +397,11 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
             example_idx += 1
 
-    print('#(f_score@5#oneword=-1)=%d, sum=%f' %
+    logging.debug('#(f_score@5#oneword=-1)=%d, sum=%f' %
           (len(score_dict['f_score@5#oneword=-1']),
            sum(score_dict['f_score@5#oneword=-1'])))
 
-    print('#(f_score@10#oneword=-1)=%d, sum=%f' %
+    logging.debug('#(f_score@10#oneword=-1)=%d, sum=%f' %
           (len(score_dict['f_score@10#oneword=-1']),
            sum(score_dict['f_score@10#oneword=-1'])))
 
