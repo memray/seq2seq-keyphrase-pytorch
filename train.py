@@ -366,7 +366,7 @@ def train_rl(one2many_batch, model, optimizer, generator, opt, reward_cache):
         return train_rl_2(one2many_batch, model, optimizer, generator, opt, reward_cache)
 
 
-def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt):
+def brief_report(epoch, batch_i, one2many_batch, one2one_batch, loss_ml, decoder_log_probs, opt):
     """
     Given many examples in one2one_batch and the predicted decoder_log_probs,
     we randomly select a few examples and print their corresponding outputs
@@ -374,7 +374,9 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
     :param batch_i:
     :param one2one_batch:
     :param loss_ml:
-    :param decoder_log_probs: (batch_size * trg_num, trg_max_len, vocab_size)
+    :param decoder_log_probs:
+            if cascading: (batch_size * trg_num, trg_max_len, vocab_size)
+                else: (batch_size, trg_max_len, vocab_size)
     :param opt:
     :return:
     """
@@ -384,53 +386,90 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
     sampled_size = 2
     logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
-    src = one2one_batch['src_unk']
+    if opt.cascading_model:
+        src_num = one2many_batch['src_unk'].shape[0]
+        trg_max_num = one2many_batch['trg_unk_for_loss'].shape[1]
+        trg_max_len = one2many_batch['trg_unk_for_loss'].shape[2]
+        src = one2many_batch['src_unk']
+        trg_unk_for_loss = one2many_batch['trg_unk_for_loss']
+        trg_copy_for_loss = one2many_batch['trg_copy_for_loss']
+        oov_lists = one2many_batch['oov_lists']
 
-    trg = one2one_batch['trg_unk']
-    trg_unk_for_loss = one2one_batch['trg_unk_for_loss']
-    trg_copy_for_loss = one2one_batch['trg_copy_for_loss']
+        if torch.cuda.is_available():
+            src = src.cpu()
+            decoder_log_probs = decoder_log_probs.cpu()
+            trg_unk_for_loss = trg_unk_for_loss.cpu()
+            trg_copy_for_loss = trg_copy_for_loss.cpu()
 
-    oov_lists = one2one_batch['oov_lists']
+        src = src.data.numpy()
+        # (batch_size, trg_max_len, voc_size)
+        decoder_log_probs = decoder_log_probs.data.numpy()
+        # Greedily get the top-1 word at each step as prediction (batch_size * trg_num, trg_max_len)
+        argmax_pred_trgs = decoder_log_probs.argmax(axis=-1)
+        trg_unk_for_loss = trg_unk_for_loss.view(-1, trg_max_len).data.numpy()
+        trg_copy_for_loss = trg_copy_for_loss.view(-1, trg_max_len).data.numpy()
 
-    if torch.cuda.is_available():
-        src = src.data.cpu()
-        decoder_log_probs = decoder_log_probs.data.cpu()
-        trg_unk_for_loss = trg_unk_for_loss.data.cpu()
-        trg_copy_for_loss = trg_copy_for_loss.data.cpu()
+        # sample a few indices of examples and print the first prediction of each
+        sampled_src_idx = np.random.permutation(src_num - 1)[:sampled_size]
+        # sampled_src_idx = np.random.random_integers(low=0, high=src_num - 1, size=sampled_size)
+        src = src[sampled_src_idx]
+        oov_lists = [oov_lists[i] for i in sampled_src_idx]
+        argmax_pred_trgs = [argmax_pred_trgs[i * trg_max_num] for i in sampled_src_idx]
+        decoder_log_probs = [decoder_log_probs[i * trg_max_num] for i in sampled_src_idx]
 
-    src = src.data.numpy()
-    decoder_log_probs = decoder_log_probs.data.numpy()
-    # TODO Greedily get the top-1 word as prediction (batch_size * trg_num, trg_max_len, 1)
-    max_words_pred = decoder_log_probs.argmax(axis=-1)
-    trg_unk_for_loss = trg_unk_for_loss.data.numpy()
-    trg_copy_for_loss = trg_copy_for_loss.data.numpy()
-
-    # sample a few indices of targets to print
-    sampled_trg_idx = np.random.random_integers(low=0, high=len(trg) - 1, size=sampled_size)
-    src = src[sampled_trg_idx]
-    oov_lists = [oov_lists[i] for i in sampled_trg_idx]
-    max_words_pred = [max_words_pred[i] for i in sampled_trg_idx]
-    decoder_log_probs = decoder_log_probs[sampled_trg_idx]
-    if not opt.copy_attention:
-        # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
-        trg_unk_for_loss = [trg_unk_for_loss[i]
-                            for i in sampled_trg_idx]
+        if not opt.copy_attention:
+            # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
+            trgs = [trg_unk_for_loss[i * trg_max_num] for i in sampled_src_idx]
+        else:
+            trgs = [trg_copy_for_loss[i * trg_max_num] for i in sampled_src_idx]
     else:
-        trg_unk_for_loss = [trg_copy_for_loss[i] for i in sampled_trg_idx]
+        src = one2one_batch['src_unk']
+        trg_unk_for_loss = one2one_batch['trg_unk_for_loss']
+        example_num = one2one_batch['trg_unk_for_loss'].shape[0]
+        trg_copy_for_loss = one2one_batch['trg_copy_for_loss']
+        oov_lists = one2one_batch['oov_lists']
+
+        if torch.cuda.is_available():
+            src = src.cpu()
+            decoder_log_probs = decoder_log_probs.cpu()
+            trg_unk_for_loss = trg_unk_for_loss.cpu()
+            trg_copy_for_loss = trg_copy_for_loss.cpu()
+
+        src = src.data.numpy()
+        # (batch_size, trg_max_len, voc_size)
+        decoder_log_probs = decoder_log_probs.data.numpy()
+        # Greedily get the top-1 word at each step as prediction (batch_size, trg_max_len)
+        argmax_pred_trgs = decoder_log_probs.argmax(axis=-1)
+        trg_unk_for_loss = trg_unk_for_loss.data.numpy()
+        trg_copy_for_loss = trg_copy_for_loss.data.numpy()
+
+        # sample a few indices of targets to print
+        sampled_trg_idx = np.random.permutation(example_num - 1)[:sampled_size]
+        # sampled_trg_idx = np.random.random_integers(low=0, high=len(trg_unk_for_loss) - 1, size=sampled_size)
+        src = src[sampled_trg_idx]
+        oov_lists = [oov_lists[i] for i in sampled_trg_idx]
+        argmax_pred_trgs = [argmax_pred_trgs[i] for i in sampled_trg_idx]
+        decoder_log_probs = decoder_log_probs[sampled_trg_idx]
+
+        if not opt.copy_attention:
+            # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
+            trgs = [trg_unk_for_loss[i] for i in sampled_trg_idx]
+        else:
+            trgs = [trg_copy_for_loss[i] for i in sampled_trg_idx]
 
     try:
-        for i, (src_wi, pred_wi, trg_i, oov_i) in enumerate(
-                zip(src, max_words_pred, trg_unk_for_loss, oov_lists)):
-            nll_prob = -np.sum([decoder_log_probs[i][l][pred_wi[l]] for l in range(len(trg_i))])
-            find_copy = np.any([x >= opt.vocab_size for x in src_wi])
+        for i, (src_i, pred_i, trg_i, oov_i) in enumerate(
+                zip(src, argmax_pred_trgs, trgs, oov_lists)):
+            nll_prob = -np.sum([decoder_log_probs[i][l][pred_i[l]] for l in range(len(trg_i))])
+            find_copy = np.any([x >= opt.vocab_size for x in src_i])
             has_copy = np.any([x >= opt.vocab_size for x in trg_i])
 
             sentence_source = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
-                               for x in src_wi]
+                               for x in src_i]
             logging.info('oov list: %s' % str(oov_i))
-            logging.info('greedy pred_wi: %s' % str(pred_wi))
+            logging.info('greedy pred_wi: %s' % str(pred_i))
             sentence_pred = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
-                             for x in pred_wi]
+                             for x in pred_i]
             sentence_real = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
                              for x in trg_i]
 
@@ -522,7 +561,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
                 # Brief report
                 if batch_i % opt.report_every == 0:
-                    brief_report(epoch, batch_i, one2one_batch_dict, loss_ml, decoder_log_probs, opt)
+                    brief_report(epoch, batch_i, one2many_batch_dict, one2one_batch_dict, loss_ml, decoder_log_probs, opt)
 
             # do not apply rl in the first epoch, need to warm model up with MLE.
             if opt.train_rl:

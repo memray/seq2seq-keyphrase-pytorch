@@ -21,4 +21,4 @@ export DATA_NAME="kp20k"
 export BATCH_SIZE=128
 
 export EXP_NAME="cascading.$DATA_NAME.bs$BATCH_SIZE.rnn.general.copy"
-srun python -m train -data data/$DATA_NAME/$DATA_NAME -vocab_file data/$DATA_NAME/$DATA_NAME.vocab.pt -exp_path "$ROOT_PATH/exp/$EXP_NAME/%s.%s" -exp "$DATA_NAME" -batch_size "$BATCH_SIZE" -bidirectional -run_valid_every -1 -save_model_every -1 -beam_size 16 -beam_search_batch_size 8 -train_ml -attention_mode $ATTENTION -copy_attention -copy_mode $ATTENTION -cascading_model
+srun python -m train -data data/$DATA_NAME/$DATA_NAME -vocab_file data/$DATA_NAME/$DATA_NAME.vocab.pt -exp_path "$ROOT_PATH/exp/$EXP_NAME/%s.%s" -exp "$DATA_NAME" -batch_size "$BATCH_SIZE" -bidirectional -run_valid_every -2000 -save_model_every -2000 -beam_size 16 -beam_search_batch_size 8 -train_ml -attention_mode $ATTENTION -copy_attention -copy_mode $ATTENTION -cascading_model
