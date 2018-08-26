@@ -307,8 +307,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
             print_out += '[Source][%d]\n %s \n\n' % (len(src_str), ' '.join(src_str))
             if opt.must_appear_in_src:
                 trg_str_seqs = if_present_duplicate_phrase(src_str, trg_str_seqs)
-            print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(trg_str_is_present), len(trg_str_is_present))
-            print_out += '\n'.join(['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in zip(trg_str_seqs, trg_str_is_present)])
+            print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(present_flags), len(present_flags))
+            print_out += '\n'.join(['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in zip(trg_str_seqs, present_flags)])
             print_out += '\n\noov_list:   \n\t\t%s \n\n' % str(oov)
 
             '''
@@ -397,7 +397,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
             example_idx += 1
 
-    logging.debug('#(f_score@5#oneword=-1)=%d, sum=%f' %
+        logging.debug('#(f_score@5#oneword=-1)=%d, sum=%f' %
           (len(score_dict['f_score@5#oneword=-1']),
            sum(score_dict['f_score@5#oneword=-1'])))
 
