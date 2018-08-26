@@ -2,7 +2,7 @@
 #SBATCH --cluster=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --partition=titanx
-#SBATCH --job-name=cascading.kp20k.general.copy
+#SBATCH --job-name=cascading.bs64.kp20k.general.copy
 #SBATCH --output=slurm_output/cascading.kp20k.bs64.general.copy.out
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
