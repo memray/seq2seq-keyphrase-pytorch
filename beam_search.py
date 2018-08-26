@@ -112,6 +112,10 @@ class TopN_heap(object):
         """
         assert self._data is not None
         data = self._data
+        for i in range(len(data)):
+            if len(data[i].sentence) == 0:
+                continue
+            data[i].score = data[i].score / float(len(data[i].sentence))
         if sort:
             data.sort(reverse=True)
         return data
