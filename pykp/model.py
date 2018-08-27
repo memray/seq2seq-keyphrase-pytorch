@@ -319,10 +319,10 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         self.attention_layer = Attention(self.src_hidden_dim * self.num_directions, self.trg_hidden_dim, method=self.attention_mode)
 
-        self.pointer_softmax_context = nn.Linear(
-            self.src_hidden_dim,
+        self.pointer_softmax_context = TimeDistributedDense(mlp=nn.Linear(
+            self.src_hidden_dim * self.num_directions,
             self.pointer_softmax_hidden_dim
-        )
+        ))
         self.pointer_softmax_target = TimeDistributedDense(mlp=nn.Linear(
             self.trg_hidden_dim,
             self.pointer_softmax_hidden_dim
@@ -640,7 +640,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         Thus we have to carefully initialize the oov-extended part of no-oov sentences to negative infinite floats.
         Note that it may cause exception on early versions like on '0.3.1.post2', but it works well on 0.4 ({RuntimeError}in-place operations can be only used on variables that don't share storage with any other variables, but detected that there are 2 objects sharing it)
         :param decoder_logits: (batch_size, trg_seq_len, dec_hid)
-        :param decoder_logits: (batch_size, enc_hid)
+        :param decoder_logits: (batch_size, trg_seq_len, enc_hid)
         :param decoder_logits: (batch_size, trg_seq_len, vocab_size)
         :param copy_logits:    (batch_size, trg_len, src_len) the pointing/copying logits of each target words
         :param src_map:        (batch_size, src_len)
@@ -650,8 +650,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         batch_size, max_length, _ = decoder_logits.size()
         src_len = src_map.size(1)
 
-        pointer_softmax = self.pointer_softmax_context(context_representations)  # batch x ptrsmx_hid
-        pointer_softmax = torch.stack([pointer_softmax] * max_length, 1)  # batch x trg_len x ptrsmx_hid
+        pointer_softmax = self.pointer_softmax_context(context_representations)  # batch x trg_len x ptrsmx_hid
         pointer_softmax = pointer_softmax + self.pointer_softmax_target(decoder_hidden)  # batch x trg_len x ptrsmx_hid
         pointer_softmax = func.tanh(pointer_softmax)  # batch x trg_len x ptrsmx_hid
         pointer_softmax = self.pointer_softmax_squash(pointer_softmax).squeeze(-1)  # batch x trg_len
