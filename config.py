@@ -91,8 +91,8 @@ def model_opts(parser):
                         help="""The attention type to use:
                         dot or general (Luong) or concat (Bahdanau)""")
 
-    parser.add_argument('-pointer_softmax_hidden_dim', type=int, default=128,
-                        help='pointer softmax hidden size')
+    parser.add_argument('-pointer_softmax_hidden_dim', type=int, default=0,
+                        help='pointer softmax hidden size, 0 to disable')
 
     # Genenerator and loss options.
     parser.add_argument('-copy_attention', action="store_true",

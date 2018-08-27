@@ -319,18 +319,19 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         self.attention_layer = Attention(self.src_hidden_dim * self.num_directions, self.trg_hidden_dim, method=self.attention_mode)
 
-        self.pointer_softmax_context = TimeDistributedDense(mlp=nn.Linear(
-            self.src_hidden_dim * self.num_directions,
-            self.pointer_softmax_hidden_dim
-        ))
-        self.pointer_softmax_target = TimeDistributedDense(mlp=nn.Linear(
-            self.trg_hidden_dim,
-            self.pointer_softmax_hidden_dim
-        ))
-        self.pointer_softmax_squash = TimeDistributedDense(mlp=nn.Linear(
-            self.pointer_softmax_hidden_dim,
-            1
-        ))
+        if self.pointer_softmax_hidden_dim > 0:
+            self.pointer_softmax_context = TimeDistributedDense(mlp=nn.Linear(
+                self.src_hidden_dim * self.num_directions,
+                self.pointer_softmax_hidden_dim
+            ))
+            self.pointer_softmax_target = TimeDistributedDense(mlp=nn.Linear(
+                self.trg_hidden_dim,
+                self.pointer_softmax_hidden_dim
+            ))
+            self.pointer_softmax_squash = TimeDistributedDense(mlp=nn.Linear(
+                self.pointer_softmax_hidden_dim,
+                1
+            ))
 
         self.encoder2decoder_hidden = nn.Linear(
             self.src_hidden_dim * self.num_directions,
@@ -383,13 +384,14 @@ class Seq2SeqLSTMAttention(nn.Module):
         # self.embedding.weight.data.fill_(0.01)
         self.encoder2decoder_hidden.bias.data.fill_(0)
         self.encoder2decoder_cell.bias.data.fill_(0)
-        self.decoder2vocab.bias.data.fill_(0)
-        torch.nn.init.xavier_uniform(self.pointer_softmax_context.mlp.weight.data)
-        torch.nn.init.xavier_uniform(self.pointer_softmax_target.mlp.weight.data)
-        torch.nn.init.xavier_uniform(self.pointer_softmax_squash.mlp.weight.data)
-        self.pointer_softmax_context.mlp.bias.data.fill_(0)
-        self.pointer_softmax_target.mlp.bias.data.fill_(0)
-        self.pointer_softmax_squash.mlp.bias.data.fill_(0)
+        self.decoder2vocab.bias.data.fill_(0)        
+        if self.pointer_softmax_hidden_dim > 0:
+            torch.nn.init.xavier_uniform(self.pointer_softmax_context.mlp.weight.data)
+            torch.nn.init.xavier_uniform(self.pointer_softmax_target.mlp.weight.data)
+            torch.nn.init.xavier_uniform(self.pointer_softmax_squash.mlp.weight.data)
+            self.pointer_softmax_context.mlp.bias.data.fill_(0)
+            self.pointer_softmax_target.mlp.bias.data.fill_(0)
+            self.pointer_softmax_squash.mlp.bias.data.fill_(0)
 
     def init_encoder_state(self, input):
         """Get cell states and hidden states."""
@@ -656,12 +658,13 @@ class Seq2SeqLSTMAttention(nn.Module):
         batch_size, max_length, _ = decoder_logits.size()
         src_len = src_map.size(1)
 
-        pointer_softmax = self.pointer_softmax_context(context_representations)  # batch x trg_len x ptrsmx_hid
-        pointer_softmax = pointer_softmax + self.pointer_softmax_target(decoder_hidden)  # batch x trg_len x ptrsmx_hid
-        pointer_softmax = func.tanh(pointer_softmax)  # batch x trg_len x ptrsmx_hid
-        pointer_softmax = self.pointer_softmax_squash(pointer_softmax).squeeze(-1)  # batch x trg_len
-        pointer_softmax = func.sigmoid(pointer_softmax)  # batch x trg_len
-        pointer_softmax = pointer_softmax.view(-1, 1)  # batch*trg_len x 1
+        if self.pointer_softmax_hidden_dim > 0:
+            pointer_softmax = self.pointer_softmax_context(context_representations)  # batch x trg_len x ptrsmx_hid
+            pointer_softmax = pointer_softmax + self.pointer_softmax_target(decoder_hidden)  # batch x trg_len x ptrsmx_hid
+            pointer_softmax = func.tanh(pointer_softmax)  # batch x trg_len x ptrsmx_hid
+            pointer_softmax = self.pointer_softmax_squash(pointer_softmax).squeeze(-1)  # batch x trg_len
+            pointer_softmax = func.sigmoid(pointer_softmax)  # batch x trg_len
+            pointer_softmax = pointer_softmax.view(-1, 1)  # batch*trg_len x 1
 
         # set max_oov_number to be the max number of oov
         max_oov_number = max([len(oovs) for oovs in oov_list])
@@ -696,7 +699,11 @@ class Seq2SeqLSTMAttention(nn.Module):
             from_source = from_source.cuda()
         from_source = from_source.scatter_add_(1, expanded_src_map, copy_logits.view(batch_size * max_length, -1))
         # flattened_decoder_logits = flattened_decoder_logits.scatter_add_(1, expanded_src_map, copy_logits.view(batch_size * max_length, -1))
-        merged = pointer_softmax * from_vocab + (1.0 - pointer_softmax) * from_source
+        
+        if self.pointer_softmax_hidden_dim > 0:
+            merged = pointer_softmax * from_vocab + (1.0 - pointer_softmax) * from_source
+        else:
+            merged = from_vocab + from_source
 
         # apply log softmax to normalize, ensuring it meets the properties of probability, (batch_size * trg_len, src_len)
         merged = torch.nn.functional.log_softmax(merged, dim=1)
