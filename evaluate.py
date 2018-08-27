@@ -29,9 +29,8 @@ def has_special_token(seq, special_tokens):
     return False
 
 
-def process_predseqs(pred_seq, oov, id2word, opt):
+def process_predseqs(seq_sentence_np, oov, id2word, opt):
     # pred_seq is a sequence of word indices, key phrases are separated by special token
-    seq_sentence_np = [int(x.cpu().data.numpy()) for x in pred_seq.sentence]
     if seq_sentence_np[-1] == opt.word2id[EOS_WORD]:
         seq_sentence_np = seq_sentence_np[:-1]
 
@@ -106,6 +105,49 @@ def if_present_duplicate_phrase(src_str, phrase_seqs):
     return present_index
 
 
+def splitz(iterable, sep_ids):
+    result = []
+    group = []
+    for e in iterable:
+        if e in sep_ids: # found delimiter
+            if group: # ignore empty groups (delimiter at beginning or after another delimiter)
+                result.append(group)
+                group = [] # start new accumulator
+        else: 
+            group.append(e)
+    if group: # Handle last group
+        result.append(group)
+    return result
+
+
+def keyphrase_ranking(list_of_beams, max_kps=20, sep_ids=[4]):
+    res = []
+    already_in = set()
+    for beam in list_of_beams:
+        kps = splitz(beam, sep_ids=sep_ids)
+        if kps[-1][-1] == 2:
+            kps[-1] = kps[-1][:-1]
+        else:
+            kps = kps[:-1]
+        for kp in kps:
+            key = str(kp)
+            if key in already_in:
+                continue
+            if len(res) == 0:
+                res += kp
+            else:
+                res += [4] + kp
+            already_in.add(key)
+            if len(already_in) >= max_kps:
+                return res
+    return res
+        
+
+def extract_to_list(pred_seq):
+    seq_sentence = [int(x.cpu().data.numpy()) for x in pred_seq.sentence]
+    return seq_sentence
+
+
 def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_path=None):
     logging = config.init_logging(title, save_path + '/%s.log' % title)
     progbar = Progbar(logger=logging, title=title, target=len(data_loader.dataset.examples), batch_size=data_loader.batch_size,
@@ -130,12 +172,14 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         # list(batch) of list(beam size) of Sequence
         if opt.eval_method == "beam_search":
             pred_seq_list = generator.beam_search(src_list, src_len, src_oov_map_list, oov_list, opt.word2id)
+            best_pred_seq = pred_seq_list
+            eval_topk = 5
         elif opt.eval_method in ["sampling", "greedy", "hybrid"]:
-            pred_seq_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=1, mode=opt.eval_method)
+            pred_seq_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=1, mode=opt.eval_method)        
+            best_pred_seq = [b[0] for b in pred_seq_list]  # list(batch) of Sequence
+            eval_topk = 1000
         else:
             raise NotImplementedError
-
-        best_pred_seq = [b[0] for b in pred_seq_list]  # list(batch) of Sequence
 
         '''
         process each example in current batch
@@ -155,6 +199,11 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             # print_out += '\noov_list:   \n\t\t%s \n' % str(oov)
 
             # 1st filtering
+            if opt.eval_method == "beam_search":
+                pred_seq = [extract_to_list(seq) for seq in pred_seq]
+                pred_seq = keyphrase_ranking(pred_seq, sep_ids=[opt.word2id[pykp.io.SEP_WORD]])
+            else:
+                pred_seq = extract_to_list(pred_seq)
             processed_strings = process_predseqs(pred_seq, oov, opt.id2word, opt)
             '''
             Evaluate predictions w.r.t different filterings and metrics
@@ -165,7 +214,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
             # exact scores
             print_out += "\n ======================================================="
-            results_exact = evaluate(match_list_exact, processed_strings, trg_str_seqs)
+            results_exact = evaluate(match_list_exact, processed_strings, trg_str_seqs, topk=eval_topk)
             for k, v in zip(score_names, results_exact):
                 if '%s_exact' % (k) not in score_dict:
                     score_dict['%s_exact' % (k)] = []
@@ -185,7 +234,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
             # soft scores
             print_out += "\n ------------------------------------------------- SOFT"
-            results_soft = evaluate(match_list_soft, processed_strings, trg_str_seqs)
+            results_soft = evaluate(match_list_soft, processed_strings, trg_str_seqs, topk=eval_topk)
             for k, v in zip(score_names, results_soft):
                 if '%s_soft' % (k) not in score_dict:
                     score_dict['%s_soft' % (k)] = []
@@ -344,7 +393,7 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
 
 
 def evaluate(match_list, predicted_list, true_list, topk=5):
-    topk = 1000
+    # topk = 1000
     if len(match_list) > topk:
         match_list = match_list[:topk]
     if len(predicted_list) > topk:
