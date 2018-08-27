@@ -594,9 +594,9 @@ class Seq2SeqLSTMAttention(nn.Module):
             else:
                 copy_tilde, copy_logits, copy_weights = h_tildes, attn_logits, attn_weights
 
+            decoder_outputs = decoder_outputs.permute(1, 0, 2)  # (batch_size, trg_len, trg_hidden_dim)
             # merge the generative and copying probs, (batch_size, trg_len, vocab_size + max_oov_number)
             decoder_log_probs = self.merge_copy_probs(decoder_outputs, copy_tilde, decoder_logits, copy_logits, src_map, oov_list)  # (batch_size, trg_len, vocab_size + max_oov_number)
-            decoder_outputs = decoder_outputs.permute(1, 0, 2)  # (batch_size, trg_len, trg_hidden_dim)
         else:
             decoder_log_probs = torch.nn.functional.log_softmax(decoder_logits, dim=-1).view(batch_size, -1, self.vocab_size)
 
@@ -781,7 +781,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 copy_h_tilde, copy_weight, copy_logit = h_tilde, attn_weight, attn_logit
             copy_weights.append(copy_weight.permute(1, 0, 2))  # (1, batch_size, src_len)
             # merge the generative and copying probs (batch_size, 1, vocab_size + max_unk_word)
-            decoder_log_prob = self.merge_copy_probs(decoder_logit, copy_logit, src_map, oov_list)
+            decoder_log_prob = self.merge_copy_probs(decoder_output.permute(1, 0, 2), copy_h_tilde, decoder_logit, copy_logit, src_map, oov_list)
 
         # Prepare for the next iteration, get the top word, top_idx and next_index are (batch_size, K)
         _, top_1_idx = decoder_log_prob.data.topk(1, dim=-1)  # (batch_size, 1)
