@@ -235,6 +235,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.src_hidden_dim = opt.rnn_size
         self.trg_hidden_dim = opt.rnn_size
         self.ctx_hidden_dim = opt.rnn_size
+        self.pointer_softmax_hidden_dim = opt.pointer_softmax_hidden_dim
         self.batch_size = opt.batch_size
         self.bidirectional = opt.bidirectional
         self.nlayers_src = opt.enc_layers
