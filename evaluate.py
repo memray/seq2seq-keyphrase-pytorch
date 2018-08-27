@@ -36,9 +36,6 @@ def process_predseqs_batch(pred_seqs_batch, src_str_batch, oov_batch, id2word, v
         pred_seq_strs_batch.append(pred_seq_strs)
         seq_scores_batch.append(seq_scores)
         valid_flags_batch.append(valid_flags)
-        if not must_appear_in_src:
-            present_flags = [True] * len(present_flags)
-
         present_flags_batch.append(present_flags)
 
     return pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch
@@ -121,6 +118,7 @@ def post_process_predseqs(seqs, num_oneword_seq=1):
 def if_present_duplicate_phrase(src_str, phrase_seqs):
     """
     Given a source text and a list of phrases, check whether each phrase appears in the text or not
+    Also if a phrase is a duplicate of a proceeding one, return False as well
     :param src_str: a list of words, each word is a string
     :param phrase_seqs: a list of phrases, each phrase is a list of words (string)
     :return:
@@ -139,17 +137,17 @@ def if_present_duplicate_phrase(src_str, phrase_seqs):
 
         # check if it appears in source text
         for src_start_idx in range(len(stemmed_src_str) - len(stemmed_pred_seq) + 1):
-            match = True
+            present_flag = True
             for seq_idx, seq_w in enumerate(stemmed_pred_seq):
                 src_w = stemmed_src_str[src_start_idx + seq_idx]
                 if src_w != seq_w:
-                    match = False
+                    present_flag = False
                     break
-            if match:
+            if present_flag:
                 break
 
         # if it reaches the end of source and no match, means it doesn't appear in the source, thus discard
-        if match:
+        if present_flag:
             present_flags.append(True)
         else:
             present_flags.append(False)
@@ -296,26 +294,33 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
         '''
         evaluate and output each example in current batch
         '''
-
         for pred_seqs, pred_seq_strs, seq_scores, valid_flags, present_flags, \
-            src, src_str, trg, trg_str_seqs, trg_copy, pred_seq, oov \
+            src, src_str, trg, trg_strs, trg_copy, \
+            pred_seq, oov \
                 in zip(pred_seq_list, pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch,
                        src_batch, src_str_batch, trg_batch, trg_str_batch, trg_copy_for_loss_batch,
                        pred_seq_list, oov_batch):
             # logging.info('======================  %d =========================' % (example_idx))
             print_out = ''
             print_out += '[Source][%d]\n %s \n\n' % (len(src_str), ' '.join(src_str))
-            if opt.must_appear_in_src:
-                trg_str_seqs = if_present_duplicate_phrase(src_str, trg_str_seqs)
-            print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(present_flags), len(present_flags))
-            print_out += '\n'.join(['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in zip(trg_str_seqs, present_flags)])
+
+            trg_present_flags = if_present_duplicate_phrase(src_str, trg_strs)
+            print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(trg_present_flags), len(trg_present_flags))
+            print_out += '\n'.join(['\t\t%s' % ' '.join(phrase) if is_present else '\t\t[ABSENT] %s' % ' '.join(phrase) for phrase, is_present in zip(trg_strs, trg_present_flags)])
             print_out += '\n\noov_list:   \n\t\t%s \n\n' % str(oov)
 
             '''
             Evaluate predictions w.r.t different metrics
             '''
+            if opt.must_appear_in_src:
+                trg_strs_to_match = [trg_str for trg_str, trg_present_flag
+                                     in zip(trg_strs, trg_present_flags)
+                                     if trg_present_flag]
+            else:
+                trg_strs_to_match = trg_strs
+
             # Get the match list (if a predicted phrase is correct, appears in ground-truth)
-            match_flags = get_match_result(true_seqs=trg_str_seqs, pred_seqs=pred_seq_strs)
+            match_flags = get_match_result(true_seqs=trg_strs_to_match, pred_seqs=pred_seq_strs)
             valid_and_present = np.asarray(valid_flags) * np.asarray(present_flags)
 
             print_out += '[SCORES]\n'
@@ -324,7 +329,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
             num_oneword_seq = -1
             for topk in topk_range:
-                results = evaluate(match_flags, pred_seq_strs, trg_str_seqs, topk=topk)
+                results = evaluate(match_flags, pred_seq_strs, trg_strs, topk=topk)
                 for k, v in zip(score_names, results):
                     if '%s@%d#oneword=%d' % (k, topk, num_oneword_seq) not in score_dict:
                         score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)] = []

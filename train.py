@@ -41,65 +41,8 @@ def to_cpu_list(input):
     output = [int(item.data.cpu().numpy()) for item in input]
     return output
 
-
-def time_usage(func):
-    # argnames = func.func_code.co_varnames[:func.func_code.co_argcount]
-    fname = func.__name__
-
-    def wrapper(*args, **kwargs):
-        beg_ts = time.time()
-        retval = func(*args, **kwargs)
-        end_ts = time.time()
-        print(fname, "elapsed time: %f" % (end_ts - beg_ts))
-        return retval
-
-    return wrapper
-
-
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
-
-
-@time_usage
-def _valid_error(data_loader, model, criterion, epoch, opt):
-    progbar = Progbar(title='Validating', target=len(data_loader), batch_size=data_loader.batch_size,
-                      total_examples=len(data_loader.dataset))
-    model.eval()
-
-    losses = []
-
-    # Note that the data should be shuffled every time
-    for i, batch in enumerate(data_loader):
-        # if i >= 100:
-        #     break
-
-        one2many_batch, one2one_batch = batch
-        src, trg, trg_target, trg_copy_target, src_ext, oov_lists = one2one_batch
-
-        if torch.cuda.is_available():
-            src = src.cuda()
-            trg = trg.cuda()
-            trg_target = trg_target.cuda()
-            trg_copy_target = trg_copy_target.cuda()
-            src_ext = src_ext.cuda()
-
-        decoder_log_probs, _, _ = model.forward(src, trg, src_ext)
-
-        if not opt.copy_attention:
-            loss = criterion(
-                decoder_log_probs.contiguous().view(-1, opt.vocab_size),
-                trg_target.contiguous().view(-1)
-            )
-        else:
-            loss = criterion(
-                decoder_log_probs.contiguous().view(-1, opt.vocab_size + opt.max_unk_words),
-                trg_copy_target.contiguous().view(-1)
-            )
-        losses.append(loss.data[0])
-
-        progbar.update(epoch, i, [('valid_loss', loss.data[0]), ('PPL', loss.data[0])])
-
-    return losses
 
 
 def train_ml(batch_data_dict, model, optimizer, criterion, opt):
@@ -145,21 +88,20 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
     if opt.train_rl:
         loss = loss * (1 - opt.loss_scale)
 
-    print('src.shape=%s' % str(src.shape))
-    print('trg.shape=%s' % str(trg.shape))
+    logging.info('src.shape=%s' % str(src.shape))
+    logging.info('trg.shape=%s' % str(trg.shape))
 
-    print("--forward+loss- %s seconds ---" % (time.time() - start_time))
+    logging.info("--forward+loss- %s seconds ---" % (time.time() - start_time))
 
     start_time = time.time()
     loss.backward()
+    optimizer.step()
+    logging.info("--backward- %s seconds ---" % (time.time() - start_time))
 
     if opt.max_grad_norm > 0:
         pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
         after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
         logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
-
-    optimizer.step()
-    print("--backward- %s seconds ---" % (time.time() - start_time))
 
     if torch.cuda.is_available():
         loss = loss.cpu().data.numpy()[0]
