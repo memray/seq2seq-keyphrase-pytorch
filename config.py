@@ -247,7 +247,7 @@ def train_opts(parser):
     parser.add_argument('-n_negative_samples', default=20, type=int,
                         help="""how many negative samples""")
 
-    parser.add_argument('-keyphrase_ordering', default='source', type=str,
+    parser.add_argument('-keyphrase_ordering', default='origin', type=str,
                         help="""sort keyphrases or randomly shuffle them:
                                 origin, source, alphabet, shuffle""")
 
