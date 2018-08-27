@@ -384,6 +384,12 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.encoder2decoder_hidden.bias.data.fill_(0)
         self.encoder2decoder_cell.bias.data.fill_(0)
         self.decoder2vocab.bias.data.fill_(0)
+        torch.nn.init.xavier_uniform(self.pointer_softmax_context.mlp.weight.data)
+        torch.nn.init.xavier_uniform(self.pointer_softmax_target.mlp.weight.data)
+        torch.nn.init.xavier_uniform(self.pointer_softmax_squash.mlp.weight.data)
+        self.pointer_softmax_context.mlp.bias.data.fill_(0)
+        self.pointer_softmax_target.mlp.bias.data.fill_(0)
+        self.pointer_softmax_squash.mlp.bias.data.fill_(0)
 
     def init_encoder_state(self, input):
         """Get cell states and hidden states."""
@@ -668,10 +674,18 @@ class Seq2SeqLSTMAttention(nn.Module):
             extended_zeros           = extended_zeros.cuda() if torch.cuda.is_available() else extended_zeros
             flattened_decoder_logits = torch.cat((flattened_decoder_logits, extended_zeros), dim=1)
             '''
-            extended_logits = Variable(torch.FloatTensor([[0.0] * len(oov) + [float('-inf')] * (max_oov_number - len(oov)) for oov in oov_list]))
+            extended_logits = Variable(torch.FloatTensor([[0.0] * max_oov_number for oov in oov_list]))
             extended_logits = extended_logits.unsqueeze(1).expand(batch_size, max_length, max_oov_number).contiguous().view(batch_size * max_length, -1)
             extended_logits = extended_logits.cuda() if torch.cuda.is_available() else extended_logits
             flattened_decoder_logits = torch.cat((flattened_decoder_logits, extended_logits), dim=1)
+        
+            oov_mask = Variable(torch.FloatTensor([[0.0] * len(oov) + [float('-inf')] * (max_oov_number - len(oov)) for oov in oov_list]))
+            oov_mask = oov_mask.unsqueeze(1).expand(batch_size, max_length, max_oov_number).contiguous().view(batch_size * max_length, -1)
+            oov_mask = torch.cat([Variable(torch.FloatTensor(torch.zeros(batch_size * max_length, self.vocab_size))), oov_mask], 1)  # batch*maxlen x (vocab+max_oov_num)
+        else:
+            oov_mask = Variable(torch.FloatTensor(torch.zeros(batch_size * max_length, self.vocab_size)))
+        if torch.cuda.is_available():
+            oov_mask = oov_mask.cuda()
 
         # add probs of copied words by scatter_add_(dim, index, src), index should be in the same shape with src. decoder_probs=(batch_size * trg_len, vocab_size+max_oov_number), copy_weights=(batch_size, trg_len, src_len)
         expanded_src_map = src_map.unsqueeze(1).expand(batch_size, max_length, src_len).contiguous().view(batch_size * max_length, -1)  # (batch_size, src_len) -> (batch_size * trg_len, src_len)
@@ -686,6 +700,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # apply log softmax to normalize, ensuring it meets the properties of probability, (batch_size * trg_len, src_len)
         merged = torch.nn.functional.log_softmax(merged, dim=1)
+        merged = merged + oov_mask
 
         # reshape to batch first before returning (batch_size, trg_len, src_len)
         decoder_log_probs = merged.view(batch_size, max_length, self.vocab_size + max_oov_number)
