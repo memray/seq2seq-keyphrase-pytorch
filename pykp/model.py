@@ -187,7 +187,7 @@ class Attention(nn.Module):
         h_tilde = self.tanh(self.linear_out(h_tilde.view(-1, context_dim + trg_hidden_dim)))
 
         # return h_tilde (batch_size, trg_len, trg_hidden_dim), attn (batch_size, trg_len, src_len) and energies (before softmax)
-        return h_tilde.view(batch_size, trg_len, trg_hidden_dim), attn_weights, attn_energies
+        return h_tilde.view(batch_size, trg_len, trg_hidden_dim), weighted_context, attn_weights, attn_energies
 
     def forward_(self, hidden, context):
         """
@@ -320,7 +320,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.attention_layer = Attention(self.src_hidden_dim * self.num_directions, self.trg_hidden_dim, method=self.attention_mode)
 
         self.pointer_softmax_context = nn.Linear(
-            self.src_hidden_dim * self.num_directions,
+            self.src_hidden_dim,
             self.pointer_softmax_hidden_dim
         )
         self.pointer_softmax_target = TimeDistributedDense(mlp=nn.Linear(
@@ -579,7 +579,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         (2) Standard Attention
         '''
         # Get the h_tilde (batch_size, trg_len, trg_hidden_dim) and attention weights (batch_size, trg_len, src_len)
-        h_tildes, attn_weights, attn_logits = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
+        h_tildes, weighted_context, attn_weights, attn_logits = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
 
         # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde), (batch_size, trg_len, trg_hidden_size) -> (batch_size * trg_len, vocab_size)
         # h_tildes=(batch_size, trg_len, trg_hidden_size) -> decoder2vocab(h_tildes.view)=(batch_size * trg_len, vocab_size) -> decoder_logits=(batch_size, trg_len, vocab_size)
@@ -591,13 +591,13 @@ class Seq2SeqLSTMAttention(nn.Module):
         if self.copy_attention:
             # copy_weights and copy_logits is (batch_size, trg_len, src_len)
             if not self.reuse_copy_attn:
-                copy_tilde, copy_weights, copy_logits = self.copy_attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
+                _, copy_weighted_context, copy_weights, copy_logits = self.copy_attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
             else:
-                copy_tilde, copy_logits, copy_weights = h_tildes, attn_logits, attn_weights
+                copy_weighted_context, copy_logits, copy_weights = weighted_context, attn_logits, attn_weights
 
             decoder_outputs = decoder_outputs.permute(1, 0, 2)  # (batch_size, trg_len, trg_hidden_dim)
             # merge the generative and copying probs, (batch_size, trg_len, vocab_size + max_oov_number)
-            decoder_log_probs = self.merge_copy_probs(decoder_outputs, copy_tilde, decoder_logits, copy_logits, src_map, oov_list)  # (batch_size, trg_len, vocab_size + max_oov_number)
+            decoder_log_probs = self.merge_copy_probs(decoder_outputs, copy_weighted_context, decoder_logits, copy_logits, src_map, oov_list)  # (batch_size, trg_len, vocab_size + max_oov_number)
         else:
             decoder_log_probs = torch.nn.functional.log_softmax(decoder_logits, dim=-1).view(batch_size, -1, self.vocab_size)
 
@@ -650,7 +650,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         batch_size, max_length, _ = decoder_logits.size()
         src_len = src_map.size(1)
 
-        pointer_softmax = torch.stack([self.pointer_softmax_context(context_representations)] * src_len, 1)  # batch x trg_len x ptrsmx_hid
+        pointer_softmax = self.pointer_softmax_context(context_representations)  # batch x ptrsmx_hid
+        pointer_softmax = torch.stack([pointer_softmax] * max_length, 1)  # batch x trg_len x ptrsmx_hid
         pointer_softmax = pointer_softmax + self.pointer_softmax_target(decoder_hidden)  # batch x trg_len x ptrsmx_hid
         pointer_softmax = func.tanh(pointer_softmax)  # batch x trg_len x ptrsmx_hid
         pointer_softmax = self.pointer_softmax_squash(pointer_softmax).squeeze(-1)  # batch x trg_len
@@ -765,7 +766,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         )
 
         # Get the h_tilde (hidden after attention) and attention weights
-        h_tilde, attn_weight, attn_logit = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
+        h_tilde, weighted_context, attn_weight, attn_logit = self.attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
 
         # compute the output decode_logit and read-out as probs: p_x = Softmax(W_s * h_tilde)
         # (batch_size, trg_len, trg_hidden_size) -> (batch_size, 1, vocab_size)
@@ -777,12 +778,12 @@ class Seq2SeqLSTMAttention(nn.Module):
             decoder_logit = decoder_logit.view(batch_size, 1, self.vocab_size)
             # copy_weights and copy_logits is (batch_size, trg_len, src_len)
             if not self.reuse_copy_attn:
-                copy_h_tilde, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
+                _, copy_weighted_context, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
             else:
-                copy_h_tilde, copy_weight, copy_logit = h_tilde, attn_weight, attn_logit
+                copy_weighted_context, copy_weight, copy_logit = weighted_context, attn_weight, attn_logit
             copy_weights.append(copy_weight.permute(1, 0, 2))  # (1, batch_size, src_len)
             # merge the generative and copying probs (batch_size, 1, vocab_size + max_unk_word)
-            decoder_log_prob = self.merge_copy_probs(decoder_output.permute(1, 0, 2), copy_h_tilde, decoder_logit, copy_logit, src_map, oov_list)
+            decoder_log_prob = self.merge_copy_probs(decoder_output.permute(1, 0, 2), copy_weighted_context, decoder_logit, copy_logit, src_map, oov_list)
 
         # Prepare for the next iteration, get the top word, top_idx and next_index are (batch_size, K)
         _, top_1_idx = decoder_log_prob.data.topk(1, dim=-1)  # (batch_size, 1)

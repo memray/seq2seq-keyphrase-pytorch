@@ -73,7 +73,7 @@ class TimeDistributedDense(torch.nn.Module):
     def forward(self, x, mask=None):
 
         x_size = x.size()
-        x = x.view(-1, x_size[-1])  # batch*time x a
+        x = x.contiguous().view(-1, x_size[-1])  # batch*time x a
         y = self.mlp.forward(x)  # batch*time x b
         y = y.view(x_size[:-1] + (y.size(-1),))  # batch x time x b
         if mask is not None:
