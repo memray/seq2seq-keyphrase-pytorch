@@ -295,8 +295,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                                        nhid=self.trg_hidden_dim,
                                        source_hid=self.src_hidden_dim * self.num_directions,
                                        target_encoder_hid=self.target_encoder_dim if self.enable_target_encoder else 0,
-                                       attention_hid=self.attention_hidden_dim,
-                                       use_layernorm=False)
+                                       attention_hid=self.attention_hidden_dim)
         
         self.target_encoder = nn.LSTM(
             input_size=self.emb_dim,
@@ -571,7 +570,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 trg_enc_h, trg_enc_hidden = self.target_encoder(
                     trg_emb, trg_enc_hidden
                 )
-                trg_enc_h = trg_enc_h.detach()
+                trg_enc_h = trg_enc_h.permute(1, 0, 2).detach()
                 trg_enc_h_last = trg_enc_hidden[0][0]
             else:
                 trg_enc_h = None
@@ -760,7 +759,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         if self.enable_target_encoder:
             # target encoder
             trg_enc_h, trg_enc_hidden = self.target_encoder(trg_emb, trg_enc_hidden)
-            trg_enc_h = trg_enc_h.detach()
+            trg_enc_h = trg_enc_h.permute(1, 0, 2).detach()
         else:
             trg_enc_h = None
 
