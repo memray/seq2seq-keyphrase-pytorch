@@ -65,16 +65,20 @@ class Sequence(object):
         else:
             return 1
     '''
+    def normalized_score(self):
+        if len(self.sentence) == 0:
+            return self.score
+        return self.score / float(len(self.sentence))
 
     # For Python 3 compatibility (__cmp__ is deprecated).
     def __lt__(self, other):
         assert isinstance(other, Sequence)
-        return self.score < other.score
+        return self.normalized_score() < other.normalized_score()
 
     # Also for Python 3 compatibility.
     def __eq__(self, other):
         assert isinstance(other, Sequence)
-        return self.score == other.score
+        return self.normalized_score() == other.normalized_score()
 
 
 class TopN_heap(object):
@@ -254,7 +258,8 @@ class SequenceGenerator(object):
             trg_enc_hiddens = trg_enc_hiddens
 
         partial_sequences = [TopN_heap(self.beam_size) for _ in range(batch_size)]
-        complete_sequences = [TopN_heap(sys.maxsize) for _ in range(batch_size)]
+        complete_sequences = [TopN_heap(self.beam_size) for _ in range(batch_size)]
+        # complete_sequences = [TopN_heap(sys.maxsize) for _ in range(batch_size)]
 
         for batch_i in range(batch_size):
             seq = Sequence(
@@ -402,7 +407,7 @@ class SequenceGenerator(object):
 
                 partial_sequences[batch_i] = new_partial_sequences
 
-                print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
+                # print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
                 '''
                 # print-out for debug
                 print('Source with OOV: \n\t %s' % ' '.join([str(w) for w in partial_seq.src_oov.cpu().data.numpy().tolist()]))
@@ -414,7 +419,7 @@ class SequenceGenerator(object):
                 print('*' * 50)
                 '''
 
-            print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
+            # print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
 
             # print('Round=%d' % (current_len))
             # print('\t#(hypothese) = %d' % (sum([len(batch_heap) for batch_heap in partial_sequences])))

@@ -331,10 +331,6 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
             # Training
             if opt.train_ml:
                 loss_ml, decoder_log_probs, nll_loss, penalty, te_loss = train_ml(one2seq_batch, model, optimizer_ml, criterion, replay_memory, opt)
-                # loss_ml = loss_ml.cpu().data.numpy()
-                # penalty = penalty.cpu().data.numpy()
-                # nll_loss = nll_loss.cpu().data.numpy()
-                # te_loss = te_loss.cpu().data.numpy()
                 train_ml_losses.append(loss_ml)
                 report_loss.append(('train_ml_loss', loss_ml))
                 report_loss.append(('PPL', loss_ml))

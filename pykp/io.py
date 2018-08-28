@@ -243,19 +243,22 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             tmp_trg = [self.word2id[BOS_WORD]]
             tmp_trg_copy_target = []
             tmp_trg_target = []
-            if self.ordering == "alphabet":
+            if self.ordering == "origin":
+                b_trg, b_trg_copy = b['trg'], b['trg_copy']
+            elif self.ordering == "alphabet":
                 # sort alphabetically
                 b_trg, b_trg_copy = self.sort_alphabet(b['trg'], b['trg_copy'])
             elif self.ordering == "source":
                 # sort by appearance in source
                 b_trg, b_trg_copy = self.sort_by_source(b['trg'], b['trg_copy'], b['src'])
-
             elif self.ordering == "shuffle":
                 # shuffle here
                 combined = list(zip(b['trg'], b['trg_copy']))
                 random.shuffle(combined)
                 b_trg, b_trg_copy = zip(*combined)
                 b_trg, b_trg_copy = list(b_trg), list(b_trg_copy)
+            else:
+                raise NotImplementedError
             for i in range(len(b_trg)):
                 tmp_trg += b_trg[i]
                 tmp_trg_copy_target += b_trg_copy[i]

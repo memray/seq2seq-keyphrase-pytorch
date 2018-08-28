@@ -72,8 +72,7 @@ class TimeDistributedDense(torch.nn.Module):
 
     def forward(self, x, mask=None):
         x_size = x.size()
-        x = x.contiguous()
-        x = x.view(-1, x_size[-1])  # batch*time x a
+        x = x.contiguous().view(-1, x_size[-1])  # batch*time x a
         y = self.mlp.forward(x)  # batch*time x b
         y = y.view(x_size[:-1] + (y.size(-1),))  # batch x time x b
         if mask is not None:
@@ -540,7 +539,7 @@ class UniCoverageLSTM(torch.nn.Module):
             state_stp = self.get_init_hidden(x.size(0))
         else:
             state_stp = [init_states]
-        output_attention, output_attention_logit = [], []
+        output_attention, output_attention_logit, output_source_representations = [], [], []
 
         for t in range(x.size(1)):
             input_mask = mask[:, t]
@@ -553,6 +552,7 @@ class UniCoverageLSTM(torch.nn.Module):
             coverage_cache = coverage_cache + attention  # batch x source_time
             output_attention.append(attention)
             output_attention_logit.append(attention_logit)
+            output_source_representations.append(source_representation)
 
         hidden_states = [hc[0] for hc in state_stp[1:]]  # list of batch x hid
         hidden_states = torch.stack(hidden_states, 1)  # batch x time x hid
@@ -561,4 +561,5 @@ class UniCoverageLSTM(torch.nn.Module):
         hidden_states = hidden_states.permute(1, 0, 2)  # time x batch x hid
         output_attention = torch.stack(output_attention, 1)  # batch x time x source_time
         output_attention_logit = torch.stack(output_attention_logit, 1)  # batch x time x source_time
-        return hidden_states, last_states, coverage_cache, output_attention, output_attention_logit
+        output_source_representations = torch.stack(output_source_representations, 1)  # batch x time x source_hid
+        return hidden_states, last_states, coverage_cache, output_attention, output_attention_logit, output_source_representations

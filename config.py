@@ -37,7 +37,7 @@ def model_opts(parser):
     Be careful with these as they will be used during translation.
     """
     # Embedding Options
-    parser.add_argument('-word_vec_size', type=int, default=300,
+    parser.add_argument('-word_vec_size', type=int, default=150,
                         help='Word embedding for both.')
 
     parser.add_argument('-position_encoding', action='store_true',
@@ -61,7 +61,7 @@ def model_opts(parser):
     parser.add_argument('-dec_layers', type=int, default=1,
                         help='Number of layers in the decoder')
 
-    parser.add_argument('-rnn_size', type=int, default=512,
+    parser.add_argument('-rnn_size', type=int, default=300,
                         help='Size of LSTM hidden states')
     parser.add_argument('-attention_hidden_dim', type=int, default=256,
                         help='Size of LSTM hidden states')
@@ -92,6 +92,9 @@ def model_opts(parser):
                         choices=['dot', 'general', 'concat'],
                         help="""The attention type to use:
                         dot or general (Luong) or concat (Bahdanau)""")
+
+    parser.add_argument('-pointer_softmax_hidden_dim', type=int, default=0,
+                        help='pointer softmax hidden size, 0 to disable')
 
     # Genenerator and loss options.
     parser.add_argument('-copy_attention', action="store_true",
@@ -250,8 +253,8 @@ def train_opts(parser):
                         help="""how many negative samples""")
 
     parser.add_argument('-keyphrase_ordering', default='source', type=str,
-                        help="""sort keyphrases or randomly shuffle them""")
-
+                        help="""sort keyphrases or randomly shuffle them:
+                                origin, source, alphabet, shuffle""")
 
     parser.add_argument('-target_encoder_dim', default=256, type=int,
                         help="""target encoder dim, 0 means average""")
@@ -328,12 +331,12 @@ def train_opts(parser):
     # beam search setting
     parser.add_argument('-beam_search_batch_example', type=int, default=8,
                         help='Maximum of examples for one batch, should be disabled for training')
-    parser.add_argument('-beam_search_batch_size', type=int, default=32,
+    parser.add_argument('-beam_search_batch_size', type=int, default=16,
                         help='Maximum batch size')
     parser.add_argument('-beam_search_batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')
 
-    parser.add_argument('-beam_size',  type=int, default=8,
+    parser.add_argument('-beam_size',  type=int, default=5,
                         help='Beam size')
     parser.add_argument('-max_sent_length', type=int, default=20,
                         help='Maximum sentence length.')
