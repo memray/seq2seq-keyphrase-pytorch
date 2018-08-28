@@ -125,6 +125,8 @@ def keyphrase_ranking(list_of_beams, max_kps=20, sep_ids=[4]):
     already_in = set()
     for beam in list_of_beams:
         kps = splitz(beam, sep_ids=sep_ids)
+        # if last kp ends with <EOS>, then remove <EOS> and keep the kp
+        # else we assume the last kp hasn't finished generating, drop it.
         if kps[-1][-1] == 2:
             kps[-1] = kps[-1][:-1]
         else:
