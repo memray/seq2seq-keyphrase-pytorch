@@ -329,7 +329,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
             num_oneword_seq = -1
             for topk in topk_range:
-                results = evaluate(match_flags, pred_seq_strs, trg_strs, topk=topk)
+                results = evaluate(match_flags, pred_seq_strs, trg_strs_to_match, topk=topk)
                 for k, v in zip(score_names, results):
                     if '%s@%d#oneword=%d' % (k, topk, num_oneword_seq) not in score_dict:
                         score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)] = []
@@ -553,15 +553,15 @@ def evaluate(match_list, predicted_list, true_list, topk=5):
         predicted_list = predicted_list[:topk]
 
     # Micro-Averaged  Method
-    micro_pk = float(sum(match_list)) / float(len(predicted_list)) if len(predicted_list) > 0 else 0.0
-    micro_rk = float(sum(match_list)) / float(len(true_list)) if len(true_list) > 0 else 0.0
+    pk = float(sum(match_list)) / float(len(predicted_list)) if len(predicted_list) > 0 else 0.0
+    rk = float(sum(match_list)) / float(len(true_list)) if len(true_list) > 0 else 0.0
 
-    if micro_pk + micro_rk > 0:
-        micro_f1 = float(2 * (micro_pk * micro_rk)) / (micro_pk + micro_rk)
+    if pk + rk > 0:
+        f1 = float(2 * (pk * rk)) / (pk + rk)
     else:
-        micro_f1 = 0.0
+        f1 = 0.0
 
-    return micro_pk, micro_rk, micro_f1
+    return pk, rk, f1
 
 
 def f1_score(prediction, ground_truth):
