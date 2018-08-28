@@ -244,12 +244,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.dropout = opt.dropout
         self.target_encoder_dim = opt.target_encoder_dim
         self.enable_target_encoder = opt.target_encoder_lambda > 0.0
-        if self.target_encoder_dim == 0:
-            # use emb_dim, and average with emb
-            self.target_encoder_merge_mode = "mean"
-        else:
-            # concat with emb
-            self.target_encoder_merge_mode = "concat"
 
         self.pad_token_src = opt.word2id[pykp.io.PAD_WORD]
         self.pad_token_trg = opt.word2id[pykp.io.PAD_WORD]
@@ -297,24 +291,21 @@ class Seq2SeqLSTMAttention(nn.Module):
             dropout=self.dropout
         )
 
-        self.decoder = UniCoverageLSTM(nemb=self.emb_dim if (not self.enable_target_encoder or self.target_encoder_merge_mode == "mean")\
-                                                         else self.emb_dim + self.target_encoder_dim,
+        self.decoder = UniCoverageLSTM(nemb=self.emb_dim,
                                        nhid=self.trg_hidden_dim,
                                        source_hid=self.src_hidden_dim * self.num_directions,
+                                       target_encoder_hid=self.target_encoder_dim if self.enable_target_encoder else 0,
                                        attention_hid=self.attention_hidden_dim,
                                        use_layernorm=False)
         
         self.target_encoder = nn.LSTM(
             input_size=self.emb_dim,
-            hidden_size=self.emb_dim if self.target_encoder_merge_mode == "mean" else self.target_encoder_dim,
+            hidden_size=self.target_encoder_dim,
             num_layers=1,
             bidirectional=False,
             batch_first=False,
             dropout=self.dropout
         )
-        self.target_encoding_merger = Average() if self.target_encoder_merge_mode == "mean" else Concat()
-        self.bilinear_layer = nn.Bilinear(self.src_hidden_dim * 2 if self.bidirectional else self.src_hidden_dim,
-        self.emb_dim if self.target_encoder_merge_mode == "mean" else self.target_encoder_dim, 1)
 
         self.attention_layer = Attention(self.src_hidden_dim * self.num_directions, self.trg_hidden_dim, method=self.attention_mode)
 
@@ -420,13 +411,13 @@ class Seq2SeqLSTMAttention(nn.Module):
         h0_target_encoder = Variable(torch.zeros(
             self.target_encoder.num_layers,
             batch_size,
-            self.emb_dim if self.target_encoder_merge_mode == "mean" else self.target_encoder_dim
+            self.target_encoder_dim
         ), requires_grad=False)
 
         c0_target_encoder = Variable(torch.zeros(
             self.target_encoder.num_layers,
             batch_size,
-            self.emb_dim if self.target_encoder_merge_mode == "mean" else self.target_encoder_dim
+            self.target_encoder_dim
         ), requires_grad=False)
 
         if torch.cuda.is_available():
@@ -579,14 +570,13 @@ class Seq2SeqLSTMAttention(nn.Module):
                     trg_emb, trg_enc_hidden
                 )
                 trg_enc_h = trg_enc_h.detach()
-                dec_input = self.target_encoding_merger([trg_enc_h, trg_emb])
                 trg_enc_h_last = trg_enc_hidden[0][0]
             else:
-                dec_input = trg_emb
+                trg_enc_h = None
                 trg_enc_h_last = init_hidden_target_encoder[0]
 
             # run RNN decoder with inputs (trg_len first)
-            decoder_output, dec_hidden, coverage_cache, attn_weight, attn_logit, weighted_context = self.decoder(dec_input, trg_mask[:, di: di + 1], coverage_cache, enc_context, ctx_mask, dec_hidden)
+            decoder_output, dec_hidden, coverage_cache, attn_weight, attn_logit, weighted_context = self.decoder(trg_emb, trg_mask[:, di: di + 1], coverage_cache, enc_context, ctx_mask, trg_enc_h, dec_hidden)
             decoder_logit = self.decoder2vocab(decoder_output.view(-1, trg_hidden_dim)).view(batch_size, 1, -1)  # batch x 1 x vocab
 
             '''
@@ -768,13 +758,11 @@ class Seq2SeqLSTMAttention(nn.Module):
         if self.enable_target_encoder:
             # target encoder
             trg_enc_h, trg_enc_hidden = self.target_encoder(trg_emb, trg_enc_hidden)
-
             trg_enc_h = trg_enc_h.detach()
-            dec_input = self.target_encoding_merger([trg_enc_h, trg_emb])
         else:
-            dec_input = trg_emb
+            trg_enc_h = None
 
-        decoder_output, dec_hidden, coverage_cache, attn_weight, attn_logit, weighted_context = self.decoder(dec_input, trg_mask, coverage_cache, enc_context, ctx_mask, dec_hidden)
+        decoder_output, dec_hidden, coverage_cache, attn_weight, attn_logit, weighted_context = self.decoder(trg_emb, trg_mask, coverage_cache, enc_context, ctx_mask, trg_enc_h, dec_hidden)
         decoder_logit = self.decoder2vocab(decoder_output.view(-1, trg_hidden_dim)).view(batch_size, 1, -1)  # batch x 1 x vocab
 
         decoder_logit = decoder_logit.view(batch_size, 1, self.vocab_size)

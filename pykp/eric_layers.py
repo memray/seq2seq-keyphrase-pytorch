@@ -390,7 +390,7 @@ class CoverageLSTMCell(torch.nn.Module):
 
     """A basic LSTM cell with coverage mechanism."""
 
-    def __init__(self, input_size, hidden_size, source_hidden_size, use_layernorm=False, use_bias=True):
+    def __init__(self, input_size, hidden_size, source_hidden_size, target_encoder_hid=0, use_layernorm=False, use_bias=True):
         """
         Most parts are copied from torch.nn.LSTMCell.
         """
@@ -399,11 +399,14 @@ class CoverageLSTMCell(torch.nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.source_hidden_size = source_hidden_size
+        self.target_encoder_hid = target_encoder_hid
         self.use_bias = use_bias
         self.use_layernorm = use_layernorm
         self.weight_ih = torch.nn.Parameter(torch.FloatTensor(input_size, 4 * hidden_size))
         self.weight_hh = torch.nn.Parameter(torch.FloatTensor(hidden_size, 4 * hidden_size))
         self.weight_ch = torch.nn.Parameter(torch.FloatTensor(source_hidden_size, 4 * hidden_size))
+        if self.target_encoder_hid > 0:
+            self.weight_teh = torch.nn.Parameter(torch.FloatTensor(target_encoder_hid, 4 * hidden_size))
         if use_bias:
             self.bias_f = torch.nn.Parameter(torch.FloatTensor(hidden_size))
             self.bias_iog = torch.nn.Parameter(torch.FloatTensor(3 * hidden_size))
@@ -419,11 +422,13 @@ class CoverageLSTMCell(torch.nn.Module):
         torch.nn.init.orthogonal(self.weight_hh.data)
         torch.nn.init.xavier_uniform(self.weight_ih.data)
         torch.nn.init.xavier_uniform(self.weight_ch.data)
+        if self.target_encoder_hid > 0:
+            torch.nn.init.xavier_uniform(self.weight_teh.data)
         if self.use_bias:
             self.bias_f.data.fill_(1.0)
             self.bias_iog.data.fill_(0.0)
 
-    def forward(self, input_, mask_, h_0, c_0, source_representation):
+    def forward(self, input_, mask_, h_0, c_0, source_representation, target_encoding=None):
         """
         Args:
             input_:     A (batch, input_size) tensor containing input features.
@@ -437,10 +442,15 @@ class CoverageLSTMCell(torch.nn.Module):
         wh = torch.mm(h_0, self.weight_hh)
         wi = torch.mm(input_, self.weight_ih)
         wcover = torch.mm(source_representation, self.weight_ch)
+        
         if self.use_layernorm:
             wi = self.layernorm_i(wi, mask_)
             wh = self.layernorm_h(wh, mask_)
         pre_act = wi + wh + wcover
+        if self.target_encoder_hid > 0:
+            wte = torch.mm(target_encoding, self.weight_teh)
+            pre_act = pre_act + wte
+
         if self.use_bias:
             pre_act = pre_act + torch.cat([self.bias_f, self.bias_iog]).unsqueeze(0)
 
@@ -509,14 +519,15 @@ class UniCoverageLSTM(torch.nn.Module):
         dropout_between_rnn_hiddens -- across time step
     '''
 
-    def __init__(self, nemb, nhid, source_hid, attention_hid, use_layernorm=False):
+    def __init__(self, nemb, nhid, source_hid, attention_hid, target_encoder_hid=0, use_layernorm=False):
         super(UniCoverageLSTM, self).__init__()
         self.nhid = nhid
         self.nemb = nemb
         self.source_hid = source_hid
         self.attention_hid = attention_hid
+        self.target_encoder_hid = target_encoder_hid
         self.use_layernorm = use_layernorm
-        self.rnn = CoverageLSTMCell(self.nemb, self.nhid, source_hidden_size=source_hid, use_layernorm=self.use_layernorm, use_bias=True)
+        self.rnn = CoverageLSTMCell(self.nemb, self.nhid, source_hidden_size=source_hid, target_encoder_hid=target_encoder_hid, use_layernorm=self.use_layernorm, use_bias=True)
         self.attention = CoverageLSTMAttention(source_hid=source_hid, target_hid=nhid, attn_hid=attention_hid)
 
     def get_init_hidden(self, bsz):
@@ -527,12 +538,13 @@ class UniCoverageLSTM(torch.nn.Module):
             return [(torch.autograd.Variable(torch.zeros(bsz, self.nhid)),\
                    torch.autograd.Variable(torch.zeros(bsz, self.nhid)))]
 
-    def forward(self, x, mask, coverage_cache, source_encodings, source_mask, init_states=None):
+    def forward(self, x, mask, coverage_cache, source_encodings, source_mask, target_encodings=None, init_states=None):
         # x:                target_time x batch x emb
         # mask:             batch x target_time
         # coverage cache:   batch x source_time
         # source_encodings: batch x source_time x source_hid
         # source mask:      batch x source_time
+        # target encoding:  batch x target_time x target_encoding_hid
         # init states:      (batch x target_hid, batch x target_hid)
 
         x = x.permute(1, 0, 2)  # batch x time x emb
@@ -545,10 +557,14 @@ class UniCoverageLSTM(torch.nn.Module):
         for t in range(x.size(1)):
             input_mask = mask[:, t]
             curr_input = x[:, t]
+            if self.target_encoder_hid > 0:
+                input_target_encoding = target_encodings[:, t]
+            else:
+                input_target_encoding = None
             previous_h, previous_c = state_stp[t]
 
             source_representation, attention, attention_logit = self.attention(source_encodings, source_mask, previous_h, input_mask, coverage_cache)
-            new_h, new_c = self.rnn.forward(curr_input, input_mask, previous_h, previous_c, source_representation)
+            new_h, new_c = self.rnn.forward(curr_input, input_mask, previous_h, previous_c, source_representation, target_encoding=input_target_encoding)
             state_stp.append((new_h, new_c))
             coverage_cache = coverage_cache + attention  # batch x source_time
             output_attention.append(attention)
