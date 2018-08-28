@@ -267,6 +267,7 @@ class LayerNorm(torch.nn.Module):
         output = self.gamma * (x - mean) / (std + self.eps) + self.beta
         return output * mask.unsqueeze(1)
 
+
 class LSTMCell(torch.nn.Module):
 
     """A basic LSTM cell."""
@@ -386,22 +387,21 @@ class UniLSTM(torch.nn.Module):
         return hidden_states, last_states
 
 
-class CoverageLSTMCell(torch.nn.Module):
+class CoverageLSTMCell1(torch.nn.Module):
 
     """A basic LSTM cell with coverage mechanism."""
 
-    def __init__(self, input_size, hidden_size, source_hidden_size, target_encoder_hid=0, use_layernorm=False, use_bias=True):
+    def __init__(self, input_size, hidden_size, source_hidden_size, target_encoder_hid=0, use_bias=True):
         """
         Most parts are copied from torch.nn.LSTMCell.
         """
 
-        super(CoverageLSTMCell, self).__init__()
+        super(CoverageLSTMCell1, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.source_hidden_size = source_hidden_size
         self.target_encoder_hid = target_encoder_hid
         self.use_bias = use_bias
-        self.use_layernorm = use_layernorm
         self.weight_ih = torch.nn.Parameter(torch.FloatTensor(input_size, 4 * hidden_size))
         self.weight_hh = torch.nn.Parameter(torch.FloatTensor(hidden_size, 4 * hidden_size))
         self.weight_ch = torch.nn.Parameter(torch.FloatTensor(source_hidden_size, 4 * hidden_size))
@@ -412,10 +412,6 @@ class CoverageLSTMCell(torch.nn.Module):
             self.bias_iog = torch.nn.Parameter(torch.FloatTensor(3 * hidden_size))
         else:
             self.register_parameter('bias', None)
-        if self.use_layernorm:
-            self.layernorm_i = LayerNorm(input_dim=self.hidden_size * 4)
-            self.layernorm_h = LayerNorm(input_dim=self.hidden_size * 4)
-            self.layernorm_c = LayerNorm(input_dim=self.hidden_size)
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -442,10 +438,7 @@ class CoverageLSTMCell(torch.nn.Module):
         wh = torch.mm(h_0, self.weight_hh)
         wi = torch.mm(input_, self.weight_ih)
         wcover = torch.mm(source_representation, self.weight_ch)
-        
-        if self.use_layernorm:
-            wi = self.layernorm_i(wi, mask_)
-            wh = self.layernorm_h(wh, mask_)
+
         pre_act = wi + wh + wcover
         if self.target_encoder_hid > 0:
             wte = torch.mm(target_encoding, self.weight_teh)
@@ -457,11 +450,68 @@ class CoverageLSTMCell(torch.nn.Module):
         f, i, o, g = torch.split(pre_act, split_size_or_sections=self.hidden_size, dim=1)
         expand_mask_ = mask_.unsqueeze(1)  # batch x None
         c_1 = torch.sigmoid(f) * c_0 + torch.sigmoid(i) * torch.tanh(g)
-        c_1 = c_1 * expand_mask_ + c_0 * (1 - expand_mask_)
-        if self.use_layernorm:
-            h_1 = torch.sigmoid(o) * torch.tanh(self.layernorm_c(c_1, mask_))
+        h_1 = torch.sigmoid(o) * torch.tanh(c_1)
+        h_1 = h_1 * expand_mask_ + h_0 * (1 - expand_mask_)
+        return h_1, c_1
+
+    def __repr__(self):
+        s = '{name}({input_size}, {hidden_size})'
+        return s.format(name=self.__class__.__name__, **self.__dict__)
+
+
+class CoverageLSTMCell(torch.nn.Module):
+
+    """A basic LSTM cell with coverage mechanism."""
+
+    def __init__(self, input_size, hidden_size, source_hidden_size, target_encoder_hid=0, use_bias=True):
+        """
+        Most parts are copied from torch.nn.LSTMCell.
+        """
+
+        super(CoverageLSTMCell, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.source_hidden_size = source_hidden_size
+        self.target_encoder_hid = target_encoder_hid
+        self.use_bias = use_bias
+        self.linear = torch.nn.Linear(input_size + hidden_size + source_hidden_size + target_encoder_hid, 4 * hidden_size, bias=False)
+        if use_bias:
+            self.bias_f = torch.nn.Parameter(torch.FloatTensor(hidden_size))
+            self.bias_iog = torch.nn.Parameter(torch.FloatTensor(3 * hidden_size))
         else:
-            h_1 = torch.sigmoid(o) * torch.tanh(c_1)
+            self.register_parameter('bias', None)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        torch.nn.init.orthogonal(self.linear.weight.data)
+        if self.use_bias:
+            self.bias_f.data.fill_(1.0)
+            self.bias_iog.data.fill_(0.0)
+
+    def forward(self, input_, mask_, h_0, c_0, source_representation, target_encoding=None):
+        """
+        Args:
+            input_:     A (batch, input_size) tensor containing input features.
+            mask_:      (batch)
+            hx:         A tuple (h_0, c_0), which contains the initial hidden
+                        and cell state, where the size of both states is
+                        (batch, hidden_size).
+        Returns:
+            h_1, c_1: Tensors containing the next hidden and cell state.
+        """
+        if self.target_encoder_hid > 0:
+            cat_input = torch.cat([input_, h_0, source_representation, target_encoding], 1)
+        else:
+            cat_input = torch.cat([input_, h_0, source_representation], 1)
+        pre_act = self.linear(cat_input)
+
+        if self.use_bias:
+            pre_act = pre_act + torch.cat([self.bias_f, self.bias_iog]).unsqueeze(0)
+
+        f, i, o, g = torch.split(pre_act, split_size_or_sections=self.hidden_size, dim=1)
+        expand_mask_ = mask_.unsqueeze(1)  # batch x None
+        c_1 = torch.sigmoid(f) * c_0 + torch.sigmoid(i) * torch.tanh(g)
+        h_1 = torch.sigmoid(o) * torch.tanh(c_1)
         h_1 = h_1 * expand_mask_ + h_0 * (1 - expand_mask_)
         return h_1, c_1
 
@@ -508,6 +558,7 @@ class CoverageLSTMAttention(torch.nn.Module):
         c = c.squeeze(1)  # batch x h_enc
         return c, alpha, e
 
+
 class UniCoverageLSTM(torch.nn.Module):
     '''
     inputs: x:          time x batch x emb
@@ -519,15 +570,14 @@ class UniCoverageLSTM(torch.nn.Module):
         dropout_between_rnn_hiddens -- across time step
     '''
 
-    def __init__(self, nemb, nhid, source_hid, attention_hid, target_encoder_hid=0, use_layernorm=False):
+    def __init__(self, nemb, nhid, source_hid, attention_hid, target_encoder_hid=0):
         super(UniCoverageLSTM, self).__init__()
         self.nhid = nhid
         self.nemb = nemb
         self.source_hid = source_hid
         self.attention_hid = attention_hid
         self.target_encoder_hid = target_encoder_hid
-        self.use_layernorm = use_layernorm
-        self.rnn = CoverageLSTMCell(self.nemb, self.nhid, source_hidden_size=source_hid, target_encoder_hid=target_encoder_hid, use_layernorm=self.use_layernorm, use_bias=True)
+        self.rnn = CoverageLSTMCell(self.nemb, self.nhid, source_hidden_size=source_hid, target_encoder_hid=target_encoder_hid, use_bias=True)
         self.attention = CoverageLSTMAttention(source_hid=source_hid, target_hid=nhid, attn_hid=attention_hid)
 
     def get_init_hidden(self, bsz):
