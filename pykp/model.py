@@ -306,6 +306,8 @@ class Seq2SeqLSTMAttention(nn.Module):
             batch_first=False,
             dropout=self.dropout
         )
+        self.bilinear_layer = nn.Bilinear(self.src_hidden_dim * 2 if self.bidirectional else                                                                              self.src_hidden_dim,
+                                          self.target_encoder_dim, 1)
 
         self.attention_layer = Attention(self.src_hidden_dim * self.num_directions, self.trg_hidden_dim, method=self.attention_mode)
 
