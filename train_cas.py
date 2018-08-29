@@ -199,16 +199,17 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
 
     if not opt.copy_attention:
         nll_loss = criterion(
-            decoder_log_probs.contiguous().view(-1, opt.vocab_size),
-            trg_target.contiguous().view(-1),
+            decoder_log_probs,
+            trg_target,
             trg_mask
         )
     else:
         nll_loss = criterion(
-            decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
-            trg_copy_target.contiguous().view(-1),
+            decoder_log_probs,
+            trg_copy_target,
             trg_mask
         )
+    nll_loss = torch.mean(nll_loss)
     nll_loss = nll_loss * (1 - opt.loss_scale)
     print("--loss calculation- %s seconds ---" % (time.time() - start_time))
     loss = nll_loss + penalties + te_loss

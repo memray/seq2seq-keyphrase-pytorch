@@ -702,7 +702,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         else:
             merged = from_vocab + from_source
 
-        # merged = torch.log(merged)
+        merged = torch.log(merged)
 
         # reshape to batch first before returning (batch_size, trg_len, src_len)
         decoder_log_probs = merged.view(batch_size, max_length, self.vocab_size + max_oov_number)
