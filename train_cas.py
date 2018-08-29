@@ -33,7 +33,6 @@ from utils import Progbar, plot_learning_curve
 import pykp
 from pykp.io import KeyphraseDataset
 from pykp.model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionCascading
-from pykp.eric_layers import StandardNLL
 
 import time
 
@@ -187,7 +186,6 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
         trg_copy_target = trg_copy_target.cuda()
         src_oov = src_oov.cuda()
 
-    trg_mask = torch.ne(trg, 0).float()
     decoder_log_probs, decoder_outputs, _, source_representations, target_representations = model.forward(src, src_len, trg, src_oov, oov_lists)
 
     te_loss = get_target_encoder_loss(model, source_representations, target_representations, replay_memory, criterion, opt)
@@ -200,14 +198,12 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
     if not opt.copy_attention:
         nll_loss = criterion(
             decoder_log_probs.contiguous().view(-1, opt.vocab_size),
-            trg_target.contiguous().view(-1),
-            trg_mask
+            trg_target.contiguous().view(-1)
         )
     else:
         nll_loss = criterion(
             decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
-            trg_copy_target.contiguous().view(-1),
-            trg_mask
+            trg_copy_target.contiguous().view(-1)
         )
     nll_loss = nll_loss * (1 - opt.loss_scale)
     print("--loss calculation- %s seconds ---" % (time.time() - start_time))
@@ -503,8 +499,7 @@ def init_optimizer_criterion(model, opt):
     # optimizer = torch.optim.Adadelta(model.parameters(), lr=0.1)
     # optimizer = torch.optim.RMSprop(model.parameters(), lr=0.1)
     '''
-    # criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.io.PAD_WORD])
-    criterion = StandardNLL()
+    criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.io.PAD_WORD])
 
     if opt.train_ml:
         optimizer_ml = Adam(params=filter(lambda p: p.requires_grad, model.parameters()), lr=opt.learning_rate)
