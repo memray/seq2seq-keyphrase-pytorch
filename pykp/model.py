@@ -605,7 +605,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
             decoder_outputs = decoder_outputs.permute(1, 0, 2)  # (batch_size, trg_len, trg_hidden_dim)
             # merge the generative and copying probs, (batch_size, trg_len, vocab_size + max_oov_number)
-            decoder_log_probs = self.merge_copy_probs(decoder_outputs, copy_weighted_context, decoder_logits, copy_logits, src_map, oov_list)  # (batch_size, trg_len, vocab_size + max_oov_number)
+            decoder_log_probs = self.merge_copy_probs(decoder_outputs, copy_weighted_context, decoder_logits, copy_weights, src_map, oov_list)  # (batch_size, trg_len, vocab_size + max_oov_number)
         else:
             decoder_log_probs = torch.nn.functional.log_softmax(decoder_logits, dim=-1).view(batch_size, -1, self.vocab_size)
 
@@ -639,7 +639,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return merged_log_prob
 
-    def merge_copy_probs(self, decoder_hidden, context_representations, decoder_logits, copy_logits, src_map, oov_list):
+    def merge_copy_probs(self, decoder_hidden, context_representations, decoder_logits, copy_probs, src_map, oov_list):
         '''
         The function takes logits as inputs here because Gu's model applies softmax in the end, to normalize generative/copying together
         The tricky part is, Gu's model merges the logits of generative and copying part instead of probabilities,
@@ -650,12 +650,12 @@ class Seq2SeqLSTMAttention(nn.Module):
         :param decoder_logits: (batch_size, trg_seq_len, dec_hid)
         :param decoder_logits: (batch_size, trg_seq_len, enc_hid)
         :param decoder_logits: (batch_size, trg_seq_len, vocab_size)
-        :param copy_logits:    (batch_size, trg_len, src_len) the pointing/copying logits of each target words
+        :param copy_probs:    (batch_size, trg_len, src_len) the pointing/copying logits of each target words
         :param src_map:        (batch_size, src_len)
         :return:
             decoder_copy_probs: return the log_probs (batch_size, trg_seq_len, vocab_size + max_oov_number)
         '''
-        batch_size, max_length, _ = decoder_logits.size()
+        batch_size, max_length, _ = copy_probs.size()
         src_len = src_map.size(1)
 
         if self.pointer_softmax_hidden_dim > 0:
@@ -682,32 +682,30 @@ class Seq2SeqLSTMAttention(nn.Module):
             extended_logits = extended_logits.cuda() if torch.cuda.is_available() else extended_logits
             flattened_decoder_logits = torch.cat((flattened_decoder_logits, extended_logits), dim=1)
         
-            oov_mask = Variable(torch.FloatTensor([[0.0] * len(oov) + [float('-inf')] * (max_oov_number - len(oov)) for oov in oov_list]))
+            oov_mask = Variable(torch.FloatTensor([[1.0] * len(oov) + [0.0] * (max_oov_number - len(oov)) for oov in oov_list]))
             oov_mask = oov_mask.unsqueeze(1).expand(batch_size, max_length, max_oov_number).contiguous().view(batch_size * max_length, -1)
-            oov_mask = torch.cat([Variable(torch.FloatTensor(torch.zeros(batch_size * max_length, self.vocab_size))), oov_mask], 1)  # batch*maxlen x (vocab+max_oov_num)
+            oov_mask = torch.cat([Variable(torch.FloatTensor(torch.ones(batch_size * max_length, self.vocab_size))), oov_mask], 1)  # batch*maxlen x (vocab+max_oov_num)
         else:
-            oov_mask = Variable(torch.FloatTensor(torch.zeros(batch_size * max_length, self.vocab_size)))
+            oov_mask = Variable(torch.FloatTensor(torch.ones(batch_size * max_length, self.vocab_size)))
         if torch.cuda.is_available():
             oov_mask = oov_mask.cuda()
 
         # add probs of copied words by scatter_add_(dim, index, src), index should be in the same shape with src. decoder_probs=(batch_size * trg_len, vocab_size+max_oov_number), copy_weights=(batch_size, trg_len, src_len)
         expanded_src_map = src_map.unsqueeze(1).expand(batch_size, max_length, src_len).contiguous().view(batch_size * max_length, -1)  # (batch_size, src_len) -> (batch_size * trg_len, src_len)
         # flattened_decoder_logits.scatter_add_(dim=1, index=expanded_src_map, src=copy_logits.view(batch_size * max_length, -1))
-        from_vocab = flattened_decoder_logits
+        from_vocab = masked_softmax(flattened_decoder_logits, m=oov_mask, axis=1)  # batch*maxlen x (vocab+max_oov_num)
+
         from_source = torch.autograd.Variable(torch.zeros(flattened_decoder_logits.size()))
         if flattened_decoder_logits.is_cuda:
             from_source = from_source.cuda()
-        from_source = from_source.scatter_add_(1, expanded_src_map, copy_logits.view(batch_size * max_length, -1))
-        # flattened_decoder_logits = flattened_decoder_logits.scatter_add_(1, expanded_src_map, copy_logits.view(batch_size * max_length, -1))
+        from_source = from_source.scatter_add_(1, expanded_src_map, copy_probs.view(batch_size * max_length, -1))
         
         if self.pointer_softmax_hidden_dim > 0:
             merged = pointer_softmax * from_vocab + (1.0 - pointer_softmax) * from_source
         else:
             merged = from_vocab + from_source
 
-        # apply log softmax to normalize, ensuring it meets the properties of probability, (batch_size * trg_len, src_len)
-        merged = torch.nn.functional.log_softmax(merged, dim=1)
-        merged = merged + oov_mask
+        merged = torch.log(merged)
 
         # reshape to batch first before returning (batch_size, trg_len, src_len)
         decoder_log_probs = merged.view(batch_size, max_length, self.vocab_size + max_oov_number)
@@ -804,7 +802,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 copy_weighted_context, copy_weight, copy_logit = weighted_context, attn_weight, attn_logit
             copy_weights.append(copy_weight.permute(1, 0, 2))  # (1, batch_size, src_len)
             # merge the generative and copying probs (batch_size, 1, vocab_size + max_unk_word)
-            decoder_log_prob = self.merge_copy_probs(decoder_output.permute(1, 0, 2), copy_weighted_context, decoder_logit, copy_logit, src_map, oov_list)
+            decoder_log_prob = self.merge_copy_probs(decoder_output.permute(1, 0, 2), copy_weighted_context, decoder_logit, copy_weight, src_map, oov_list)
 
         # Prepare for the next iteration, get the top word, top_idx and next_index are (batch_size, K)
         _, top_1_idx = decoder_log_prob.data.topk(1, dim=-1)  # (batch_size, 1)
