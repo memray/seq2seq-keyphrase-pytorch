@@ -709,6 +709,9 @@ class Seq2SeqLSTMAttention(nn.Module):
             from_source = from_source.cuda()
         from_source = from_source.scatter_add_(1, expanded_src_map, copy_probs.view(batch_size * max_length, -1))
         
+        pointer_softmax.register_hook(self.save_grad('444'))
+        from_vocab.register_hook(self.save_grad('333'))
+        from_source.register_hook(self.save_grad('222'))
         if self.pointer_softmax_hidden_dim > 0:
             merged = pointer_softmax * from_vocab + (1.0 - pointer_softmax) * from_source
         else:
@@ -716,6 +719,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         merged = torch.log(merged)
 
+        merged.register_hook(self.save_grad('111'))
         # reshape to batch first before returning (batch_size, trg_len, src_len)
         decoder_log_probs = merged.view(batch_size, max_length, self.vocab_size + max_oov_number)
 
