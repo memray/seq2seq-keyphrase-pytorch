@@ -191,7 +191,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             print_out = ''
             trg_str_is_present = if_present_duplicate_phrase(src_str, trg_str_seqs)
             trg_str_seqs = [item for item, _flag in zip(trg_str_seqs, trg_str_is_present) if _flag]
-
+            if len(trg_str_seqs) == 0:
+                continue
             # 1st filtering
             if opt.eval_method == "beam_search":
                 pred_seq = [extract_to_list(seq) for seq in pred_seq]
