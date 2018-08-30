@@ -212,8 +212,7 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
     start_time = time.time()
     loss.backward(retain_graph=True)
     print("--backward- %s seconds ---" % (time.time() - start_time))
-    import pdb ; pdb.set_trace()
-
+   
     if opt.max_grad_norm > 0:
         pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
         after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)

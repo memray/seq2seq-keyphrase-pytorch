@@ -465,14 +465,9 @@ class Seq2SeqLSTMAttention(nn.Module):
             trg_mask = self.get_mask(input_trg)  # same size as input_trg
         src_h, (src_h_t, src_c_t) = self.encode(input_src, input_src_len)
         
-        src_h.register_hook(self.save_grad('src_h'))
         decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights, trg_encoding_h_last = self.decode(trg_inputs=input_trg, src_map=input_src_ext,
                                                                                       oov_list=oov_lists, enc_context=src_h, enc_hidden=(src_h_t, src_c_t),
                                                                                       trg_mask=trg_mask, ctx_mask=ctx_mask)
-        decoder_probs.register_hook(self.save_grad('decoder_probs'))
-        decoder_hiddens.register_hook(self.save_grad('decoder_hiddens'))
-        attn_weights.register_hook(self.save_grad('attn_weights'))
-        copy_attn_weights.register_hook(self.save_grad('copy_attn_weights'))
         return decoder_probs, decoder_hiddens, (attn_weights, copy_attn_weights), src_h_t, trg_encoding_h_last
 
     def encode(self, input_src, input_src_len):
@@ -714,10 +709,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         if flattened_decoder_logits.is_cuda:
             from_source = from_source.cuda()
         from_source = from_source.scatter_add_(1, expanded_src_map, copy_probs.view(batch_size * max_length, -1))
-        
-        pointer_softmax.register_hook(self.save_grad('444'))
-        from_vocab.register_hook(self.save_grad('333'))
-        from_source.register_hook(self.save_grad('222'))
+
         if self.pointer_softmax_hidden_dim > 0:
             merged = pointer_softmax * from_vocab + (1.0 - pointer_softmax) * from_source
         else:
@@ -728,7 +720,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         log_merged = torch.log(merged + epsilon) * gt_zero
         log_merged = log_merged + oov_mask2
 
-        log_merged.register_hook(self.save_grad('111'))
         # reshape to batch first before returning (batch_size, trg_len, src_len)
         decoder_log_probs = log_merged.view(batch_size, max_length, self.vocab_size + max_oov_number)
         
