@@ -693,10 +693,16 @@ class Seq2SeqLSTMAttention(nn.Module):
             oov_mask = Variable(torch.FloatTensor([[1.0] * len(oov) + [0.0] * (max_oov_number - len(oov)) for oov in oov_list]))
             oov_mask = oov_mask.unsqueeze(1).expand(batch_size, max_length, max_oov_number).contiguous().view(batch_size * max_length, -1)
             oov_mask = torch.cat([Variable(torch.FloatTensor(torch.ones(batch_size * max_length, self.vocab_size))), oov_mask], 1)  # batch*maxlen x (vocab+max_oov_num)
+            
+            oov_mask2 = Variable(torch.FloatTensor([[0.0] * len(oov) + [-np.inf] * (max_oov_number - len(oov)) for oov in oov_list]))
+            oov_mask2 = oov_mask2.unsqueeze(1).expand(batch_size, max_length, max_oov_number).contiguous().view(batch_size * max_length, -1)
+            oov_mask2 = torch.cat([Variable(torch.FloatTensor(torch.zeros(batch_size * max_length, self.vocab_size))), oov_mask2], 1)  # batch*maxlen x (vocab+max_oov_num)
         else:
             oov_mask = Variable(torch.FloatTensor(torch.ones(batch_size * max_length, self.vocab_size)))
+            oov_mask2 = Variable(torch.FloatTensor(torch.zeros(batch_size * max_length, self.vocab_size)))
         if torch.cuda.is_available():
             oov_mask = oov_mask.cuda()
+            oov_mask2 = oov_mask2.cuda()
         oov_mask = oov_mask * trg_mask.view(-1, 1)
 
         # add probs of copied words by scatter_add_(dim, index, src), index should be in the same shape with src. decoder_probs=(batch_size * trg_len, vocab_size+max_oov_number), copy_weights=(batch_size, trg_len, src_len)
@@ -718,11 +724,12 @@ class Seq2SeqLSTMAttention(nn.Module):
             merged = from_vocab + from_source
 
         merged = torch.log(merged)
+        merged = merged + oov_mask2
 
         merged.register_hook(self.save_grad('111'))
         # reshape to batch first before returning (batch_size, trg_len, src_len)
         decoder_log_probs = merged.view(batch_size, max_length, self.vocab_size + max_oov_number)
-
+        
         return decoder_log_probs
 
     def do_teacher_forcing(self):
