@@ -723,12 +723,14 @@ class Seq2SeqLSTMAttention(nn.Module):
         else:
             merged = from_vocab + from_source
 
-        merged = torch.log(merged)
-        merged = merged + oov_mask2
+        gt_zero = torch.gt(merged, 0.0).float()
+        epsilon = torch.le(merged, 0.0).float() * 1e-8
+        log_merged = torch.log(merged + epsilon) * gt_zero
+        log_merged = log_merged + oov_mask2
 
-        merged.register_hook(self.save_grad('111'))
+        log_merged.register_hook(self.save_grad('111'))
         # reshape to batch first before returning (batch_size, trg_len, src_len)
-        decoder_log_probs = merged.view(batch_size, max_length, self.vocab_size + max_oov_number)
+        decoder_log_probs = log_merged.view(batch_size, max_length, self.vocab_size + max_oov_number)
         
         return decoder_log_probs
 
