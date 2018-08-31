@@ -244,12 +244,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.target_encoder_dim = opt.target_encoder_dim
         self.enable_target_encoder = opt.target_encoder_lambda > 0.0
         self.target_encoding_mlp_hidden_dim = opt.target_encoding_mlp_hidden_dim
-        if self.target_encoder_dim == 0:
-            # use emb_dim, and average with emb
-            self.target_encoder_merge_mode = "mean"
-        else:
-            # concat with emb
-            self.target_encoder_merge_mode = "concat"
 
         self.pad_token_src = opt.word2id[pykp.io.PAD_WORD]
         self.pad_token_trg = opt.word2id[pykp.io.PAD_WORD]
@@ -298,7 +292,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         )
 
         self.decoder = nn.LSTM(
-            input_size=self.emb_dim if (not self.enable_target_encoder or self.target_encoder_merge_mode == "mean") else self.emb_dim + self.target_encoder_dim,
+            input_size=self.emb_dim if not self.enable_target_encoder else self.emb_dim + self.self.target_encoding_mlp_hidden_dim[-1],
             hidden_size=self.trg_hidden_dim,
             num_layers=self.nlayers_trg,
             bidirectional=False,
@@ -308,14 +302,14 @@ class Seq2SeqLSTMAttention(nn.Module):
         
         self.target_encoder = nn.LSTM(
             input_size=self.emb_dim,
-            hidden_size=self.emb_dim if self.target_encoder_merge_mode == "mean" else self.target_encoder_dim,
+            hidden_size=self.target_encoder_dim,
             num_layers=1,
             bidirectional=False,
             batch_first=False,
             dropout=self.dropout
         )
-        self.target_encoding_merger = Average() if self.target_encoder_merge_mode == "mean" else Concat()
-        self.target_encoding_mlp = MultilayerPerceptron(input_dim=self.emb_dim if self.target_encoder_merge_mode == "mean" else                                                                           self.target_encoder_dim,
+        self.target_encoding_merger = Concat()
+        self.target_encoding_mlp = MultilayerPerceptron(input_dim=self.target_encoder_dim,
                                                         hidden_dim=self.target_encoding_mlp_hidden_dim)
         self.bilinear_layer = nn.Bilinear(self.src_hidden_dim * 2 if self.bidirectional else 
                                                 self.src_hidden_dim,
@@ -426,13 +420,13 @@ class Seq2SeqLSTMAttention(nn.Module):
         h0_target_encoder = Variable(torch.zeros(
             self.target_encoder.num_layers,
             batch_size,
-            self.emb_dim if self.target_encoder_merge_mode == "mean" else self.target_encoder_dim
+            self.target_encoder_dim
         ), requires_grad=False)
 
         c0_target_encoder = Variable(torch.zeros(
             self.target_encoder.num_layers,
             batch_size,
-            self.emb_dim if self.target_encoder_merge_mode == "mean" else self.target_encoder_dim
+            self.target_encoder_dim
         ), requires_grad=False)
 
         if torch.cuda.is_available():
