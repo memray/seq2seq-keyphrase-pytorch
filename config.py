@@ -263,6 +263,8 @@ def train_opts(parser):
                         help="""target encoder lambda""")
     parser.add_argument('-replay_buffer_capacity', default=100, type=int,
                         help="""replay buffer lambda""")
+    parser.add_argument('-target_encoding_mlp_hidden_dim', default=[64, 64], type=list,
+                        help="""target_encoding_mlp_hidden_dim""")
 
 
     # GPU

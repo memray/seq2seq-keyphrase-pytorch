@@ -11,7 +11,7 @@ import numpy as np
 import random
 
 import pykp
-from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat
+from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, MultilayerPerceptron
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -243,6 +243,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.dropout = opt.dropout
         self.target_encoder_dim = opt.target_encoder_dim
         self.enable_target_encoder = opt.target_encoder_lambda > 0.0
+        self.target_encoding_mlp_hidden_dim = opt.target_encoding_mlp_hidden_dim
         if self.target_encoder_dim == 0:
             # use emb_dim, and average with emb
             self.target_encoder_merge_mode = "mean"
@@ -314,8 +315,11 @@ class Seq2SeqLSTMAttention(nn.Module):
             dropout=self.dropout
         )
         self.target_encoding_merger = Average() if self.target_encoder_merge_mode == "mean" else Concat()
-        self.bilinear_layer = nn.Bilinear(self.src_hidden_dim * 2 if self.bidirectional else self.src_hidden_dim,
-        self.emb_dim if self.target_encoder_merge_mode == "mean" else self.target_encoder_dim, 1)
+        self.target_encoding_mlp = MultilayerPerceptron(input_dim=self.emb_dim if self.target_encoder_merge_mode == "mean" else                                                                           self.target_encoder_dim,
+                                                        hidden_dim=self.target_encoding_mlp_hidden_dim)
+        self.bilinear_layer = nn.Bilinear(self.src_hidden_dim * 2 if self.bidirectional else 
+                                                self.src_hidden_dim,
+                                          self.target_encoding_mlp_hidden_dim[-1], 1)
 
         self.attention_layer = Attention(self.src_hidden_dim * self.num_directions, self.trg_hidden_dim, method=self.attention_mode)
 
@@ -574,6 +578,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             # target encoder
             trg_enc_h, (trg_enc_h_last, _) = self.target_encoder(trg_emb, init_hidden_target_encoder)
             trg_enc_h_last = trg_enc_h_last[0]  # bi directional
+            trg_enc_h = self.target_encoding_mlp(trg_enc_h)[0]  # output of the 1st layer
             trg_enc_h = trg_enc_h.detach()
             decoder_input = self.target_encoding_merger([trg_enc_h, trg_emb])
         else:
@@ -790,6 +795,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             trg_enc_h, trg_enc_hidden = self.target_encoder(
                 trg_emb, trg_enc_hidden
             )
+            trg_enc_h = self.target_encoding_mlp(trg_enc_h)[0]  # output of the 1st layer
             trg_enc_h = trg_enc_h.detach()
             dec_input = self.target_encoding_merger([trg_enc_h, trg_emb])
         else:

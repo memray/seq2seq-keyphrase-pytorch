@@ -120,6 +120,41 @@ class MLPMultiToOne(torch.nn.Module):
         return curr
 
 
+class MultilayerPerceptron(torch.nn.Module):
+    '''
+    input:  x: batch x input_dim
+    output: y: batch x hidden_dim[-1]
+    '''
+    def __init__(self, input_dim, hidden_dim):
+        super(MultilayerPerceptron, self).__init__()
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        mlp = [torch.nn.Linear(self.input_dim if i == 0 else self.hidden_dim[i - 1], self.hidden_dim[i]) for i in range(len(hidden_dim))]
+        self.mlp = torch.nn.ModuleList(mlp)
+        self.init_weights()
+
+    def init_weights(self):
+        initrange = 0.1
+        for i in range(len(self.hidden_dim)):
+            self.mlp[i].weight.data.uniform_(-initrange, initrange)
+            self.mlp[i].bias.data.fill_(0)
+
+    def forward(self, x):
+        if len(x.size()) == 3:
+            dim1, dim2, dim3 = x.size()
+            x = x.view(dim1 * dim2, dim3)
+            flag = True
+        res = []
+        tmp = x
+        for i in range(len(self.hidden_dim)):
+            tmp = self.mlp[i](tmp)
+            tmp = F.tanh(tmp)
+            res.append(tmp)
+        if flag:
+            res = [r.view(dim1, dim2, -1) for r in res]
+        return res
+
+
 class Average(torch.nn.Module):
     '''
     input:  [x1: batch x h
