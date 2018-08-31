@@ -133,7 +133,7 @@ def get_target_encoder_loss(model, source_representations, target_representation
         batch_labels =  batch_labels.cuda()
 
     # 3. prediction
-    batch_inputs_target = model.target_encoding_mlp(batch_inputs_target)  # batch x mlp_hid
+    batch_inputs_target = model.target_encoding_mlp(batch_inputs_target)[-1]  # last layer, batch x mlp_hid
     batch_inputs_target = torch.stack([batch_inputs_target] * batch_inputs_source.size(1), 1)
     pred = model.bilinear_layer(batch_inputs_source, batch_inputs_target).squeeze(-1)  # batch x n_neg+1
     pred = torch.nn.functional.log_softmax(pred, dim=-1)  # batch x n_neg+1

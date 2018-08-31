@@ -292,7 +292,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         )
 
         self.decoder = nn.LSTM(
-            input_size=self.emb_dim if not self.enable_target_encoder else self.emb_dim + self.self.target_encoding_mlp_hidden_dim[-1],
+            input_size=self.emb_dim if not self.enable_target_encoder else self.emb_dim + self.target_encoding_mlp_hidden_dim[-1],
             hidden_size=self.trg_hidden_dim,
             num_layers=self.nlayers_trg,
             bidirectional=False,

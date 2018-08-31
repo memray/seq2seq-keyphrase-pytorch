@@ -140,6 +140,7 @@ class MultilayerPerceptron(torch.nn.Module):
             self.mlp[i].bias.data.fill_(0)
 
     def forward(self, x):
+        flag = False
         if len(x.size()) == 3:
             dim1, dim2, dim3 = x.size()
             x = x.view(dim1 * dim2, dim3)
