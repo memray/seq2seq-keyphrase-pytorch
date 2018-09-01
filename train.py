@@ -151,11 +151,11 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
     optimizer.step()
 
     if torch.cuda.is_available():
-        loss_val = loss.cpu().data.numpy()[0]
+        loss_value = loss.cpu().data.numpy()
     else:
-        loss_val = loss.data.numpy()[0]
+        loss_value = loss.data.numpy()
 
-    return loss_val, decoder_log_probs
+    return loss_value, decoder_log_probs
 
 
 def train_rl_0(one2many_batch, model, optimizer, generator, opt):
