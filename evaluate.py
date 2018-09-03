@@ -309,6 +309,12 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
             print_out += '\n'.join(['\t\t%s' % ' '.join(phrase) if is_present else '\t\t[ABSENT] %s' % ' '.join(phrase) for phrase, is_present in zip(trg_strs, trg_present_flags)])
             print_out += '\n\noov_list:   \n\t\t%s \n\n' % str(oov)
 
+            # ignore the cases that there's no present phrases
+            if opt.must_appear_in_src and np.sum(trg_str_is_present) == 0:
+                print_out += 'Found no present phrases, skip!'
+                logging.info(print_out)
+                continue
+
             '''
             Evaluate predictions w.r.t different metrics
             '''
@@ -429,6 +435,9 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
     # logging.info('Macro@10\n\t\tprecision %.4f\n\t\tmacro recall %.4f\n\t\tmacro fscore %.4f ' % (np.average(score_dict['precision@10']), np.average(score_dict['recall@10']), np.average(score_dict['f1score@10'])))
     # precision, recall, f_score = evaluate(true_seqs=target_all, pred_seqs=prediction_all, topn=5)
     # logging.info('micro precision %.4f , micro recall %.4f, micro fscore %.4f ' % (precision, recall, f_score))
+
+    for k,v in score_dict.items():
+        print('#(%s) = %d' % (k, len(v)))
 
     return score_dict
 

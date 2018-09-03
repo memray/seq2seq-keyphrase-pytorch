@@ -112,7 +112,7 @@ def model_opts(parser):
                         help="A gate controling the flow from generative model and copy model (see See et al.)")
 
     # parser.add_argument('-coverage_attn', action="store_true",
-    #                     help='Train a coverage attention layer.')
+    #                     help='Train a coverage attention layer by Tu:2016:ACL.')
     # parser.add_argument('-lambda_coverage', type=float, default=1,
     #                     help='Lambda value for coverage by Tu:2016:ACL.')
 
@@ -120,9 +120,6 @@ def model_opts(parser):
     #                     choices=['source', 'target', 'both'],
     #                     help="""Type of context gate to use.
     #                     Do not select for no context gate by Tu:2017:TACL.""")
-
-    # group.add_argument('-lambda_coverage', type=float, default=1,
-    #                    help='Lambda value for coverage.')
 
     # Cascading model options
     parser.add_argument('-cascading_model', action="store_true",
@@ -181,7 +178,7 @@ def train_opts(parser):
                         help="""If training from a checkpoint then this is the
                         path to the pretrained model's state_dict.""")
     # GPU
-    parser.add_argument('-gpuid', default=[0], nargs='+', type=int,
+    parser.add_argument('-device_ids', default=[0], nargs='+', type=int,
                         help="Use CUDA on the listed devices.")
     parser.add_argument('-seed', type=int, default=9527,
                         help="""Random seed used for the experiments

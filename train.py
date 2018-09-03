@@ -57,22 +57,29 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
     trg_mask = batch_data_dict['trg_mask']
     trg_unk_for_loss = batch_data_dict['trg_unk_for_loss']
     trg_copy_for_loss = batch_data_dict['trg_copy_for_loss']
-
     oov_lists = batch_data_dict['oov_lists']
     max_oov_number = max([len(oov) for oov in oov_lists])
+
+
 
     start_time = time.time()
 
     if torch.cuda.is_available():
-        src = src.cuda()
-        trg = trg.cuda()
-        trg_unk_for_loss = trg_unk_for_loss.cuda()
-        trg_copy_for_loss = trg_copy_for_loss.cuda()
-        src_copy = src_copy.cuda()
+        if len(opt.device_ids) == 1:
+            src = src.cuda()
+            trg = trg.cuda()
+            trg_unk_for_loss = trg_unk_for_loss.cuda()
+            trg_copy_for_loss = trg_copy_for_loss.cuda()
+            src_copy = src_copy.cuda()
+        else:
+            trg_unk_for_loss = trg_unk_for_loss.cuda(opt.device_ids[0])
 
     optimizer.zero_grad()
 
     decoder_log_probs, _, _ = model.forward(src, src_len, trg, trg_len, src_copy, oov_lists, src_mask, trg_mask)
+
+    print("Outside Model: input src size", src.size(),
+          "output decoder_logits size", decoder_log_probs.size())
 
     if not opt.copy_attention:
         loss = criterion(
@@ -439,15 +446,6 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                                   max_sequence_length=opt.beam_search_max_length
                                   )
 
-    logging.info('======================  Checking GPU Availability  =========================')
-    if torch.cuda.is_available():
-        if isinstance(opt.gpuid, int):
-            opt.gpuid = [opt.gpuid]
-        logging.info('Running on GPU! devices=%s' % str(opt.gpuid))
-        # model = nn.DataParallel(model, device_ids=opt.gpuid)
-    else:
-        logging.info('Running on CPU!')
-
     logging.info('======================  Start Training  =========================')
 
     checkpoint_names = []
@@ -614,19 +612,13 @@ def load_data_vocab(opt, load_train=True):
 
     logging.info("Loading vocab from disk: %s" % (opt.vocab_file))
     word2id, id2word, vocab = torch.load(opt.vocab_file, 'wb')
+    logging.info("Loading data from '%s'" % opt.data_path_prefix)
 
-    # one2one data loader
-    logging.info("Loading train and validate data from '%s'" % opt.data_path_prefix)
-    '''
-    train_one2one  = torch.load(opt.data_path_prefix + '.train.one2one.pt', 'wb')
-    valid_one2one  = torch.load(opt.data_path_prefix + '.valid.one2one.pt', 'wb')
-
-    train_one2one_dataset = KeyphraseDataset(train_one2one, word2id=word2id)
-    valid_one2one_dataset = KeyphraseDataset(valid_one2one, word2id=word2id)
-    train_one2one_loader = DataLoader(dataset=train_one2one_dataset, collate_fn=train_one2one_dataset.collate_fn_one2one, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=True)
-    valid_one2one_loader = DataLoader(dataset=valid_one2one_dataset, collate_fn=valid_one2one_dataset.collate_fn_one2one, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=False)
-    '''
-
+    # if using more than 1 GPU, use number of source as example count, to make all batches are in equal size
+    if len(opt.device_ids) > 1:
+        count_example_number_by_source = True
+    else:
+        count_example_number_by_source = False
     logging.info('======================  Dataset  =========================')
     # one2many data loader
     if load_train:
@@ -642,11 +634,17 @@ def load_data_vocab(opt, load_train=True):
         train_one2many_loader = KeyphraseDataLoader(dataset=train_one2many_dataset,
                                                     collate_fn=train_one2many_dataset.collate_fn_one2many,
                                                     num_workers=opt.batch_workers,
-                                                    max_batch_example=1024,
-                                                    max_batch_pair=opt.batch_size,
+                                                    batch_size=opt.batch_size,
                                                     pin_memory=True,
-                                                    shuffle=True)
-        logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d, avg(one2many/batch)=%.3f, avg(one2one/batch)=%.3f' % (len(train_one2many_loader.dataset), train_one2many_loader.one2one_number(), len(train_one2many_loader), len(train_one2many_loader.dataset) / len(train_one2many_loader), train_one2many_loader.one2one_number() / len(train_one2many_loader)))
+                                                    shuffle=True,
+                                                    count_example_number_by_source = count_example_number_by_source)
+        logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, '
+                     '#(batch)=%d,'
+                     'avg(one2many/batch)=%.3f, avg(one2one/batch)=%.3f' %
+                     (len(train_one2many_loader.dataset), train_one2many_loader.one2one_number(),
+                      len(train_one2many_loader),
+                      len(train_one2many_loader.dataset) / len(train_one2many_loader),
+                      train_one2many_loader.one2one_number() / len(train_one2many_loader)))
     else:
         train_one2many_loader = None
 
@@ -681,17 +679,17 @@ def load_data_vocab(opt, load_train=True):
     valid_one2many_loader = KeyphraseDataLoader(dataset=valid_one2many_dataset,
                                                 collate_fn=valid_one2many_dataset.collate_fn_one2many,
                                                 num_workers=opt.batch_workers,
-                                                max_batch_example=opt.beam_search_batch_example,
-                                                max_batch_pair=opt.beam_search_batch_size,
+                                                batch_size=opt.batch_size,
                                                 pin_memory=True,
-                                                shuffle=False)
+                                                shuffle=False,
+                                                count_example_number_by_source = count_example_number_by_source)
     test_one2many_loader = KeyphraseDataLoader(dataset=test_one2many_dataset,
                                                collate_fn=test_one2many_dataset.collate_fn_one2many,
                                                num_workers=opt.batch_workers,
-                                               max_batch_example=opt.beam_search_batch_example,
-                                               max_batch_pair=opt.beam_search_batch_size,
+                                               batch_size=opt.batch_size,
                                                pin_memory=True,
-                                               shuffle=False)
+                                               shuffle=False,
+                                               count_example_number_by_source = count_example_number_by_source)
 
     opt.word2id = word2id
     opt.id2word = id2word
@@ -738,7 +736,7 @@ def init_optimizer_criterion(model, opt):
         optimizer_rl = None
 
     if torch.cuda.is_available():
-        criterion = criterion.cuda()
+        criterion = criterion.cuda(device=opt.device_ids[0])
 
     return optimizer_ml, optimizer_rl, criterion
 
@@ -779,7 +777,10 @@ def init_model(opt):
         )
 
     if torch.cuda.is_available():
-        model = model.cuda()
+        if len(opt.device_ids) == 1:
+            model = model.cuda(device=opt.device_ids[0])
+        else:
+            model = torch.nn.DataParallel(model, device_ids=opt.device_ids).cuda()
 
     utils.tally_parameters(model)
 
@@ -866,6 +867,14 @@ def main():
 
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
+
+    logging.info('======================  Checking GPU Availability  =========================')
+    if torch.cuda.is_available():
+        if isinstance(opt.gpuid, int):
+            opt.gpuid = [opt.gpuid]
+        logging.info('Running on %s! devices=%s' % ('MULTIPLE GPUs' if len(opt.gpuid) > 1 else '1 GPU', str(opt.gpuid)))
+    else:
+        logging.info('Running on CPU!')
 
     try:
         train_data_loader, valid_data_loader, test_data_loader, word2id, id2word, vocab = load_data_vocab(opt)

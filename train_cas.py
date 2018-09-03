@@ -326,7 +326,7 @@ def load_data_vocab(opt, load_train=True):
     if load_train:
         train_one2seq = torch.load(opt.data_path_prefix + '.train.one2many.pt', 'wb')
         train_one2seq_dataset = KeyphraseDataset(train_one2seq, word2id=word2id, id2word=id2word, type='one2seq')
-        train_one2seq_loader = KeyphraseDataLoader(dataset=train_one2seq_dataset, collate_fn=train_one2seq_dataset.collate_fn_one2seq, num_workers=opt.batch_workers, max_batch_example=1024, max_batch_pair=opt.batch_size, pin_memory=True, shuffle=True)
+        train_one2seq_loader = KeyphraseDataLoader(dataset=train_one2seq_dataset, collate_fn=train_one2seq_dataset.collate_fn_one2seq, num_workers=opt.batch_workers, max_num_example_in_batch=1024, max_batch_pair=opt.batch_size, pin_memory=True, shuffle=True)
         logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d, #(average examples/batch)=%.3f' % (len(train_one2seq_loader.dataset), train_one2seq_loader.one2one_number(), len(train_one2seq_loader), train_one2seq_loader.one2one_number() / len(train_one2seq_loader)))
     else:
         train_one2seq_loader = None
@@ -351,8 +351,8 @@ def load_data_vocab(opt, load_train=True):
     exit()
     """
 
-    valid_one2seq_loader = KeyphraseDataLoader(dataset=valid_one2seq_dataset, collate_fn=valid_one2seq_dataset.collate_fn_one2seq, num_workers=opt.batch_workers, max_batch_example=opt.beam_search_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
-    test_one2seq_loader = KeyphraseDataLoader(dataset=test_one2seq_dataset, collate_fn=test_one2seq_dataset.collate_fn_one2seq, num_workers=opt.batch_workers, max_batch_example=opt.beam_search_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
+    valid_one2seq_loader = KeyphraseDataLoader(dataset=valid_one2seq_dataset, collate_fn=valid_one2seq_dataset.collate_fn_one2seq, num_workers=opt.batch_workers, max_num_example_in_batch=opt.beam_search_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
+    test_one2seq_loader = KeyphraseDataLoader(dataset=test_one2seq_dataset, collate_fn=test_one2seq_dataset.collate_fn_one2seq, num_workers=opt.batch_workers, max_num_example_in_batch=opt.beam_search_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
 
     opt.word2id = word2id
     opt.id2word = id2word
