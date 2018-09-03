@@ -59,8 +59,8 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
     trg_mask = batch_data_dict['trg_mask']
     trg_unk_for_loss = batch_data_dict['trg_unk_for_loss']
     trg_copy_for_loss = batch_data_dict['trg_copy_for_loss']
-    oov_lists = batch_data_dict['oov_lists']
-    max_oov_number = max([len(oov) for oov in oov_lists])
+    oov_numbers = [len(oov_list) for oov_list in batch_data_dict['oov_lists']]
+    max_oov_number = max(oov_numbers)
 
     if torch.cuda.is_available():
         if len(opt.device_ids) == 1:
@@ -71,11 +71,11 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
 
         trg_unk_for_loss = trg_unk_for_loss.cuda(opt.device_ids[0])
         src_len = Variable(torch.from_numpy(np.asarray(src_len))).long()
-        max_oov_number = Variable(torch.from_numpy(np.asarray(max_oov_number))).long()
+        oov_numbers = Variable(torch.from_numpy(np.asarray(oov_numbers))).long()
 
     start_time = time.time()
     optimizer.zero_grad()
-    decoder_log_probs, _, _ = model.forward(src, src_len, trg, trg_len, src_copy, oov_lists, src_mask, trg_mask)
+    decoder_log_probs, _, _ = model.forward(src, src_len, trg, trg_len, src_copy, oov_numbers, src_mask, trg_mask)
 
     print("Outside Model: input src size", src.size(),
           "output decoder_logits size", decoder_log_probs.size())
@@ -618,6 +618,7 @@ def load_data_vocab(opt, load_train=True):
         count_example_number_by_source = True
     else:
         count_example_number_by_source = False
+    count_example_number_by_source = True
     logging.info('======================  Dataset  =========================')
     # one2many data loader
     if load_train:

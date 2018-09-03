@@ -389,7 +389,7 @@ class One2ManyBatchSampler(object):
                     batch.append(example_idx)
                 else:
                     batches.append(batch)
-                    print('batch %d: #(src)=%d\t\t %s' % (len(batches), len(batch), str(batch)))
+                    # print('batch %d: #(src)=%d\t\t %s' % (len(batches), len(batch), str(batch)))
                     batch = []
                     batch.append(example_idx)
             else:
