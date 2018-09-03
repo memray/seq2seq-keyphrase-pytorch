@@ -611,7 +611,7 @@ def load_data_vocab(opt, load_train=True):
     logging.info("Loading data from '%s'" % opt.data_path_prefix)
 
     # if using more than 1 GPU, use number of source as example count, to make all batches are in equal size
-    if len(opt.device_ids) > 1:
+    if torch.cuda.is_available() and len(opt.device_ids) > 1:
         count_example_number_by_source = True
     else:
         count_example_number_by_source = False

@@ -311,7 +311,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
             print_out += '\n\noov_list:   \n\t\t%s \n\n' % str(oov)
 
             # ignore the cases that there's no present phrases
-            if opt.must_appear_in_src and np.sum(trg_str_is_present) == 0:
+            if opt.must_appear_in_src and np.sum(trg_present_flags) == 0:
                 print_out += 'Found no present phrases, skip!'
                 logging.info(print_out)
                 continue
