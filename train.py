@@ -33,6 +33,8 @@ import pykp
 from pykp.io import KeyphraseDataset
 from pykp.model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionCascading
 
+import torch.nn.parallel.data_parallel
+
 import time
 
 
@@ -61,6 +63,7 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
     max_oov_number = max([len(oov) for oov in oov_lists])
 
     if torch.cuda.is_available():
+        src_len = Variable(torch.from_numpy(src_len)).long()
         if len(opt.device_ids) == 1:
             src = src.cuda()
             trg = trg.cuda()

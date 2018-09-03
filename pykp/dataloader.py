@@ -385,7 +385,7 @@ class One2ManyBatchSampler(object):
         batch = []
         for example_idx in self.sampler:
             if self.count_example_number_by_source:
-                if len(batch) + 1 < self.batch_size:
+                if len(batch) + 1 <= self.batch_size:
                     batch.append(example_idx)
                 else:
                     batches.append(batch)
