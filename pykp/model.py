@@ -176,6 +176,10 @@ class Attention(nn.Module):
             attn_weights = torch.nn.functional.softmax(attn_energies.view(-1, src_len), dim=1).view(batch_size, trg_len, src_len)  # (batch_size, trg_len, src_len)
         else:
             # add a large negative number to mask tensors
+            print('encoder_mask.shape = %s' % str(encoder_mask.shape))
+            print('batch_size = %d' % batch_size)
+            print('trg_len = %d' % trg_len)
+            print('src_len = %d' % src_len)
             expanded_mask = encoder_mask.unsqueeze(1).expand(batch_size, trg_len, src_len).long()
             attn_ones = Variable(torch.ones(attn_energies.shape).long())
             if torch.cuda.is_available():

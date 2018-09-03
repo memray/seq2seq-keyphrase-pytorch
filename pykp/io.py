@@ -48,7 +48,9 @@ torchtext.vocab.Vocab.__setstate__ = __setstate__
 
 
 class KeyphraseDataset(torch.utils.data.Dataset):
-    def __init__(self, examples, word2id, id2word, type='one2many', include_original=False, shuffle_targets=False):
+    def __init__(self, examples, word2id, id2word, type='one2many',
+                 include_original=False, shuffle_targets=False,
+                 batch_size=64):
         """
         :param examples:
         :param word2id:
@@ -90,6 +92,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         self.type = type
         self.include_original_string = include_original
         self.shuffle_targets = shuffle_targets
+        self.batch_size = batch_size
 
     def __getitem__(self, index):
         return self.examples[index]
@@ -241,18 +244,33 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         oov_lists_o2m = oov_lists
 
         # unfold the one2many pairs to generate the one2one variables
-        src_unk_o2o, src_o2o_len, src_o2o_mask = self._pad_1d_sequences(
-            list(itertools.chain(*
-                                 [[src_unk[idx]] * len(t) for idx, t in enumerate(trg_unk)]
-                                 )))
-        src_copy_o2o, _, _ = self._pad_1d_sequences(list(itertools.chain(*[[src_copy[idx]] * len(t) for idx, t in enumerate(trg_unk)])))
-        trg_unk_o2o, trg_o2o_len, trg_o2o_mask = self._pad_1d_sequences(list(itertools.chain(*[t for t in trg_unk])))
-        trg_unk_for_loss_o2o, _, _ = self._pad_1d_sequences(list(itertools.chain(*[t for t in trg_unk_for_loss])))
-        trg_copy_for_loss_o2o, _, _ = self._pad_1d_sequences(list(itertools.chain(*[t for t in trg_copy_for_loss])))
-        oov_lists_o2o = list(itertools.chain(*[[oov_lists[idx]] * len(t) for idx, t in enumerate(trg_unk)]))
+        unfolded_src = list(itertools.chain(*[[src_unk[idx]] * len(t) for idx, t in enumerate(trg_unk)]))
+        unfolded_src_copy = list(itertools.chain(*[[src_copy[idx]] * len(t) for idx, t in enumerate(trg_unk)]))
+        unfolded_trg = list(itertools.chain(*[t for t in trg_unk]))
+        unfolded_trg_for_loss = list(itertools.chain(*[t for t in trg_unk_for_loss]))
+        unfolded_trg_copy_for_loss = list(itertools.chain(*[t for t in trg_copy_for_loss]))
+        unfolded_oov_lists = list(itertools.chain(*[[oov_lists[idx]] * len(t) for idx, t in enumerate(trg_unk)]))
+
+        assert (len(unfolded_src) == len(unfolded_src_copy) == len(unfolded_trg)
+                == len(unfolded_trg_for_loss) == len(unfolded_trg_copy_for_loss)\
+                == len(unfolded_oov_lists))
+
+        if len(unfolded_src) > self.batch_size:
+            unfolded_src        = unfolded_src[: self.batch_size]
+            unfolded_src_copy   = unfolded_src_copy[: self.batch_size]
+            unfolded_trg        = unfolded_trg[: self.batch_size]
+            unfolded_trg_for_loss = unfolded_trg_for_loss[: self.batch_size]
+            unfolded_trg_copy_for_loss = unfolded_trg_copy_for_loss[: self.batch_size]
+            unfolded_oov_lists  = unfolded_oov_lists[: self.batch_size]
+
+        src_unk_o2o, src_o2o_len, src_o2o_mask = self._pad_1d_sequences(unfolded_src)
+        src_copy_o2o, _, _ = self._pad_1d_sequences(unfolded_src_copy)
+        trg_unk_o2o, trg_o2o_len, trg_o2o_mask = self._pad_1d_sequences(unfolded_trg)
+        trg_unk_for_loss_o2o, _, _ = self._pad_1d_sequences(unfolded_trg_for_loss)
+        trg_copy_for_loss_o2o, _, _ = self._pad_1d_sequences(unfolded_trg_copy_for_loss)
+        oov_lists_o2o = unfolded_oov_lists
 
         assert (len(src_unk) == len(src_unk_o2m) == len(src_copy_o2m) == len(trg_copy_for_loss_o2m) == len(oov_lists_o2m))
-        assert (sum([len(t) for t in trg_unk]) == len(src_unk_o2o) == len(src_copy_o2o) == len(trg_copy_for_loss_o2o) == len(oov_lists_o2o))
         assert (src_unk_o2m.size() == src_copy_o2m.size())
         assert (src_unk_o2o.size() == src_copy_o2o.size())
         assert ([trg_unk_o2o.size(0), trg_unk_o2o.size(1) - 1] == list(trg_unk_for_loss_o2o.size()) == list(trg_copy_for_loss_o2o.size()))

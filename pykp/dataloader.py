@@ -288,6 +288,10 @@ class KeyphraseDataLoader(object):
             if the dataset size is not divisible by the batch size. If ``False`` and
             the size of dataset is not divisible by the batch size, then the last batch
             will be smaller. (default: False)
+        fill_up_batch: if count_number_by_source=False, the final size of each batch
+            is not exactly equal to the given batch_size. This may lead to error in multi-gpu cases.
+             Set fill_up_batch=True, means that the number_of_targets can be larger than the batch_size,
+             then we can truncate each batch to exact batch_size later on.
         count_number_by_source:
             as each example is a one-to-many pair, we need to count examples by either source or target.
             Set to True the number of examples in batch is counted by number of targets,
@@ -303,7 +307,9 @@ class KeyphraseDataLoader(object):
                  sampler=None, batch_sampler=None,
                  num_workers=0,
                  collate_fn=default_collate,
-                 pin_memory=False, drop_last=False,
+                 pin_memory=False,
+                 drop_last=False,
+                 fill_up_batch=False,
                  count_example_number_by_source=False):
         self.dataset     = dataset
         # used for generating one2many batches
@@ -313,6 +319,7 @@ class KeyphraseDataLoader(object):
         self.collate_fn         = collate_fn
         self.pin_memory         = pin_memory
         self.drop_last          = drop_last
+        self.fill_up_batch      = fill_up_batch
         self.count_number_by_source = count_example_number_by_source
 
         if batch_sampler is not None:
@@ -334,6 +341,7 @@ class KeyphraseDataLoader(object):
         batch_sampler = One2ManyBatchSampler(sampler, self.num_trgs,
                                              batch_size=batch_size,
                                              drop_last=drop_last,
+                                             fill_up_batch=fill_up_batch,
                                              count_number_by_source = count_example_number_by_source
                                              )
 
@@ -374,11 +382,13 @@ class One2ManyBatchSampler(object):
     def __init__(self, sampler, num_trgs,
                  batch_size,
                  drop_last,
+                 fill_up_batch,
                  count_number_by_source):
         self.sampler            = sampler
         self.num_trgs           = num_trgs
         self.batch_size         = batch_size
         self.drop_last          = drop_last
+        self.fill_up_batch          = fill_up_batch
         self.count_example_number_by_source = count_number_by_source
 
         batches = []
@@ -395,7 +405,7 @@ class One2ManyBatchSampler(object):
             else:
                 # number of targets sequences in current batch
                 current_trg_num_in_batch = sum([self.num_trgs[id] for id in batch])
-                if len(batch) < self.batch_size and current_trg_num_in_batch + self.num_trgs[example_idx] < self.batch_size:
+                if len(batch) < self.batch_size and current_trg_num_in_batch + self.num_trgs[example_idx] <= self.batch_size:
                     batch.append(example_idx)
                 elif len(batch) == 0: # if the batch_size is very small, return a batch of only one data sample
                     batch.append(example_idx)
@@ -403,10 +413,15 @@ class One2ManyBatchSampler(object):
                     # print('batch %d: #(src)=%d, #(trg)=%d \t\t %s' % (len(batches), len(batch), number_trgs, str(batch)))
                     batch = []
                 else:
-                    batches.append(batch)
-                    # print('batch %d: #(src)=%d, #(trg)=%d \t\t %s' % (len(batches), len(batch), number_trgs, str(batch)))
-                    batch = []
-                    batch.append(example_idx)
+                    if self.fill_up_batch:
+                        batch.append(example_idx)
+                        batches.append(batch)
+                        # print('batch %d: #(src)=%d, #(trg)=%d \t\t %s' % (len(batches), len(batch), number_trgs, str(batch)))
+                        batch = []
+                    else:
+                        batches.append(batch)
+                        batch = []
+                        batch.append(example_idx)
 
         if len(batch) > 0 and not self.drop_last:
             batches.append(batch)

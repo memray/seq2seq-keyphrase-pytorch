@@ -47,7 +47,7 @@ __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
 
-def train_ml(batch_data_dict, model, optimizer, criterion, opt):
+def train_mle(batch_data_dict, model, optimizer, criterion, opt):
     # src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists = batch_data_dict
     src = batch_data_dict['src_unk']
     src_copy = batch_data_dict['src_copy']
@@ -482,9 +482,6 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                           total_examples=len(train_data_loader.dataset.examples))
 
         for batch_i, batch in enumerate(train_data_loader):
-            if batch_i < 149:
-                continue
-
             model.train()
             total_batch += 1
             one2many_batch_dict, one2one_batch_dict = batch
@@ -493,9 +490,9 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
             # Training
             if opt.train_ml:
                 if opt.cascading_model:
-                    loss_ml, decoder_log_probs = train_ml(one2many_batch_dict, model, optimizer_ml, criterion, opt)
+                    loss_ml, decoder_log_probs = train_mle(one2many_batch_dict, model, optimizer_ml, criterion, opt)
                 else:
-                    loss_ml, decoder_log_probs = train_ml(one2one_batch_dict, model, optimizer_ml, criterion, opt)
+                    loss_ml, decoder_log_probs = train_mle(one2one_batch_dict, model, optimizer_ml, criterion, opt)
 
                 train_ml_losses.append(loss_ml)
                 report_loss.append(('train_ml_loss', loss_ml))
@@ -616,12 +613,20 @@ def load_data_vocab(opt, load_train=True):
     word2id, id2word, vocab = torch.load(opt.vocab_file, 'wb')
     logging.info("Loading data from '%s'" % opt.data_path_prefix)
 
+    count_example_number_by_source = False
+    drop_last = False
+    fill_up_batch = False
+
+    # if cascading, count source as number pf exmaples
+    if opt.cascading_model:
+        count_example_number_by_source = True
+
     # if using more than 1 GPU, use number of source as example count, to make all batches are in equal size
     if torch.cuda.is_available() and len(opt.device_ids) > 1:
-        count_example_number_by_source = True
-    else:
-        count_example_number_by_source = False
-    count_example_number_by_source = True
+        # drop the last batch whose size may not be compatible with multiple-gpu
+        drop_last = True
+        fill_up_batch = True
+
     logging.info('======================  Dataset  =========================')
     # one2many data loader
     if load_train:
@@ -633,13 +638,16 @@ def load_data_vocab(opt, load_train=True):
         train_one2many_dataset = KeyphraseDataset(train_one2many,
                                                   word2id=word2id, id2word=id2word,
                                                   type='one2many',
-                                                  shuffle_targets=True)
+                                                  shuffle_targets=True,
+                                                  batch_size=opt.batch_size)
         train_one2many_loader = KeyphraseDataLoader(dataset=train_one2many_dataset,
                                                     collate_fn=train_one2many_dataset.collate_fn_one2many,
                                                     num_workers=opt.batch_workers,
                                                     batch_size=opt.batch_size,
                                                     pin_memory=True,
                                                     shuffle=True,
+                                                    drop_last=drop_last,
+                                                    fill_up_batch=fill_up_batch,
                                                     count_example_number_by_source = count_example_number_by_source)
         logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, '
                      '#(batch)=%d,'
@@ -662,12 +670,14 @@ def load_data_vocab(opt, load_train=True):
                                               word2id=word2id, id2word=id2word,
                                               type='one2many',
                                               include_original=True,
-                                              shuffle_targets=False)
+                                              shuffle_targets=False,
+                                              batch_size=opt.beam_search_batch_size)
     test_one2many_dataset = KeyphraseDataset(test_one2many,
                                              word2id=word2id, id2word=id2word,
                                              type='one2many',
                                              include_original=True,
-                                             shuffle_targets=False)
+                                             shuffle_targets=False,
+                                             batch_size=opt.beam_search_batch_size)
 
     """
     # temporary code, exporting test data for Theano model
@@ -682,16 +692,20 @@ def load_data_vocab(opt, load_train=True):
     valid_one2many_loader = KeyphraseDataLoader(dataset=valid_one2many_dataset,
                                                 collate_fn=valid_one2many_dataset.collate_fn_one2many,
                                                 num_workers=opt.batch_workers,
-                                                batch_size=opt.batch_size,
+                                                batch_size=opt.beam_search_batch_size,
                                                 pin_memory=True,
                                                 shuffle=False,
+                                                drop_last=drop_last,
+                                                fill_up_batch=fill_up_batch,
                                                 count_example_number_by_source = count_example_number_by_source)
     test_one2many_loader = KeyphraseDataLoader(dataset=test_one2many_dataset,
                                                collate_fn=test_one2many_dataset.collate_fn_one2many,
                                                num_workers=opt.batch_workers,
-                                               batch_size=opt.batch_size,
+                                               batch_size=opt.beam_search_batch_size,
                                                pin_memory=True,
                                                shuffle=False,
+                                               drop_last=drop_last,
+                                               fill_up_batch=fill_up_batch,
                                                count_example_number_by_source = count_example_number_by_source)
 
     opt.word2id = word2id

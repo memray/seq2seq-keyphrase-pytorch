@@ -301,8 +301,6 @@ def train_opts(parser):
                         help="Root path to experiment log/plot/checkpoints.")
 
     # beam search setting
-    parser.add_argument('-beam_search_batch_example', type=int, default=8,
-                        help='Maximum of examples for one batch, should be disabled for training')
     parser.add_argument('-beam_search_batch_size', type=int, default=64,
                         help='Maximum batch size')
     parser.add_argument('-beam_search_batch_workers', type=int, default=4,
