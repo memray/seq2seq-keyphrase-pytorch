@@ -420,6 +420,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # src_h (batch_size, seq_len, hidden_size * num_directions): outputs (h_t) of all the time steps
         # src_h_t, src_c_t (num_layers * num_directions, batch, hidden_size): hidden and cell state at last time step
+        self.encoder.flatten_parameters()
         src_h, (src_h_t, src_c_t) = self.encoder(
             src_emb, (self.h0_encoder, self.c0_encoder)
         )
@@ -514,6 +515,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
 
             # both in/output of decoder LSTM is batch-second (trg_len, batch_size, trg_hidden_dim)
+            self.decoder.flatten_parameters()
             decoder_outputs, dec_hidden = self.decoder(
                 trg_emb, init_hidden
             )

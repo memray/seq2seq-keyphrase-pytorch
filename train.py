@@ -63,15 +63,15 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
     max_oov_number = max([len(oov) for oov in oov_lists])
 
     if torch.cuda.is_available():
-        src_len = Variable(torch.from_numpy(np.asarray(src_len))).long()
         if len(opt.device_ids) == 1:
             src = src.cuda()
             trg = trg.cuda()
-            trg_unk_for_loss = trg_unk_for_loss.cuda()
             trg_copy_for_loss = trg_copy_for_loss.cuda()
             src_copy = src_copy.cuda()
-        else:
-            trg_unk_for_loss = trg_unk_for_loss.cuda(opt.device_ids[0])
+
+        trg_unk_for_loss = trg_unk_for_loss.cuda(opt.device_ids[0])
+        src_len = Variable(torch.from_numpy(np.asarray(src_len))).long()
+        max_oov_number = Variable(torch.from_numpy(np.asarray(max_oov_number))).long()
 
     start_time = time.time()
     optimizer.zero_grad()
