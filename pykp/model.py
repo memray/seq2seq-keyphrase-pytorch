@@ -416,6 +416,11 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # input (batch_size, src_len), src_emb (batch_size, src_len, emb_dim)
         src_emb = self.embedding(input_src)
+
+        if torch.cuda.is_available():
+            input_src_len = input_src_len.data.cpu().numpy()
+        else:
+            input_src_len = input_src_len.data.numpy()
         src_emb = nn.utils.rnn.pack_padded_sequence(src_emb, input_src_len, batch_first=True)
 
         # src_h (batch_size, seq_len, hidden_size * num_directions): outputs (h_t) of all the time steps
@@ -678,6 +683,10 @@ class Seq2SeqLSTMAttention(nn.Module):
         src_len = src_map.size(1)
 
         # set max_oov_number to be the max number of oov
+        if torch.cuda.is_available():
+            oov_number = oov_number.data.cpu().numpy().tolist()
+        else:
+            oov_number = oov_number.data.numpy().tolist()
         max_oov_number = max(oov_number)
 
         # flatten and extend size of decoder_probs from (vocab_size) to (vocab_size+max_oov_number)
@@ -688,14 +697,13 @@ class Seq2SeqLSTMAttention(nn.Module):
             extended_zeros           = extended_zeros.cuda() if torch.cuda.is_available() else extended_zeros
             flattened_decoder_logits = torch.cat((flattened_decoder_logits, extended_zeros), dim=1)
             '''
-            extended_logits = Variable(torch.FloatTensor([[0.0] * oov_n + [float('-inf')] * (max_oov_number - oov_n) for oov_n in oov_number]))
             print('decoder_logits.shape = %s' % str(decoder_logits.shape))
             print('batch_size = %d' % batch_size)
             print('max_length = %d' % max_length)
             print('max_oov_number = %d' % max_oov_number)
-            print('extended_logits.shape before expand = %s' % str(extended_logits.shape))
+            extended_logits = Variable(torch.FloatTensor([[0.0] * oov_n + [float('-inf')] * (max_oov_number - oov_n) for oov_n in oov_number]))
+            print('extended_logits.shape = %s' % str(extended_logits.shape))
             extended_logits = extended_logits.unsqueeze(1).expand(batch_size, max_length, max_oov_number).contiguous().view(batch_size * max_length, -1)
-            print('extended_logits.shape after expand= %s\n' % str(extended_logits.shape))
             extended_logits = extended_logits.cuda() if torch.cuda.is_available() else extended_logits
             flattened_decoder_logits = torch.cat((flattened_decoder_logits, extended_logits), dim=1)
 
