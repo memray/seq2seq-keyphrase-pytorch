@@ -30,7 +30,7 @@ from torch.distributions import Categorical
 class Sequence(object):
     """Represents a complete or partial sequence."""
 
-    def __init__(self, batch_id, sentence, dec_hidden, context, ctx_mask, src_copy, oov_list, logprobs, score, attention=None):
+    def __init__(self, batch_id, sentence, dec_hidden, context, ctx_mask, src_copy, oov_number, logprobs, score, attention=None):
         """Initializes the Sequence.
 
         Args:
@@ -47,7 +47,7 @@ class Sequence(object):
         self.context = context
         self.ctx_mask = ctx_mask
         self.src_copy = src_copy
-        self.oov_list = oov_list
+        self.oov_number = oov_number
         self.logprobs = logprobs
         self.score = score
         self.attention = attention
@@ -189,7 +189,7 @@ class SequenceGenerator(object):
         src_context_batch = torch.cat([seq.context for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].context.size())
         src_mask_batch = torch.cat([seq.ctx_mask for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].ctx_mask.size())
         src_copy_batch = torch.cat([seq.src_copy for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].src_copy.size())
-        oov_list_batch = [seq.oov_list for seq in flattened_sequences]
+        oov_number_batch = torch.cat([seq.oov_number for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].oov_number.size())
 
         if torch.cuda.is_available():
             prev_word_batch = prev_word_batch.cuda()
@@ -200,10 +200,11 @@ class SequenceGenerator(object):
             src_context_batch = src_context_batch.cuda()
             src_mask_batch = src_mask_batch.cuda()
             src_copy_batch = src_copy_batch.cuda()
+            oov_number_batch = oov_number_batch.cuda()
 
-        return seq_id2batch_id, flattened_id_map, prev_word_batch, dec_hidden_batch, src_context_batch, src_mask_batch, src_copy_batch, oov_list_batch
+        return seq_id2batch_id, flattened_id_map, prev_word_batch, dec_hidden_batch, src_context_batch, src_mask_batch, src_copy_batch, oov_number_batch
 
-    def beam_search(self, src_encoding, initial_input, dec_hidden_batch, src_input, src_len, src_mask, src_copy, oov_list, word2id):
+    def beam_search(self, src_encoding, initial_input, dec_hidden_batch, src_input, src_len, src_mask, src_copy, oov_number, word2id):
         """Runs beam search sequence generation given input (padded word indexes)
 
         Args:
@@ -228,7 +229,7 @@ class SequenceGenerator(object):
                 context=src_encoding[batch_i],
                 ctx_mask=src_mask[batch_i],
                 src_copy=src_copy[batch_i],
-                oov_list=oov_list[batch_i],
+                oov_number=oov_number[batch_i],
                 logprobs=[],
                 score=0.0,
                 attention=[])
@@ -248,7 +249,7 @@ class SequenceGenerator(object):
             # flatten 2d sequences (batch_size, beam_size) into 1d batches (batch_size * beam_size) to feed model
             seq_id2batch_id, flattened_id_map, prev_word_batch, \
             dec_hidden_batch, src_context_batch, \
-            src_mask_batch, src_copy_batch, oov_list_batch \
+            src_mask_batch, src_copy_batch, oov_number_batch \
                 = self.sequence_to_batch(partial_sequences)
 
             # Run one-step generation. probs=(batch_size, 1, K), dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
@@ -258,7 +259,7 @@ class SequenceGenerator(object):
                 enc_context=src_context_batch,
                 src_mask=src_mask_batch,
                 src_copy=src_copy_batch,
-                oov_list=oov_list_batch,
+                oov_number=oov_number_batch,
                 max_len=1,
                 return_attention=self.return_attention
             )
@@ -310,7 +311,7 @@ class SequenceGenerator(object):
                             context=partial_seq.context,
                             ctx_mask=partial_seq.ctx_mask,
                             src_copy=partial_seq.src_copy,
-                            oov_list=partial_seq.oov_list,
+                            oov_number=partial_seq.oov_number,
                             logprobs=copy.copy(partial_seq.logprobs),
                             score=copy.copy(partial_seq.score),
                             attention=copy.copy(partial_seq.attention)
@@ -361,7 +362,7 @@ class SequenceGenerator(object):
                 '''
                 # print-out for debug
                 print('Source with OOV: \n\t %s' % ' '.join([str(w) for w in partial_seq.src_copy.cpu().data.numpy().tolist()]))
-                print('OOV list: \n\t %s' % str(partial_seq.oov_list))
+                print('OOV list: \n\t %s' % str(partial_seq.oov_number))
 
                 for seq_id, seq in enumerate(new_partial_sequences._data):
                     print('%d, score=%.5f : %s' % (seq_id, seq.score, str(seq.sentence)))

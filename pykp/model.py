@@ -251,8 +251,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         else:
             logging.info("Training with Teacher Forcing with static rate=%f" % self.teacher_forcing_ratio)
 
-        self.get_mask = GetMask(self.pad_token_src)
-
         self.embedding = nn.Embedding(
             self.vocab_size,
             self.emb_dim,
@@ -368,6 +366,22 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return decoder_init_hidden, decoder_init_cell
 
+    def get_mask(self, src_len):
+        # TODO I know cpu/gpu communication is expensive, but is there any efficient way to manipulate masks?
+        # create mask outside would cause tensor size mismatch on multiple GPUs
+        if torch.cuda.is_available():
+            src_len = src_len.data.cpu().numpy()
+        else:
+            src_len = src_len.data.numpy()
+
+        max_src_len = max(src_len)
+        mask = Variable(torch.from_numpy(np.stack([[1] * l + [0] * (max_src_len-l) for l in src_len]))).float()
+
+        if torch.cuda.is_available():
+            mask = mask.cuda()
+
+        return mask
+
     def forward(self, src, src_len, trg, trg_len, src_copy, oov_number):
         '''
         The differences of copy model from normal seq2seq here are:
@@ -394,11 +408,13 @@ class Seq2SeqLSTMAttention(nn.Module):
         '''
         # get the mask of source text, which is the same size as input_src
 
-        src_mask = self.get_mask(src)
+
+        src_h, (src_h_t, src_c_t) = self.encode(src, src_len)
+
+        src_mask = self.get_mask(src_len)
         print("\tIn Model before encoding: input src.shape=%s, src_mask.shape=%s"
               % (str(src.shape), str(src_mask.shape)))
 
-        src_h, (src_h_t, src_c_t) = self.encode(src, src_len)
         decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights \
             = self.decode(trg, trg_len,
                           src_copy=src_copy,
@@ -426,6 +442,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             input_src_len = input_src_len.data.cpu().numpy()
         else:
             input_src_len = input_src_len.data.numpy()
+
         src_emb = nn.utils.rnn.pack_padded_sequence(src_emb, input_src_len, batch_first=True)
 
         # src_h (batch_size, seq_len, hidden_size * num_directions): outputs (h_t) of all the time steps
@@ -688,10 +705,10 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # set max_oov_number to be the max number of oov
         if torch.cuda.is_available():
-            oov_number = oov_number.data.cpu().numpy().tolist()
+            oov_number = oov_number.data.cpu().numpy()
         else:
-            oov_number = oov_number.data.numpy().tolist()
-        max_oov_number = max(oov_number)
+            oov_number = oov_number.data.numpy()
+        max_oov_number = int(max(oov_number))
 
         # flatten and extend size of decoder_probs from (vocab_size) to (vocab_size+max_oov_number)
         flattened_decoder_logits = decoder_logits.view(batch_size * max_length, self.vocab_size)

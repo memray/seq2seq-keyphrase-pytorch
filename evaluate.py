@@ -182,7 +182,11 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
         src_str_batch = one2many_batch_dict['src_str']
         trg_str_batch = one2many_batch_dict['trg_str']
-        oov_batch = one2many_batch_dict['oov_lists']
+        oov_list_batch = one2many_batch_dict['oov_lists']
+
+        oov_numbers = [len(oov_list) for oov_list in one2many_batch_dict['oov_lists']]
+        src_len_batch = Variable(torch.from_numpy(np.asarray(src_len_batch))).long()
+        oov_numbers_batch = Variable(torch.from_numpy(np.asarray(oov_numbers))).long()
 
         if torch.cuda.is_available():
             if len(opt.device_ids) == 1:
@@ -221,13 +225,13 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
                     pred_seqs_batch = generator.beam_search(src_encoding, initial_input,
                                                       dec_hidden,
                                                       src_batch, src_len_batch, src_mask_batch,
-                                                      src_copy_batch, oov_batch,
+                                                      src_copy_batch, oov_numbers_batch,
                                                       opt.word2id)
 
                     new_dec_hidden = []
                     pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch\
                         = process_predseqs_batch(pred_seqs_batch, src_str_batch,
-                                                 oov_batch, opt.id2word,
+                                                 oov_numbers_batch, opt.id2word,
                                                  opt.vocab_size, opt.must_appear_in_src)
 
                     # iterate each example in batch
@@ -277,20 +281,20 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
                 pred_seq_list = generator.beam_search(src_encoding, initial_input,
                                                   dec_hidden,
                                                   src_batch, src_len_batch, src_mask_batch,
-                                                  src_copy_batch, oov_batch,
+                                                  src_copy_batch, oov_numbers_batch,
                                                   opt.word2id)
 
             pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch \
                 = process_predseqs_batch(pred_seq_list, src_str_batch,
-                                         oov_batch, opt.id2word,
+                                         oov_numbers_batch, opt.id2word,
                                          opt.vocab_size, opt.must_appear_in_src)
 
         elif opt.eval_method == 'sampling':
             raise NotImplemented
-            pred_seq_list = generator.sample(src_batch, src_len_batch, src_copy_batch, oov_batch, opt.word2id, k=1, is_greedy=False)
+            pred_seq_list = generator.sample(src_batch, src_len_batch, src_copy_batch, oov_numbers_batch, opt.word2id, k=1, is_greedy=False)
         elif opt.eval_method == 'greedy':
             raise NotImplemented
-            pred_seq_list = generator.sample(src_batch, src_len_batch, src_copy_batch, oov_batch, opt.word2id, k=1, is_greedy=True)
+            pred_seq_list = generator.sample(src_batch, src_len_batch, src_copy_batch, oov_numbers_batch, opt.word2id, k=1, is_greedy=True)
 
         '''
         evaluate and output each example in current batch
@@ -300,7 +304,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
             pred_seq, oov \
                 in zip(pred_seq_list, pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch,
                        src_batch, src_str_batch, trg_batch, trg_str_batch, trg_copy_for_loss_batch,
-                       pred_seq_list, oov_batch):
+                       pred_seq_list, oov_list_batch):
             # logging.info('======================  %d =========================' % (example_idx))
             print_out = ''
             print_out += '[Source][%d]\n %s \n\n' % (len(src_str), ' '.join(src_str))
