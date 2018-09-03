@@ -10,3 +10,5 @@ rsync -rav --prune-empty-dirs -e ssh --include='*.'{png,csv} --include '*/' --ex
 rsync -rav --prune-empty-dirs -e ssh --include='*.'{png,csv} --include '*/' --exclude='*' rum20@crc:/zfs1/pbrusilovsky/rum20/seq2seq-keyphrase-pytorch/prev_exp/ ~/Desktop/prev_exp
 
 rsync -rav --prune-empty-dirs -e ssh --include '*/' rum20@crc:/zfs1/pbrusilovsky/rum20/seq2seq-keyphrase-pytorch/exp/rnn.general.copy/kp20k.ml.copy.bi-directional.20180820-052823/pred/epoch3_batch906_total_batch88000/ ~/Desktop/exp
+
+python -m train -data data/kp20k/kp20k -vocab_file data/kp20k/kp20k.vocab.pt -exp_path "./exp/$EXP_NAME/%s.%s" -exp "kp20k" -batch_size 1024 -bidirectional -run_valid_every 10 -report_every 10 -save_model_every 10000 -beam_size 32 -train_ml -attention_mode "general" -copy_attention -copy_mode "general" -device_ids 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
