@@ -185,8 +185,9 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
         oov_batch = one2many_batch_dict['oov_lists']
 
         if torch.cuda.is_available():
-            src_batch = src_batch.cuda()
-            src_copy_batch = src_copy_batch.cuda()
+            if len(opt.device_ids) == 1:
+                src_batch = src_batch.cuda()
+                src_copy_batch = src_copy_batch.cuda()
 
         generator.model.eval()
         batch_size = len(src_batch)

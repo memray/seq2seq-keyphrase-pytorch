@@ -60,10 +60,6 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
     oov_lists = batch_data_dict['oov_lists']
     max_oov_number = max([len(oov) for oov in oov_lists])
 
-
-
-    start_time = time.time()
-
     if torch.cuda.is_available():
         if len(opt.device_ids) == 1:
             src = src.cuda()
@@ -74,8 +70,8 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
         else:
             trg_unk_for_loss = trg_unk_for_loss.cuda(opt.device_ids[0])
 
+    start_time = time.time()
     optimizer.zero_grad()
-
     decoder_log_probs, _, _ = model.forward(src, src_len, trg, trg_len, src_copy, oov_lists, src_mask, trg_mask)
 
     print("Outside Model: input src size", src.size(),
@@ -111,9 +107,9 @@ def train_ml(batch_data_dict, model, optimizer, criterion, opt):
         logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
 
     if torch.cuda.is_available():
-        loss = loss.cpu().data.numpy()[0]
+        loss = loss.cpu().data.numpy()
     else:
-        loss = loss.data.numpy()[0]
+        loss = loss.data.numpy()
 
     return loss, decoder_log_probs
 
@@ -791,8 +787,8 @@ def process_opt(opt):
     if opt.seed > 0:
         torch.manual_seed(opt.seed)
 
-    if torch.cuda.is_available() and not opt.gpuid:
-        opt.gpuid = 0
+    if torch.cuda.is_available() and not opt.device_ids:
+        opt.device_ids = 0
 
     if hasattr(opt, 'train_ml') and opt.train_ml:
         opt.exp += '.ml'
@@ -870,9 +866,9 @@ def main():
 
     logging.info('======================  Checking GPU Availability  =========================')
     if torch.cuda.is_available():
-        if isinstance(opt.gpuid, int):
-            opt.gpuid = [opt.gpuid]
-        logging.info('Running on %s! devices=%s' % ('MULTIPLE GPUs' if len(opt.gpuid) > 1 else '1 GPU', str(opt.gpuid)))
+        if isinstance(opt.device_ids, int):
+            opt.device_ids = [opt.device_ids]
+        logging.info('Running on %s! devices=%s' % ('MULTIPLE GPUs' if len(opt.device_ids) > 1 else '1 GPU', str(opt.device_ids)))
     else:
         logging.info('Running on CPU!')
 
