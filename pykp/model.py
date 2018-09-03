@@ -395,6 +395,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         # get the mask of source text, which is the same size as input_src
 
         src_mask = self.get_mask(src)
+        print("\tIn Model before encoding: input src.shape=%s, src_mask.shape=%s"
+              % (str(src.shape), str(src_mask.shape)))
 
         src_h, (src_h_t, src_c_t) = self.encode(src, src_len)
         decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights \
@@ -695,14 +697,11 @@ class Seq2SeqLSTMAttention(nn.Module):
         flattened_decoder_logits = decoder_logits.view(batch_size * max_length, self.vocab_size)
         if max_oov_number > 0:
             '''
-            extended_zeros           = Variable(torch.zeros(batch_size * max_length, max_oov_number))
-            extended_zeros           = extended_zeros.cuda() if torch.cuda.is_available() else extended_zeros
-            flattened_decoder_logits = torch.cat((flattened_decoder_logits, extended_zeros), dim=1)
-            '''
             print('decoder_logits.shape = %s' % str(decoder_logits.shape))
             print('batch_size = %d' % batch_size)
             print('max_length = %d' % max_length)
             print('max_oov_number = %d' % max_oov_number)
+            '''
             extended_logits = Variable(torch.FloatTensor([[0.0] * oov_n + [float('-inf')] * (max_oov_number - oov_n) for oov_n in oov_number]))
             print('extended_logits.shape = %s' % str(extended_logits.shape))
             extended_logits = extended_logits.unsqueeze(1).expand(batch_size, max_length, max_oov_number).contiguous().view(batch_size * max_length, -1)
