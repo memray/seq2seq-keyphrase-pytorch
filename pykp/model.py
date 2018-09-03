@@ -713,20 +713,21 @@ class Seq2SeqLSTMAttention(nn.Module):
         # flatten and extend size of decoder_probs from (vocab_size) to (vocab_size+max_oov_number)
         flattened_decoder_logits = decoder_logits.view(batch_size * max_length, self.vocab_size)
         if max_oov_number > 0:
-            '''
-            print('decoder_logits.shape = %s' % str(decoder_logits.shape))
-            print('batch_size = %d' % batch_size)
-            print('max_length = %d' % max_length)
-            print('max_oov_number = %d' % max_oov_number)
-            '''
             extended_logits = Variable(torch.FloatTensor([[0.0] * oov_n + [float('-inf')] * (max_oov_number - oov_n) for oov_n in oov_number]))
-            print('extended_logits.shape = %s' % str(extended_logits.shape))
             extended_logits = extended_logits.unsqueeze(1).expand(batch_size, max_length, max_oov_number).contiguous().view(batch_size * max_length, -1)
             extended_logits = extended_logits.cuda() if torch.cuda.is_available() else extended_logits
             flattened_decoder_logits = torch.cat((flattened_decoder_logits, extended_logits), dim=1)
 
         # add probs of copied words by scatter_add_(dim, index, src), index should be in the same shape with src. decoder_probs=(batch_size * trg_len, vocab_size+max_oov_number), copy_weights=(batch_size, trg_len, src_len)
         expanded_src_map = src_map.unsqueeze(1).expand(batch_size, max_length, src_len).contiguous().view(batch_size * max_length, -1)  # (batch_size, src_len) -> (batch_size * trg_len, src_len)
+
+        print('flattened_decoder_logits.shape = %s' % str(flattened_decoder_logits.shape))
+        print('expanded_src_map.shape = %s' % str(expanded_src_map.shape))
+        print('copy_logits.shape = %s' % str(copy_logits.shape))
+        print('batch_size = %d' % batch_size)
+        print('max_length = %d' % max_length)
+        print('max_oov_number = %d' % max_oov_number)
+        print('copy_logits.view(batch_size * max_length, -1).shape = %s' % str(copy_logits.view(batch_size * max_length, -1).shape))
         # flattened_decoder_logits.scatter_add_(dim=1, index=expanded_src_map, src=copy_logits.view(batch_size * max_length, -1))
         flattened_decoder_logits = flattened_decoder_logits.scatter_add_(1, expanded_src_map, copy_logits.view(batch_size * max_length, -1))
 
