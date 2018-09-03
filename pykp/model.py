@@ -368,7 +368,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return decoder_init_hidden, decoder_init_cell
 
-    def forward(self, src, src_len, trg, trg_len, src_copy, oov_number, src_mask=None, trg_mask=None):
+    def forward(self, src, src_len, trg, trg_len, src_copy, oov_number):
         '''
         The differences of copy model from normal seq2seq here are:
          1. The size of decoder_logits is (batch_size, trg_max_len, vocab_size + max_oov_number).Usually vocab_size=50000 and max_oov_number=1000. And only very few of (it's very rare to have many unk words, in most cases it's because the text is not in English)
@@ -394,8 +394,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         '''
         # get the mask of source text, which is the same size as input_src
 
-        if src_mask is None:
-            src_mask = self.get_mask(src)
+        src_mask = self.get_mask(src)
 
         src_h, (src_h_t, src_c_t) = self.encode(src, src_len)
         decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights \
@@ -404,7 +403,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                           oov_number=oov_number,
                           enc_context=src_h,
                           enc_hidden=(src_h_t, src_c_t),
-                          src_mask = src_mask, trg_mask=trg_mask)
+                          src_mask = src_mask)
 
         print("\tIn Model: input src size", src.size(),
               "output decoder_logits size", decoder_probs.size())
@@ -476,7 +475,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return dec_input
 
-    def decode(self, trg, trg_len, src_copy, oov_number, enc_context, enc_hidden, src_mask, trg_mask):
+    def decode(self, trg, trg_len, src_copy, oov_number, enc_context, enc_hidden, src_mask):
         '''
         :param
                 trg_input:         (batch_size, trg_len), target sequences
@@ -509,7 +508,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         # Teacher Forcing
         self.current_batch += 1
         # because sequence-wise training is not compatible with input-feeding, so discard it
-        # TODO 20180722, do_word_wisely_training=True is buggy
         do_word_wisely_training = False
         if not do_word_wisely_training:
             '''
@@ -837,11 +835,11 @@ class Seq2SeqLSTMAttention(nn.Module):
         else:
             return log_probs, dec_hidden
 
-    def greedy_predict(self, input_src, input_trg, trg_mask=None, ctx_mask=None):
+    def greedy_predict(self, input_src, input_trg, ctx_mask=None):
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
         if torch.cuda.is_available():
             input_trg = input_trg.cuda()
-        decoder_logits, hiddens, attn_weights = self.decode_old(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, ctx_mask=ctx_mask, is_train=False)
+        decoder_logits, hiddens, attn_weights = self.decode_old(trg_input=input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), ctx_mask=ctx_mask, is_train=False)
 
         if torch.cuda.is_available():
             max_words_pred = decoder_logits.data.cpu().numpy().argmax(axis=-1).flatten()
@@ -850,13 +848,12 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return max_words_pred
 
-    def forward_without_copy(self, input_src, input_src_len, input_trg, trg_mask=None, ctx_mask=None):
+    def forward_without_copy(self, input_src, input_src_len, input_trg):
         '''
         [Obsolete] To be compatible with the Copy Model, we change the output of logits to log_probs
         :param input_src: padded numeric source sequences
         :param input_src_len: (list of int) length of each sequence before padding (required for pack_padded_sequence)
         :param input_trg: padded numeric target sequences
-        :param trg_mask:
         :param ctx_mask:
 
         :returns
@@ -864,13 +861,12 @@ class Seq2SeqLSTMAttention(nn.Module):
             decoder_outputs : (batch_size, trg_max_len, hidden_size)
             attn_weights    : (batch_size, trg_max_len, src_max_len)
         '''
-        if not ctx_mask:
-            ctx_mask = self.get_mask(input_src)  # same size as input_src
+        ctx_mask = self.get_mask(input_src)  # same size as input_src
         src_h, (src_h_t, src_c_t) = self.encode(input_src, input_src_len)
-        decoder_log_probs, decoder_hiddens, attn_weights = self.decode(input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), trg_mask=trg_mask, src_mask=ctx_mask)
+        decoder_log_probs, decoder_hiddens, attn_weights = self.decode(input_trg, enc_context=src_h, enc_hidden=(src_h_t, src_c_t), src_mask=ctx_mask)
         return decoder_log_probs, decoder_hiddens, attn_weights
 
-    def decode_without_copy(self, trg_inputs, enc_context, enc_hidden, trg_mask, ctx_mask):
+    def decode_without_copy(self, trg_inputs, enc_context, enc_hidden, ctx_mask):
         '''
         [Obsolete] Initial decoder state h0 (batch_size, trg_hidden_size), converted from h_t of encoder (batch_size, src_hidden_size * num_directions) through a linear layer
             No transformation for cell state c_t. Pass directly to decoder.
@@ -979,7 +975,7 @@ class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
     def __init__(self, opt):
         super(Seq2SeqLSTMAttentionCascading, self).__init__(opt)
 
-    def decode(self, trgs, trg_lens, src_copy, oov_number, enc_context, enc_hidden, src_mask, trg_mask):
+    def decode(self, trgs, trg_lens, src_copy, oov_number, enc_context, enc_hidden, src_mask):
         '''
         :param
                 trgs: (batch_size, max_num_trg, trg_max_len) multiple phrases corresponding to one source text
@@ -989,7 +985,7 @@ class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
                 enc_context:  (batch_size, src_len, hidden_size * num_direction) the outputs (hidden vectors) of encoder
                 enc_hidden:  a tuple of (batch_size, hidden_size * num_direction), hidden vector of the last step of the encoder
                 src_mask:      (batch_size, src_len)
-                trg_mask:      (batch_size, max_num_trg, trg_max_len)
+                trg_mask:      (batch_size, max_num_trg, trg_max_len) removed
         :returns
             decoder_probs       : (batch_size * trg_num, trg_max_len, vocab_size + max_oov_number)
             decoder_outputs     : (batch_size * trg_num, trg_max_len, hidden_size)
