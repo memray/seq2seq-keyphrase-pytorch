@@ -189,13 +189,15 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
         oov_numbers = [len(oov_list) for oov_list in one2many_batch_dict['oov_lists']]
         max_src_len_batch = np.max(np.asarray(src_len_batch))
         src_len_batch = Variable(torch.from_numpy(np.asarray(src_len_batch))).long()
-        trg_len_batch = Variable(torch.from_numpy(np.asarray(trg_len_batch))).long()
+        # trg_len_batch = Variable(torch.from_numpy(np.asarray(trg_len_batch))).long()
         oov_numbers_batch = Variable(torch.from_numpy(np.asarray(oov_numbers))).long()
 
         if torch.cuda.is_available():
-            if len(opt.device_ids) == 1:
-                src_batch = src_batch.cuda()
-                src_copy_batch = src_copy_batch.cuda()
+            src_batch = src_batch.cuda()
+            src_copy_batch = src_copy_batch.cuda()
+            src_len_batch = src_len_batch.cuda()
+            oov_numbers_batch = oov_numbers_batch.cuda()
+
 
         generator.model.eval()
         batch_size = len(src_batch)
