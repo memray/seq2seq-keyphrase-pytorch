@@ -176,6 +176,8 @@ class Attention(nn.Module):
             attn_weights = torch.nn.functional.softmax(attn_energies.view(-1, src_len), dim=1).view(batch_size, trg_len, src_len)  # (batch_size, trg_len, src_len)
         else:
             # add a large negative number to mask tensors
+            print('\ndec_hidden.shape = %s' % str(dec_hidden.shape))
+            print('encoder_hiddens.shape = %s' % str(encoder_hiddens.shape))
             print('encoder_mask.shape = %s' % str(encoder_mask.shape))
             print('batch_size = %d' % batch_size)
             print('trg_len = %d' % trg_len)
@@ -366,15 +368,17 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return decoder_init_hidden, decoder_init_cell
 
-    def get_mask(self, src_len):
-        # TODO I know cpu/gpu communication is expensive, but is there any efficient way to manipulate masks?
+    def get_mask(self, src_len, max_src_len=None):
+        # I know cpu/gpu communication is expensive, but is there any efficient way to manipulate masks?
         # create mask outside would cause tensor size mismatch on multiple GPUs
         if torch.cuda.is_available():
             src_len = src_len.data.cpu().numpy()
         else:
             src_len = src_len.data.numpy()
 
-        max_src_len = max(src_len)
+        if max_src_len == None:
+            max_src_len = max(src_len)
+
         mask = Variable(torch.from_numpy(np.stack([[1] * l + [0] * (max_src_len-l) for l in src_len]))).float()
 
         if torch.cuda.is_available():
@@ -411,7 +415,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         src_h, (src_h_t, src_c_t) = self.encode(src, src_len, max_src_len)
 
-        src_mask = self.get_mask(src_len)
+        src_mask = self.get_mask(src_len, max_src_len)
         print("\tIn Model before encoding: input src.shape=%s, src_mask.shape=%s"
               % (str(src.shape), str(src_mask.shape)))
 
@@ -725,6 +729,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         # decoder_probs=(batch_size * trg_len, vocab_size+max_oov_number), copy_weights=(batch_size, trg_len, src_len)
         expanded_src_map = src_map.unsqueeze(1).expand(batch_size, max_length, src_len).contiguous().view(batch_size * max_length, -1)  # (batch_size, src_len) -> (batch_size * trg_len, src_len)
 
+        """
         print('\nflattened_decoder_logits.shape = %s' % str(flattened_decoder_logits.shape))
         print('copy_logits.shape = %s' % str(copy_logits.shape))
         print('batch_size = %d' % batch_size)
@@ -733,6 +738,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         print('max_oov_number = %d' % max_oov_number)
         print('expanded_src_map.shape = %s' % str(expanded_src_map.shape))
         print('copy_logits.view(batch_size * max_length, -1).shape = %s\n' % str(copy_logits.view(batch_size * max_length, -1).shape))
+        """
         # flattened_decoder_logits.scatter_add_(dim=1, index=expanded_src_map, src=copy_logits.view(batch_size * max_length, -1))
         flattened_decoder_logits = flattened_decoder_logits.scatter_add_(1, expanded_src_map, copy_logits.view(batch_size * max_length, -1))
 
