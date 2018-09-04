@@ -452,7 +452,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
     del pred_seq_list, pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch,\
         src_batch, src_copy_batch, src_len_batch, src_str_batch, trg_batch, trg_str_batch, trg_copy_for_loss_batch,\
-        oov_list_batch, oov_numbers_batch
+        oov_list_batch, oov_numbers_batch, src_encoding, src_h, src_c
 
     torch.cuda.empty_cache()
 

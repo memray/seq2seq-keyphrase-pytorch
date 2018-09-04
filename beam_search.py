@@ -356,7 +356,9 @@ class SequenceGenerator(object):
                     # print('\t#(hypothese) = %d' % (len(new_partial_sequences)))
                     # print('\t#(completed) = %d' % (sum([len(c) for c in complete_sequences])))
 
+                del partial_sequences[batch_i]
                 partial_sequences[batch_i] = new_partial_sequences
+                torch.cuda.empty_cache()
 
                 # print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
                 '''
@@ -370,7 +372,10 @@ class SequenceGenerator(object):
                 print('*' * 50)
                 '''
 
+            del log_probs, new_dec_hiddens, attn_weights
+            torch.cuda.empty_cache()
             print('Step=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
+
 
             # print('Round=%d' % (current_len))
             # print('\t#(hypothese) = %d' % (sum([len(batch_heap) for batch_heap in partial_sequences])))
