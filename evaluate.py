@@ -185,6 +185,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
         oov_list_batch = one2many_batch_dict['oov_lists']
 
         oov_numbers = [len(oov_list) for oov_list in one2many_batch_dict['oov_lists']]
+        max_src_len_batch = np.max(np.asarray(src_len_batch))
         src_len_batch = Variable(torch.from_numpy(np.asarray(src_len_batch))).long()
         trg_len_batch = Variable(torch.from_numpy(np.asarray(trg_len_batch))).long()
         oov_numbers_batch = Variable(torch.from_numpy(np.asarray(oov_numbers))).long()
@@ -199,7 +200,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
         '''
         Get the encoding of source text
         '''
-        src_encoding, (src_h, src_c) = generator.model.encode(src_batch, src_len_batch)
+        src_encoding, (src_h, src_c) = generator.model.encode(src_batch, src_len_batch, max_src_len_batch)
 
         '''
         Initialize decoder

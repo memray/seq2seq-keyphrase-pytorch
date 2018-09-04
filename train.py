@@ -58,11 +58,13 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
     trg_mask = batch_data_dict['trg_mask']
     trg_unk_for_loss = batch_data_dict['trg_unk_for_loss']
     trg_copy_for_loss = batch_data_dict['trg_copy_for_loss']
+
+    src_len = np.asarray(src_len)
+    max_src_len = np.max(src_len)
+    src_len = Variable(torch.from_numpy(src_len)).long()
+    trg_len = Variable(torch.from_numpy(np.asarray(trg_len))).long()
     oov_numbers = [len(oov_list) for oov_list in batch_data_dict['oov_lists']]
     max_oov_number = max(oov_numbers)
-
-    src_len = Variable(torch.from_numpy(np.asarray(src_len))).long()
-    trg_len = Variable(torch.from_numpy(np.asarray(trg_len))).long()
     oov_numbers = Variable(torch.from_numpy(np.asarray(oov_numbers))).long()
 
     if torch.cuda.is_available():
@@ -78,7 +80,7 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
 
     start_time = time.time()
     optimizer.zero_grad()
-    decoder_log_probs, _, _ = model.forward(src, src_len, trg, trg_len, src_copy, oov_numbers, max_oov_number)
+    decoder_log_probs, _, _ = model.forward(src, src_len, max_src_len, trg, trg_len, src_copy, oov_numbers, max_oov_number)
 
     print("Outside Model: input src size", src.size(),
           "output decoder_logits size", decoder_log_probs.size())
@@ -108,7 +110,7 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
     logging.info("--backward- %s seconds ---" % (time.time() - start_time))
 
     if opt.max_grad_norm > 0:
-        pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
+        pre_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), opt.max_grad_norm)
         after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
         logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
 
@@ -644,7 +646,7 @@ def load_data_vocab(opt, load_train=True):
                                                     collate_fn=train_one2many_dataset.collate_fn_one2many,
                                                     num_workers=opt.batch_workers,
                                                     batch_size=opt.batch_size,
-                                                    pin_memory=True,
+                                                    pin_memory=torch.cuda.is_available(),
                                                     shuffle=True,
                                                     drop_last=drop_last,
                                                     fill_up_batch=fill_up_batch,
@@ -693,20 +695,20 @@ def load_data_vocab(opt, load_train=True):
                                                 collate_fn=valid_one2many_dataset.collate_fn_one2many,
                                                 num_workers=opt.batch_workers,
                                                 batch_size=opt.beam_search_batch_size,
-                                                pin_memory=True,
+                                                pin_memory=torch.cuda.is_available(),
                                                 shuffle=False,
-                                                drop_last=drop_last,
-                                                fill_up_batch=fill_up_batch,
-                                                count_example_number_by_source = count_example_number_by_source)
+                                                drop_last=False,
+                                                fill_up_batch=False,
+                                                count_example_number_by_source=True)
     test_one2many_loader = KeyphraseDataLoader(dataset=test_one2many_dataset,
                                                collate_fn=test_one2many_dataset.collate_fn_one2many,
                                                num_workers=opt.batch_workers,
                                                batch_size=opt.beam_search_batch_size,
-                                               pin_memory=True,
+                                               pin_memory=torch.cuda.is_available(),
                                                shuffle=False,
-                                               drop_last=drop_last,
-                                               fill_up_batch=fill_up_batch,
-                                               count_example_number_by_source = count_example_number_by_source)
+                                               drop_last=False,
+                                               fill_up_batch=False,
+                                               count_example_number_by_source=True)
 
     opt.word2id = word2id
     opt.id2word = id2word

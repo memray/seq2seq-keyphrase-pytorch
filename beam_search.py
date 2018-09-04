@@ -186,10 +186,10 @@ class SequenceGenerator(object):
         else:
             dec_hidden_batch = torch.cat([seq.state for seq in flattened_sequences])
 
-        src_context_batch = torch.cat([seq.context for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].context.size())
-        src_mask_batch = torch.cat([seq.ctx_mask for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].ctx_mask.size())
-        src_copy_batch = torch.cat([seq.src_copy for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].src_copy.size())
-        oov_number_batch = torch.cat([seq.oov_number for seq in flattened_sequences]).view(batch_size, *flattened_sequences[0].oov_number.size())
+        src_context_batch = torch.stack([seq.context for seq in flattened_sequences])
+        src_mask_batch = torch.stack([seq.ctx_mask for seq in flattened_sequences])
+        src_copy_batch = torch.stack([seq.src_copy for seq in flattened_sequences])
+        oov_number_batch = torch.stack([seq.oov_number for seq in flattened_sequences])
 
         if torch.cuda.is_available():
             prev_word_batch = prev_word_batch.cuda()
@@ -358,7 +358,7 @@ class SequenceGenerator(object):
 
                 partial_sequences[batch_i] = new_partial_sequences
 
-                # print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
+                print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
                 '''
                 # print-out for debug
                 print('Source with OOV: \n\t %s' % ' '.join([str(w) for w in partial_seq.src_copy.cpu().data.numpy().tolist()]))
@@ -370,7 +370,7 @@ class SequenceGenerator(object):
                 print('*' * 50)
                 '''
 
-            # print('Round=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
+            # print('Step=%d, \t#(batch) = %d, \t#(hypothese) = %d, \t#(completed) = %d' % (current_len, batch_size, sum([len(batch_heap) for batch_heap in partial_sequences]), sum([len(batch_heap) for batch_heap in complete_sequences])))
 
             # print('Round=%d' % (current_len))
             # print('\t#(hypothese) = %d' % (sum([len(batch_heap) for batch_heap in partial_sequences])))

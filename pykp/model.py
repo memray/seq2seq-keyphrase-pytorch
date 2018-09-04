@@ -382,7 +382,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return mask
 
-    def forward(self, src, src_len, trg, trg_len, src_copy, oov_number, max_oov_number):
+    def forward(self, src, src_len, max_src_len, trg, trg_len, src_copy, oov_number, max_oov_number):
         '''
         The differences of copy model from normal seq2seq here are:
          1. The size of decoder_logits is (batch_size, trg_max_len, vocab_size + max_oov_number).Usually vocab_size=50000 and max_oov_number=1000. And only very few of (it's very rare to have many unk words, in most cases it's because the text is not in English)
@@ -409,7 +409,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         # get the mask of source text, which is the same size as input_src
 
 
-        src_h, (src_h_t, src_c_t) = self.encode(src, src_len)
+        src_h, (src_h_t, src_c_t) = self.encode(src, src_len, max_src_len)
 
         src_mask = self.get_mask(src_len)
         print("\tIn Model before encoding: input src.shape=%s, src_mask.shape=%s"
@@ -429,22 +429,22 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return decoder_probs, decoder_hiddens, (attn_weights, copy_attn_weights)
 
-    def encode(self, input_src, input_src_len):
+    def encode(self, src, src_len, max_src_len=None):
         """
         Propogate input through the network.
         """
         # initial encoder state, two zero-matrix as h and c at time=0
-        self.h0_encoder, self.c0_encoder = self.init_encoder_state(input_src)  # (self.encoder.num_layers * self.num_directions, batch_size, self.src_hidden_dim)
+        self.h0_encoder, self.c0_encoder = self.init_encoder_state(src)  # (self.encoder.num_layers * self.num_directions, batch_size, self.src_hidden_dim)
 
         # input (batch_size, src_len), src_emb (batch_size, src_len, emb_dim)
-        src_emb = self.embedding(input_src)
+        src_emb = self.embedding(src)
 
         if torch.cuda.is_available():
-            input_src_len = input_src_len.data.cpu().numpy()
+            src_len = src_len.data.cpu().numpy()
         else:
-            input_src_len = input_src_len.data.numpy()
+            src_len = src_len.data.numpy()
 
-        src_emb = nn.utils.rnn.pack_padded_sequence(src_emb, input_src_len, batch_first=True)
+        src_emb = nn.utils.rnn.pack_padded_sequence(src_emb, src_len, batch_first=True)
 
         # src_h (batch_size, seq_len, hidden_size * num_directions): outputs (h_t) of all the time steps
         # src_h_t, src_c_t (num_layers * num_directions, batch, hidden_size): hidden and cell state at last time step
@@ -453,7 +453,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             src_emb, (self.h0_encoder, self.c0_encoder)
         )
 
-        src_h, _ = nn.utils.rnn.pad_packed_sequence(src_h, batch_first=True)
+        src_h, _ = nn.utils.rnn.pad_packed_sequence(src_h, batch_first=True, total_length=max_src_len)
 
         # concatenate to (batch_size, hidden_size * num_directions)
         if self.bidirectional:
