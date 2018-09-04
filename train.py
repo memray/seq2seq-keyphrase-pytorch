@@ -83,8 +83,8 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
     optimizer.zero_grad()
     decoder_log_probs, _, _ = model.forward(src, src_len, max_src_len, trg, trg_len, src_copy, oov_numbers, max_oov_number)
 
-    print("Outside Model: input src size", src.size(),
-          "output decoder_logits size", decoder_log_probs.size())
+    # print("Outside Model: input src size", src.size(),
+    #       "output decoder_logits size", decoder_log_probs.size())
 
     if not opt.copy_attention:
         loss = criterion(
@@ -119,6 +119,8 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
         loss = loss.cpu().data.numpy()
     else:
         loss = loss.data.numpy()
+
+    del src, trg, trg_copy_for_loss, src_copy, src_len, oov_numbers, trg_unk_for_loss, trg_copy_for_loss
 
     return loss, decoder_log_probs
 
@@ -511,6 +513,9 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 if batch_i % opt.report_every == 0:
                     brief_report(epoch, batch_i, one2many_batch_dict, one2one_batch_dict, loss_ml, decoder_log_probs, opt)
 
+                del decoder_log_probs
+                torch.cuda.empty_cache()
+
             # do not apply rl in the first epoch, need to warm model up with MLE.
             if opt.train_rl:
                 if epoch >= opt.rl_start_epoch:
@@ -527,6 +532,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                (total_batch % opt.run_valid_every == 0 and opt.run_valid_every > -1 and total_batch > 1):
                 logging.info('*' * 50)
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
+
                 # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
                 # valid_history_losses.append(valid_losses)
                 valid_score_dict = evaluate_beam_search(generator, valid_data_loader, opt,

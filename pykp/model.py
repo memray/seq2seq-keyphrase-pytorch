@@ -176,12 +176,6 @@ class Attention(nn.Module):
             attn_weights = torch.nn.functional.softmax(attn_energies.view(-1, src_len), dim=1).view(batch_size, trg_len, src_len)  # (batch_size, trg_len, src_len)
         else:
             # add a large negative number to mask tensors
-            print('\ndec_hidden.shape = %s' % str(dec_hidden.shape))
-            print('encoder_hiddens.shape = %s' % str(encoder_hiddens.shape))
-            print('encoder_mask.shape = %s' % str(encoder_mask.shape))
-            print('batch_size = %d' % batch_size)
-            print('trg_len = %d' % trg_len)
-            print('src_len = %d' % src_len)
             expanded_mask = encoder_mask.unsqueeze(1).expand(batch_size, trg_len, src_len).long()
             attn_ones = Variable(torch.ones(attn_energies.shape).long())
             if torch.cuda.is_available():
@@ -416,8 +410,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         src_h, (src_h_t, src_c_t) = self.encode(src, src_len, max_src_len)
 
         src_mask = self.get_mask(src_len, max_src_len)
-        print("\tIn Model before encoding: input src.shape=%s, src_mask.shape=%s"
-              % (str(src.shape), str(src_mask.shape)))
 
         decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights \
             = self.decode(trg, trg_len,
@@ -428,8 +420,8 @@ class Seq2SeqLSTMAttention(nn.Module):
                           src_mask = src_mask,
                           max_oov_number = max_oov_number)
 
-        print("\tIn Model: input src size", src.size(),
-              "output decoder_logits size", decoder_probs.size())
+        # print("\tIn Model: input src size", src.size(),
+        #       "output decoder_logits size", decoder_probs.size())
 
         return decoder_probs, decoder_hiddens, (attn_weights, copy_attn_weights)
 

@@ -450,6 +450,12 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
     for k,v in score_dict.items():
         print('#(%s) = %d' % (k, len(v)))
 
+    del pred_seq_list, pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch,\
+        src_batch, src_copy_batch, src_len_batch, src_str_batch, trg_batch, trg_str_batch, trg_copy_for_loss_batch,\
+        pred_seq_list, oov_list_batch, oov_numbers_batch
+
+    torch.cuda.empty_cache()
+
     return score_dict
 
 
