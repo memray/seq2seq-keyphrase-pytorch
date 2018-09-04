@@ -76,7 +76,8 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
             src_len = src_len.cuda()
             oov_numbers = oov_numbers.cuda()
 
-        trg_unk_for_loss = trg_unk_for_loss.cuda(opt.device_ids[0])
+        trg_unk_for_loss = trg_unk_for_loss.cuda()
+        trg_copy_for_loss = trg_copy_for_loss.cuda()
 
     start_time = time.time()
     optimizer.zero_grad()

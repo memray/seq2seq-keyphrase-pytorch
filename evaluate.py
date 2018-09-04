@@ -21,7 +21,7 @@ from pykp.metric.bleu import bleu
 
 stemmer = PorterStemmer()
 
-def process_predseqs_batch(pred_seqs_batch, src_str_batch, oov_batch, id2word, vocab_size, must_appear_in_src):
+def process_predseqs_batch(pred_seqs_batch, src_str_batch, oov_list_batch, id2word, vocab_size, must_appear_in_src):
     '''
     Check the validity and presence of predicted phrases of each example in batch
     :return:
@@ -30,9 +30,10 @@ def process_predseqs_batch(pred_seqs_batch, src_str_batch, oov_batch, id2word, v
     seq_scores_batch = []
     valid_flags_batch = []
     present_flags_batch = []
-    for src_str, pred_seqs, oov \
-            in zip(src_str_batch, pred_seqs_batch, oov_batch):
-        pred_seq_strs, seq_scores, valid_flags, present_flags = process_predseqs_example(src_str, pred_seqs, oov, id2word, vocab_size)
+    for src_str, pred_seqs, oov_list \
+            in zip(src_str_batch, pred_seqs_batch, oov_list_batch):
+        pred_seq_strs, seq_scores, valid_flags, present_flags \
+            = process_predseqs_example(src_str, pred_seqs, oov_list, id2word, vocab_size)
         pred_seq_strs_batch.append(pred_seq_strs)
         seq_scores_batch.append(seq_scores)
         valid_flags_batch.append(valid_flags)
@@ -40,14 +41,14 @@ def process_predseqs_batch(pred_seqs_batch, src_str_batch, oov_batch, id2word, v
 
     return pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch
 
-def process_predseqs_example(src_str, pred_seqs, oov, id2word, vocab_size):
+def process_predseqs_example(src_str, pred_seqs, oov_list, id2word, vocab_size):
     '''
     1. Convert word indices of predicted phrases to strings
     2. Check the validity of predicted phrases (1. length=1; 2. contains UNK; 3. contains ./,)
     3. Check whether a phrase appears in the source text or not
     :param pred_seqs:
     :param src_str:
-    :param oov:
+    :param oov_list:
     :param id2word:
     :param vocab_size:
     :return:
@@ -59,7 +60,7 @@ def process_predseqs_example(src_str, pred_seqs, oov, id2word, vocab_size):
     pred_seq_strs = []
     for seq in pred_seqs:
         # convert to words and remove the EOS token
-        seq_str = [id2word[x] if x < vocab_size else oov[x - vocab_size] for x in seq.sentence[:-1]]
+        seq_str = [str(id2word[x]) if x < vocab_size else str(oov_list[x - vocab_size]) for x in seq.sentence[:-1]]
         pred_seq_strs.append(seq_str)
     '''
     2. check if the phrase is valid
@@ -233,7 +234,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
                     new_dec_hidden = []
                     pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch\
                         = process_predseqs_batch(pred_seqs_batch, src_str_batch,
-                                                 oov_numbers_batch, opt.id2word,
+                                                 oov_list_batch, opt.id2word,
                                                  opt.vocab_size, opt.must_appear_in_src)
 
                     # iterate each example in batch
