@@ -356,8 +356,9 @@ class SequenceGenerator(object):
                     # print('\t#(hypothese) = %d' % (len(new_partial_sequences)))
                     # print('\t#(completed) = %d' % (sum([len(c) for c in complete_sequences])))
 
-                del partial_sequences[batch_i]
+                partial_sequence = partial_sequences[batch_i]
                 partial_sequences[batch_i] = new_partial_sequences
+                del partial_sequence
                 torch.cuda.empty_cache()
 
                 # print('Batch=%d, \t#(hypothese) = %d, \t#(completed) = %d \t #(new_hyp_explored)=%d' % (batch_i, len(partial_sequences[batch_i]), len(complete_sequences[batch_i]), num_new_hyp_in_batch))
