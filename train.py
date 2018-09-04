@@ -78,7 +78,7 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
 
     start_time = time.time()
     optimizer.zero_grad()
-    decoder_log_probs, _, _ = model.forward(src, src_len, trg, trg_len, src_copy, oov_numbers)
+    decoder_log_probs, _, _ = model.forward(src, src_len, trg, trg_len, src_copy, oov_numbers, max_oov_number)
 
     print("Outside Model: input src size", src.size(),
           "output decoder_logits size", decoder_log_probs.size())

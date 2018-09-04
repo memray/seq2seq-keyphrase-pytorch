@@ -382,7 +382,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return mask
 
-    def forward(self, src, src_len, trg, trg_len, src_copy, oov_number):
+    def forward(self, src, src_len, trg, trg_len, src_copy, oov_number, max_oov_number):
         '''
         The differences of copy model from normal seq2seq here are:
          1. The size of decoder_logits is (batch_size, trg_max_len, vocab_size + max_oov_number).Usually vocab_size=50000 and max_oov_number=1000. And only very few of (it's very rare to have many unk words, in most cases it's because the text is not in English)
@@ -421,7 +421,8 @@ class Seq2SeqLSTMAttention(nn.Module):
                           oov_number=oov_number,
                           enc_context=src_h,
                           enc_hidden=(src_h_t, src_c_t),
-                          src_mask = src_mask)
+                          src_mask = src_mask,
+                          max_oov_number = max_oov_number)
 
         print("\tIn Model: input src size", src.size(),
               "output decoder_logits size", decoder_probs.size())
@@ -494,7 +495,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return dec_input
 
-    def decode(self, trg, trg_len, src_copy, oov_number, enc_context, enc_hidden, src_mask):
+    def decode(self, trg, trg_len, src_copy, oov_number, enc_context, enc_hidden, src_mask, max_oov_number=0):
         '''
         :param
                 trg_input:         (batch_size, trg_len), target sequences
@@ -567,7 +568,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                     copy_weights = attn_weights
 
                 # merge the generative and copying probs, (batch_size, trg_len, vocab_size + max_oov_number)
-                decoder_log_probs = self.merge_copy_probs(decoder_logits, copy_logits, src_copy, oov_number)  # (batch_size, trg_len, vocab_size + max_oov_number)
+                decoder_log_probs = self.merge_copy_probs(decoder_logits, copy_logits, src_copy, oov_number, max_oov_number)  # (batch_size, trg_len, vocab_size + max_oov_number)
                 decoder_outputs = decoder_outputs.permute(1, 0, 2)  # (batch_size, trg_len, trg_hidden_dim)
             else:
                 decoder_log_probs = torch.nn.functional.log_softmax(decoder_logits, dim=-1).view(batch_size, -1, self.vocab_size)
@@ -621,7 +622,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                         copy_h_tilde, copy_weight, copy_logit = h_tilde, attn_weight, attn_logit
 
                     # merge the generative and copying probs (batch_size, 1, vocab_size + max_oov_number)
-                    decoder_log_prob = self.merge_copy_probs(decoder_logit, copy_logit, src_copy, oov_number)
+                    decoder_log_prob = self.merge_copy_probs(decoder_logit, copy_logit, src_copy, oov_number, max_oov_number)
                 else:
                     decoder_log_prob = torch.nn.functional.log_softmax(decoder_logit, dim=-1).view(batch_size, -1, self.vocab_size)
                     copy_weight = None
@@ -686,7 +687,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return merged_log_prob
 
-    def merge_copy_probs(self, decoder_logits, copy_logits, src_map, oov_number):
+    def merge_copy_probs(self, decoder_logits, copy_logits, src_map, oov_number, max_oov_number):
         '''
         The function takes logits as inputs here because Gu's model applies softmax in the end, to normalize generative/copying together
         The tricky part is, Gu's model merges the logits of generative and copying part instead of probabilities,
@@ -711,7 +712,6 @@ class Seq2SeqLSTMAttention(nn.Module):
             oov_number = oov_number.data.cpu().numpy()
         else:
             oov_number = oov_number.data.numpy()
-        max_oov_number = int(max(oov_number))
 
         # flatten and extend size of decoder_probs from (batch_size * max_length, vocab_size) to (batch_size * max_length, vocab_size+max_oov_number)
         flattened_decoder_logits = decoder_logits.view(batch_size * max_length, self.vocab_size)
@@ -725,7 +725,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         # decoder_probs=(batch_size * trg_len, vocab_size+max_oov_number), copy_weights=(batch_size, trg_len, src_len)
         expanded_src_map = src_map.unsqueeze(1).expand(batch_size, max_length, src_len).contiguous().view(batch_size * max_length, -1)  # (batch_size, src_len) -> (batch_size * trg_len, src_len)
 
-        print('flattened_decoder_logits.shape = %s' % str(flattened_decoder_logits.shape))
+        print('\nflattened_decoder_logits.shape = %s' % str(flattened_decoder_logits.shape))
         print('copy_logits.shape = %s' % str(copy_logits.shape))
         print('batch_size = %d' % batch_size)
         print('max_length = %d' % max_length)
@@ -769,7 +769,11 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return do_tf
 
-    def generate(self, prev_word, dec_hidden, enc_context, src_mask=None, src_copy=None, oov_number=None, max_len=1, return_attention=False):
+    def generate(self, prev_word, dec_hidden, enc_context,
+                 src_mask=None, src_copy=None,
+                 oov_number=None,
+                 max_len=1,
+                 return_attention=False):
         '''
         Given the initial input, state and the source contexts, run a one-step prediction, return K top words
         max_len is mostly set to 1. If it is larger than 1 means to run a multi-step greedy search.
@@ -790,6 +794,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         trg_len = prev_word.size(1)
         context_dim = enc_context.size(2)
         trg_hidden_dim = self.trg_hidden_dim
+
+        max_oov_number = int(torch.max(oov_number).cpu()) if torch.cuda.is_available() else int(torch.max(oov_number))
 
         h_tilde = Variable(torch.zeros(batch_size, 1, trg_hidden_dim)).cuda() if torch.cuda.is_available() else Variable(torch.zeros(batch_size, 1, trg_hidden_dim))
         copy_h_tilde = Variable(torch.zeros(batch_size, 1, trg_hidden_dim)).cuda() if torch.cuda.is_available() else Variable(torch.zeros(batch_size, 1, trg_hidden_dim))
@@ -832,7 +838,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                     copy_h_tilde, copy_weight, copy_logit = h_tilde, attn_weight, attn_logit
                 copy_weights.append(copy_weight.permute(1, 0, 2))  # (1, batch_size, src_len)
                 # merge the generative and copying probs (batch_size, 1, vocab_size + max_unk_word)
-                decoder_log_prob = self.merge_copy_probs(decoder_logit, copy_logit, src_copy, oov_number)
+                decoder_log_prob = self.merge_copy_probs(decoder_logit, copy_logit, src_copy, oov_number, max_oov_number)
 
             # Prepare for the next iteration, get the top word, top_idx and next_index are (batch_size, K)
             top_1_v, top_1_idx = decoder_log_prob.data.topk(1, dim=-1)  # (batch_size, 1)
@@ -997,7 +1003,7 @@ class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
     def __init__(self, opt):
         super(Seq2SeqLSTMAttentionCascading, self).__init__(opt)
 
-    def decode(self, trgs, trg_lens, src_copy, oov_number, enc_context, enc_hidden, src_mask):
+    def decode(self, trgs, trg_lens, src_copy, oov_number, enc_context, enc_hidden, src_mask, max_oov_number=0):
         '''
         :param
                 trgs: (batch_size, max_num_trg, trg_max_len) multiple phrases corresponding to one source text
@@ -1115,7 +1121,7 @@ class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
                         copy_h_tilde, copy_weight, copy_logit = h_tilde, attn_weight, attn_logit
 
                     # merge the generative and copying probs (batch_size, 1, vocab_size + max_oov_number)
-                    decoder_log_prob = self.merge_copy_probs(decoder_logit, copy_logit, src_copy, oov_number)
+                    decoder_log_prob = self.merge_copy_probs(decoder_logit, copy_logit, src_copy, oov_number, max_oov_number)
                 else:
                     decoder_log_prob = torch.nn.functional.log_softmax(decoder_logit, dim=-1).view(batch_size, -1, self.vocab_size)
                     copy_weight = None
