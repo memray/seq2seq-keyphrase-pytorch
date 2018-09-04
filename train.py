@@ -71,7 +71,6 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
         if len(opt.device_ids) == 1:
             src = src.cuda()
             trg = trg.cuda()
-            trg_copy_for_loss = trg_copy_for_loss.cuda()
             src_copy = src_copy.cuda()
             src_len = src_len.cuda()
             oov_numbers = oov_numbers.cuda()
@@ -120,7 +119,7 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
     else:
         loss = loss.data.numpy()
 
-    del src, trg, trg_copy_for_loss, src_copy, src_len, oov_numbers, trg_unk_for_loss, trg_copy_for_loss
+    del src, trg, trg_copy_for_loss, src_copy, src_len, oov_numbers, trg_unk_for_loss
 
     return loss, decoder_log_probs
 

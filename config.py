@@ -305,10 +305,9 @@ def train_opts(parser):
                         help='Maximum batch size')
     parser.add_argument('-beam_search_batch_workers', type=int, default=4,
                         help='Number of workers for generating batches')
-
     parser.add_argument('-beam_size',  type=int, default=16,
                         help='Beam size')
-    parser.add_argument('-beam_search_max_length', type=int, default=6,
+    parser.add_argument('-beam_search_max_length', type=int, default=5,
                         help='Maximum sentence length for beam search.')
     parser.add_argument('-beam_search_round_number', type=int, default=10,
                         help='Number of search rounds for beam search, mainly used in cascading model.')
