@@ -451,6 +451,12 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                                   max_sequence_length=opt.beam_search_max_length
                                   )
 
+    if torch.cuda.is_available():
+        if len(opt.device_ids) == 1:
+            model = model.cuda(device=opt.device_ids[0])
+        else:
+            model = torch.nn.DataParallel(model, device_ids=opt.device_ids).cuda()
+
     logging.info('======================  Start Training  =========================')
 
     checkpoint_names = []
@@ -795,12 +801,6 @@ def init_model(opt):
             model.state_dict(),
             open(os.path.join(opt.train_from[: opt.train_from.find('.epoch=')], 'initial.model'), 'wb')
         )
-
-    if torch.cuda.is_available():
-        if len(opt.device_ids) == 1:
-            model = model.cuda(device=opt.device_ids[0])
-        else:
-            model = torch.nn.DataParallel(model, device_ids=opt.device_ids).cuda()
 
     utils.tally_parameters(model)
 

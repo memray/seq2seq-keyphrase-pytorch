@@ -57,6 +57,7 @@ def process_predseqs_example(src_str, pred_seqs, oov_list, id2word, vocab_size):
     '''
     1. convert word_id to strings
     '''
+    print(oov_list)
     pred_seq_strs = []
     for seq in pred_seqs:
         # convert to words and remove the EOS token
@@ -287,10 +288,10 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
                                                   src_copy_batch, oov_numbers_batch,
                                                   opt.word2id)
 
-            pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch \
-                = process_predseqs_batch(pred_seq_list, src_str_batch,
-                                         oov_numbers_batch, opt.id2word,
-                                         opt.vocab_size, opt.must_appear_in_src)
+                pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch \
+                    = process_predseqs_batch(pred_seq_list, src_str_batch,
+                                             oov_list_batch, opt.id2word,
+                                             opt.vocab_size, opt.must_appear_in_src)
 
         elif opt.eval_method == 'sampling':
             raise NotImplemented
