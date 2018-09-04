@@ -62,6 +62,7 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
     max_oov_number = max(oov_numbers)
 
     src_len = Variable(torch.from_numpy(np.asarray(src_len))).long()
+    trg_len = Variable(torch.from_numpy(np.asarray(trg_len))).long()
     oov_numbers = Variable(torch.from_numpy(np.asarray(oov_numbers))).long()
 
     if torch.cuda.is_available():
@@ -513,9 +514,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
             progbar.update(epoch, batch_i, report_loss)
 
             # Validate and save checkpoint
-            if True:
-                # (opt.run_valid_every == -1 and batch_i == len(train_data_loader) - 1) or\
-               # (total_batch % opt.run_valid_every == 0 and opt.run_valid_every > -1 and total_batch > 1):
+            if (opt.run_valid_every == -1 and batch_i == len(train_data_loader) - 1) or\
+               (total_batch % opt.run_valid_every == 0 and opt.run_valid_every > -1 and total_batch > 1):
                 logging.info('*' * 50)
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
                 # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)

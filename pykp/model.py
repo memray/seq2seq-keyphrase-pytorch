@@ -701,7 +701,10 @@ class Seq2SeqLSTMAttention(nn.Module):
             decoder_copy_probs: return the log_probs (batch_size, trg_max_len, vocab_size + max_oov_number)
         '''
         batch_size, max_length, _ = decoder_logits.size()
-        src_len = src_map.size(1)
+        src_len = copy_logits.size(2)
+        # Due to the slicing of multigpu, we have to truncate src_map from (batch_size, src_len_outside_batch) to (batch_size, src_len)
+        if src_map.size(1) > src_len:
+            src_map = src_map[:, :src_len]
 
         # set max_oov_number to be the max number of oov
         if torch.cuda.is_available():
@@ -710,7 +713,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             oov_number = oov_number.data.numpy()
         max_oov_number = int(max(oov_number))
 
-        # flatten and extend size of decoder_probs from (vocab_size) to (vocab_size+max_oov_number)
+        # flatten and extend size of decoder_probs from (batch_size * max_length, vocab_size) to (batch_size * max_length, vocab_size+max_oov_number)
         flattened_decoder_logits = decoder_logits.view(batch_size * max_length, self.vocab_size)
         if max_oov_number > 0:
             extended_logits = Variable(torch.FloatTensor([[0.0] * oov_n + [float('-inf')] * (max_oov_number - oov_n) for oov_n in oov_number]))
@@ -718,16 +721,18 @@ class Seq2SeqLSTMAttention(nn.Module):
             extended_logits = extended_logits.cuda() if torch.cuda.is_available() else extended_logits
             flattened_decoder_logits = torch.cat((flattened_decoder_logits, extended_logits), dim=1)
 
-        # add probs of copied words by scatter_add_(dim, index, src), index should be in the same shape with src. decoder_probs=(batch_size * trg_len, vocab_size+max_oov_number), copy_weights=(batch_size, trg_len, src_len)
+        # add probs of copied words by scatter_add_(dim, index, src), index (src_map) should be in the same shape with src (copy_logits).
+        # decoder_probs=(batch_size * trg_len, vocab_size+max_oov_number), copy_weights=(batch_size, trg_len, src_len)
         expanded_src_map = src_map.unsqueeze(1).expand(batch_size, max_length, src_len).contiguous().view(batch_size * max_length, -1)  # (batch_size, src_len) -> (batch_size * trg_len, src_len)
 
         print('flattened_decoder_logits.shape = %s' % str(flattened_decoder_logits.shape))
-        print('expanded_src_map.shape = %s' % str(expanded_src_map.shape))
         print('copy_logits.shape = %s' % str(copy_logits.shape))
         print('batch_size = %d' % batch_size)
         print('max_length = %d' % max_length)
+        print('src_len = %d' % src_len)
         print('max_oov_number = %d' % max_oov_number)
-        print('copy_logits.view(batch_size * max_length, -1).shape = %s' % str(copy_logits.view(batch_size * max_length, -1).shape))
+        print('expanded_src_map.shape = %s' % str(expanded_src_map.shape))
+        print('copy_logits.view(batch_size * max_length, -1).shape = %s\n' % str(copy_logits.view(batch_size * max_length, -1).shape))
         # flattened_decoder_logits.scatter_add_(dim=1, index=expanded_src_map, src=copy_logits.view(batch_size * max_length, -1))
         flattened_decoder_logits = flattened_decoder_logits.scatter_add_(1, expanded_src_map, copy_logits.view(batch_size * max_length, -1))
 
@@ -1028,6 +1033,7 @@ class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
 
         # transpose the trgs to be (max_trg_num, batch_size, max_trg_len), trg_lens to (max_trg_num, batch_size)
         trgs = trgs.permute(1, 0, 2)
+
         # minus length by 1 to ignore the BOS at the beginning
         trg_lens = np.asarray(trg_lens) - 1
         trg_lens[np.where(trg_lens < 0)] = 0

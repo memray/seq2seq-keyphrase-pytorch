@@ -131,8 +131,8 @@ class KeyphraseDataset(torch.utils.data.Dataset):
 
         x = np.asarray(x, dtype=np.int64)
         x_mask = np.array(x_mask, dtype=np.int64)
-        x = Variable(torch.stack([torch.from_numpy(x_) for x_ in x], 0)).type('torch.LongTensor')
-        x_mask = Variable(torch.stack([torch.from_numpy(m_) for m_ in x_mask], 0))
+        x = Variable(torch.stack([torch.from_numpy(x_) for x_ in x], 0)).long()
+        x_mask = Variable(torch.stack([torch.from_numpy(m_) for m_ in x_mask], 0)).float()
 
         assert x.size(0) == num_seq
         assert x.size(1) == max_len_seq

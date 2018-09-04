@@ -186,6 +186,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
         oov_numbers = [len(oov_list) for oov_list in one2many_batch_dict['oov_lists']]
         src_len_batch = Variable(torch.from_numpy(np.asarray(src_len_batch))).long()
+        trg_len_batch = Variable(torch.from_numpy(np.asarray(trg_len_batch))).long()
         oov_numbers_batch = Variable(torch.from_numpy(np.asarray(oov_numbers))).long()
 
         if torch.cuda.is_available():
