@@ -67,6 +67,9 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
     max_oov_number = max(oov_numbers)
     oov_numbers = Variable(torch.from_numpy(np.asarray(oov_numbers))).long()
 
+    logging.info('src.shape=%s' % str(src.shape))
+    logging.info('trg.shape=%s' % str(trg.shape))
+
     if torch.cuda.is_available():
         if len(opt.device_ids) == 1:
             src = src.cuda()
@@ -99,9 +102,6 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
 
     if opt.train_rl:
         loss = loss * (1 - opt.loss_scale)
-
-    logging.info('src.shape=%s' % str(src.shape))
-    logging.info('trg.shape=%s' % str(trg.shape))
 
     logging.info("--forward+loss- %s seconds ---" % (time.time() - start_time))
     start_time = time.time()
