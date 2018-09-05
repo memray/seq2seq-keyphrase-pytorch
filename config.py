@@ -131,7 +131,7 @@ def preprocess_opts(parser):
                         help="Size of the source vocabulary")
     # for copy model
     parser.add_argument('-max_unk_words', type=int, default=1000,
-                        help="Maximum number of unknown words the model supports (mainly for masking in loss)")
+                        help="Maximum number of unknown words the model supports (mainly for masking in loss).")
 
     parser.add_argument('-words_min_frequency', type=int, default=0)
 
@@ -150,6 +150,8 @@ def preprocess_opts(parser):
                         help="Truncate source sequence length.")
     parser.add_argument('-trg_seq_length_trunc', type=int, default=None,
                         help="Truncate target sequence length.")
+    parser.add_argument('-trg_num_trunc', type=int, default=None,
+                        help="Truncate examples with many targets to maximize the utility of GPU memory.")
 
     # Data processing options
     parser.add_argument('-shuffle', type=int, default=1,

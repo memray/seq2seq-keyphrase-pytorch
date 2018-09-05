@@ -49,7 +49,9 @@ torchtext.vocab.Vocab.__setstate__ = __setstate__
 
 class KeyphraseDataset(torch.utils.data.Dataset):
     def __init__(self, examples, word2id, id2word, type='one2many',
-                 include_original=False, shuffle_targets=False,
+                 include_original=False,
+                 shuffle_targets=False,
+                 trg_num_trunc = None,
                  batch_size=64):
         """
         :param examples:
@@ -92,6 +94,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         self.type = type
         self.include_original_string = include_original
         self.shuffle_targets = shuffle_targets
+        self.trg_num_trunc = trg_num_trunc
         self.batch_size = batch_size
 
     def __getitem__(self, index):
@@ -206,6 +209,13 @@ class KeyphraseDataset(torch.utils.data.Dataset):
                 shuffuled_targets = list(zip(*combined))
                 for trg_key, shuffuled_target in zip(trg_keys, shuffuled_targets):
                     b[trg_key] = shuffuled_target
+
+        # truncate some long outliers to maximize the utility of GPU memory
+        if self.trg_num_trunc:
+            trg_keys = [k for k in batches[0].keys() if k.startswith('trg')]
+            for b in batches:
+                for trg_key in trg_keys:
+                    b[trg_key] = b[trg_key][: self.trg_num_trunc]
 
         # target_input: input to decoder, starts with BOS and oovs are replaced with <unk>
         trg_unk = [[[self.word2id[BOS_WORD]] + t + [self.word2id[EOS_WORD]] for t in b['trg']] for b in batches]

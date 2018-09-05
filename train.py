@@ -653,6 +653,7 @@ def load_data_vocab(opt, load_train=True):
                                                   word2id=word2id, id2word=id2word,
                                                   type='one2many',
                                                   shuffle_targets=True,
+                                                  trg_num_trunc=opt.trg_num_trunc,
                                                   batch_size=opt.batch_size)
         train_one2many_loader = KeyphraseDataLoader(dataset=train_one2many_dataset,
                                                     collate_fn=train_one2many_dataset.collate_fn_one2many,
