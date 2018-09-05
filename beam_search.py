@@ -240,7 +240,7 @@ class SequenceGenerator(object):
 
         # prepare the init hidden vector, (batch_size, trg_seq_len, dec_hidden_dim)
         dec_hiddens = self.model.init_decoder_state(src_h, src_c)
-        trg_enc_hiddens = self.model.init_target_encoder_state(batch_size) 
+        trg_enc_hiddens = self.model.init_target_encoder_state(batch_size)
 
         # each dec_hidden is (trg_seq_len, dec_hidden_dim)
         initial_input = [word2id[pykp.io.BOS_WORD]] * batch_size
@@ -458,8 +458,7 @@ class SequenceGenerator(object):
 
         # prepare the init hidden vector, (batch_size, trg_seq_len, dec_hidden_dim)
         dec_hiddens = self.model.init_decoder_state(src_h, src_c)
-        
-        trg_enc_hiddens = self.model.init_target_encoder_state(batch_size) 
+        trg_enc_hiddens = self.model.init_target_encoder_state(batch_size)
 
         # each dec_hidden is (trg_seq_len, dec_hidden_dim)
         initial_input = [word2id[pykp.io.BOS_WORD]] * batch_size
@@ -517,7 +516,7 @@ class SequenceGenerator(object):
             # m = Categorical(exp_log_probs)
 
             # probs, words are [batch_size, k] at time 0, and [batch_size * k, 1] later on
-            
+
             _k = 1 if current_len == 1 else k
             # greedy
             probs_greedy, words_greedy = log_probs.data.topk(_k, dim=-1)

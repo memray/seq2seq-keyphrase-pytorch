@@ -292,14 +292,14 @@ class Seq2SeqLSTMAttention(nn.Module):
         )
 
         self.decoder = nn.LSTM(
-            input_size=self.emb_dim if not self.enable_target_encoder else self.emb_dim + self.target_encoding_mlp_hidden_dim[-1],
+            input_size=self.emb_dim if not self.enable_target_encoder else self.emb_dim + self.target_encoding_mlp_hidden_dim[0],
             hidden_size=self.trg_hidden_dim,
             num_layers=self.nlayers_trg,
             bidirectional=False,
             batch_first=False,
             dropout=self.dropout
         )
-        
+
         self.target_encoder = nn.LSTM(
             input_size=self.emb_dim,
             hidden_size=self.target_encoder_dim,
@@ -311,7 +311,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.target_encoding_merger = Concat()
         self.target_encoding_mlp = MultilayerPerceptron(input_dim=self.target_encoder_dim,
                                                         hidden_dim=self.target_encoding_mlp_hidden_dim)
-        self.bilinear_layer = nn.Bilinear(self.src_hidden_dim * 2 if self.bidirectional else 
+        self.bilinear_layer = nn.Bilinear(self.src_hidden_dim * 2 if self.bidirectional else
                                                 self.src_hidden_dim,
                                           self.target_encoding_mlp_hidden_dim[-1], 1)
 
@@ -462,7 +462,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         if not trg_mask:
             trg_mask = self.get_mask(input_trg)  # same size as input_trg
         src_h, (src_h_t, src_c_t) = self.encode(input_src, input_src_len)
-        
+
         decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights, trg_encoding_h_last = self.decode(trg_inputs=input_trg, src_map=input_src_ext,
                                                                                       oov_list=oov_lists, enc_context=src_h, enc_hidden=(src_h_t, src_c_t),
                                                                                       trg_mask=trg_mask, ctx_mask=ctx_mask)
@@ -816,7 +816,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 _, copy_weighted_context, copy_weight, copy_logit = self.copy_attention_layer(decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
             else:
                 copy_weighted_context, copy_weight, copy_logit = weighted_context, attn_weight, attn_logit
-            copy_weights.append(copy_weight.permute(1, 0, 2))  # (1, batch_size, src_len)
+            copy_weights.append(copy_weight)  # (batch_size, 1, src_len)
             # merge the generative and copying probs (batch_size, 1, vocab_size + max_unk_word)
             decoder_log_prob = self.merge_copy_probs(decoder_output.permute(1, 0, 2), copy_weighted_context, decoder_logit, copy_weight, src_map, oov_list, trg_mask)
 
@@ -841,7 +841,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             if not self.copy_attention:
                 return log_probs, dec_hidden, trg_enc_hidden, attn_weights
             else:
-                copy_weights = torch.cat(copy_weights, 0).permute(1, 0, 2)  # (batch_size, max_len, src_seq_len)
+                copy_weights = torch.cat(copy_weights, 1)  # (batch_size, max_len, src_seq_len)
                 return log_probs, dec_hidden, trg_enc_hidden, (attn_weights, copy_weights)
         else:
             return log_probs, dec_hidden, trg_enc_hidden
