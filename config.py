@@ -150,7 +150,7 @@ def preprocess_opts(parser):
                         help="Truncate source sequence length.")
     parser.add_argument('-trg_seq_length_trunc', type=int, default=None,
                         help="Truncate target sequence length.")
-    parser.add_argument('-trg_num_trunc', type=int, default=None,
+    parser.add_argument('-trg_num_trunc', type=int, default=4,
                         help="Truncate examples with many targets to maximize the utility of GPU memory.")
 
     # Data processing options

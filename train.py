@@ -80,10 +80,11 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
 
     start_time = time.time()
     optimizer.zero_grad()
-    decoder_log_probs, _, _ = model.forward(src, src_len, max_src_len, trg, trg_len, src_copy, oov_numbers, max_oov_number)
+    decoder_log_probs, decoder_hiddens, (attn_weights, copy_attn_weights) \
+        = model.forward(src, src_len, max_src_len, trg, trg_len, src_copy, oov_numbers, max_oov_number)
 
-    # print("Outside Model: input src size", src.size(),
-    #       "output decoder_logits size", decoder_log_probs.size())
+    del src, trg, src_copy, src_len, oov_numbers, decoder_hiddens, attn_weights, copy_attn_weights
+    torch.cuda.empty_cache()
 
     if not opt.copy_attention:
         loss = criterion(
@@ -103,7 +104,6 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
     logging.info('trg.shape=%s' % str(trg.shape))
 
     logging.info("--forward+loss- %s seconds ---" % (time.time() - start_time))
-
     start_time = time.time()
     loss.backward()
     optimizer.step()
@@ -118,8 +118,6 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
         loss = loss.cpu().data.numpy()
     else:
         loss = loss.data.numpy()
-
-    del src, trg, trg_copy_for_loss, src_copy, src_len, oov_numbers, trg_unk_for_loss
 
     return loss, decoder_log_probs
 
