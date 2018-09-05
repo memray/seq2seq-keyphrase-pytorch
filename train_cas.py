@@ -130,7 +130,7 @@ def get_target_encoder_loss(model, source_representations, target_representation
     batch_labels = np.array(batch_labels)  # batch
     batch_labels = torch.autograd.Variable(torch.from_numpy(batch_labels).type(torch.LongTensor))
     if torch.cuda.is_available():
-        batch_labels =  batch_labels.cuda()
+        batch_labels = batch_labels.cuda()
 
     # 3. prediction
     batch_inputs_target = model.target_encoding_mlp(batch_inputs_target)[-1]  # last layer, batch x mlp_hid
