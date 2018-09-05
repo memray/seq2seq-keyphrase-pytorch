@@ -125,11 +125,13 @@ class MultilayerPerceptron(torch.nn.Module):
     input:  x: batch x input_dim
     output: y: batch x hidden_dim[-1]
     '''
+
     def __init__(self, input_dim, hidden_dim):
         super(MultilayerPerceptron, self).__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
-        mlp = [torch.nn.Linear(self.input_dim if i == 0 else self.hidden_dim[i - 1], self.hidden_dim[i]) for i in range(len(hidden_dim))]
+        mlp = [torch.nn.Linear(self.input_dim if i == 0 else self.hidden_dim[
+                               i - 1], self.hidden_dim[i]) for i in range(len(hidden_dim))]
         self.mlp = torch.nn.ModuleList(mlp)
         self.init_weights()
 
@@ -186,103 +188,116 @@ class Concat(torch.nn.Module):
         return torch.cat(x, -1)
 
 
-class FastUniLSTM(torch.nn.Module):
-    """
-    Adapted from https://github.com/facebookresearch/DrQA/
-    now supports:   different rnn size for each layer
-                    all zero rows in batch (from time distributed layer, by reshaping certain dimension)
-    """
+class LSTMCell(torch.nn.Module):
 
-    def __init__(self, input_size, hidden_size, num_layers=1, bidirectional=False, batch_first=False, dropout_between_rnn_layers=0.):
-        super(FastUniLSTM, self).__init__()
+    """A basic LSTM cell."""
+
+    def __init__(self, input_size, hidden_size, use_bias=True):
+        """
+        Most parts are copied from torch.nn.LSTMCell.
+        """
+
+        super(LSTMCell, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        self.dropout_between_rnn_layers = dropout_between_rnn_layers
-        self.rnn = torch.nn.LSTM(
-            self.input_size, self.hidden_size, num_layers=1, bidirectional=False)
-
-    def forward(self, x, mask, init_state=None):
-
-        def pad_(tensor, n):
-            if n > 0:
-                zero_pad = torch.autograd.Variable(
-                    torch.zeros((n,) + tensor.size()[1:]))
-                if x.is_cuda:
-                    zero_pad = zero_pad.cuda()
-                tensor = torch.cat([tensor, zero_pad])
-            return tensor
-
-        """
-        inputs: x:          batch x time x inp
-                mask:       batch x time
-        output: encoding:   batch x time x hidden[-1]
-        """
-        # Compute sorted sequence lengths
-        batch_size = x.size(0)
-        lengths = mask.data.eq(1).long().sum(1).squeeze()
-        _, idx_sort = torch.sort(lengths, dim=0, descending=True)
-        _, idx_unsort = torch.sort(idx_sort, dim=0)
-
-        lengths = list(lengths[idx_sort])
-        idx_sort = torch.autograd.Variable(idx_sort)
-        idx_unsort = torch.autograd.Variable(idx_unsort)
-
-        # Sort x
-        x = x.index_select(0, idx_sort)
-        if init_state is not None:
-            init_state = (init_state[0].index_select(
-                0, idx_sort), init_state[1].index_select(0, idx_sort))
-
-        # remove non-zero rows, and remember how many zeros
-        n_nonzero = np.count_nonzero(lengths)
-        n_zero = batch_size - n_nonzero
-        if n_zero != 0:
-            lengths = lengths[:n_nonzero]
-            x = x[:n_nonzero]
-            if init_state is not None:
-                init_state = (init_state[0][:n_nonzero],
-                              init_state[1][:n_nonzero])
-
-        # Transpose batch and sequence dims
-        x = x.transpose(0, 1)
-
-        # Pack it up
-        rnn_input = torch.nn.utils.rnn.pack_padded_sequence(x, lengths)
-
-        # dropout between rnn layers
-        if self.dropout_between_rnn_layers > 0:
-            dropout_input = F.dropout(rnn_input.data,
-                                      p=self.dropout_between_rnn_layers,
-                                      training=self.training)
-            rnn_input = torch.nn.utils.rnn.PackedSequence(dropout_input,
-                                                          rnn_input.batch_sizes)
-        if init_state is None:
-            seq, (last_h, last_c) = self.rnn(rnn_input)
+        self.use_bias = use_bias
+        self.weight_ih = torch.nn.Parameter(
+            torch.FloatTensor(input_size, 4 * hidden_size))
+        self.weight_hh = torch.nn.Parameter(
+            torch.FloatTensor(hidden_size, 4 * hidden_size))
+        if use_bias:
+            self.bias_f = torch.nn.Parameter(torch.FloatTensor(hidden_size))
+            self.bias_iog = torch.nn.Parameter(
+                torch.FloatTensor(3 * hidden_size))
         else:
-            seq, (last_h, last_c) = self.rnn(rnn_input, init_state)
-        last_states = (last_h[0], last_c[0])
+            self.register_parameter('bias', None)
+        self.reset_parameters()
 
-        # Unpack everything
-        output = torch.nn.utils.rnn.pad_packed_sequence(seq)[0]
-        # Transpose and unsort
-        output = output.transpose(0, 1)  # batch x time x enc
+    def reset_parameters(self):
+        torch.nn.init.orthogonal(self.weight_hh.data)
+        torch.nn.init.xavier_uniform(self.weight_ih.data)
+        if self.use_bias:
+            self.bias_f.data.fill_(1.0)
+            self.bias_iog.data.fill_(0.0)
 
-        # re-padding
-        output = pad_(output, n_zero)
-        last_states = (pad_(last_states[0], n_zero),
-                       pad_(last_states[1], n_zero))
+    def forward(self, input_, mask_, h_0, c_0):
+        """
+        Args:
+            input_:     A (batch, input_size) tensor containing input features.
+            mask_:      (batch)
+            hx:         A tuple (h_0, c_0), which contains the initial hidden
+                        and cell state, where the size of both states is
+                        (batch, hidden_size).
+        Returns:
+            h_1, c_1: Tensors containing the next hidden and cell state.
+        """
+        wh = torch.mm(h_0, self.weight_hh)
+        wi = torch.mm(input_, self.weight_ih)
+        pre_act = wi + wh
+        if self.use_bias:
+            pre_act = pre_act + \
+                torch.cat([self.bias_f, self.bias_iog]).unsqueeze(0)
 
-        output = output.index_select(0, idx_unsort)
-        last_states = (last_states[0].index_select(
-            0, idx_unsort), last_states[1].index_select(0, idx_unsort))
+        f, i, o, g = torch.split(
+            pre_act, split_size_or_sections=self.hidden_size, dim=1)
+        expand_mask_ = mask_.unsqueeze(1)  # batch x None
+        c_1 = torch.sigmoid(f) * c_0 + torch.sigmoid(i) * torch.tanh(g)
+        c_1 = c_1 * expand_mask_ + c_0 * (1 - expand_mask_)
+        h_1 = torch.sigmoid(o) * torch.tanh(c_1)
+        h_1 = h_1 * expand_mask_ + h_0 * (1 - expand_mask_)
+        return h_1, c_1
 
-        # Pad up to original batch sequence length
-        if output.size(1) != mask.size(1):
-            padding = torch.zeros(output.size(0),
-                                  mask.size(1) - output.size(1),
-                                  output.size(2)).type(output.data.type())
-            output = torch.cat([output, torch.autograd.Variable(padding)], 1)
+    def __repr__(self):
+        s = '{name}({input_size}, {hidden_size})'
+        return s.format(name=self.__class__.__name__, **self.__dict__)
 
-        output = output.contiguous() * mask.unsqueeze(-1)
-        return output, mask, last_states
+
+class UniLSTM(torch.nn.Module):
+    '''
+    inputs: x:          time x batch x emb
+            mask:       batch x time
+            init_states:(batch x h, batch x h)
+    outputs:
+            encoding:   time x batch x h
+            last_states:(batch x h, batch x h)
+    Dropout types:
+        dropout_between_rnn_hiddens -- across time step
+    '''
+
+    def __init__(self, nemb, nhid):
+        super(UniLSTM, self).__init__()
+        self.nhid = nhid
+        self.nemb = nemb
+        self.rnn = LSTMCell(self.nemb, self.nhid, use_bias=True)
+
+    def get_init_hidden(self, bsz):
+        if torch.cuda.is_available():
+            return [(torch.autograd.Variable(torch.zeros(bsz, self.nhid)).cuda(),
+                     torch.autograd.Variable(torch.zeros(bsz, self.nhid)).cuda())]
+        else:
+            return [(torch.autograd.Variable(torch.zeros(bsz, self.nhid)),
+                     torch.autograd.Variable(torch.zeros(bsz, self.nhid)))]
+
+    def forward(self, x, mask, init_states=None):
+        x = x.permute(1, 0, 2)  # batch x time x emb
+        if init_states is None:
+            state_stp = self.get_init_hidden(x.size(0))
+        else:
+            state_stp = [init_states]
+
+        for t in range(x.size(1)):
+            input_mask = mask[:, t]
+            curr_input = x[:, t]
+            previous_h, previous_c = state_stp[t]
+            new_h, new_c = self.rnn.forward(
+                curr_input, input_mask, previous_h, previous_c)
+            state_stp.append((new_h, new_c))
+
+        hidden_states = [hc[0] for hc in state_stp[1:]]  # list of batch x hid
+        hidden_states = torch.stack(hidden_states, 1)  # batch x time x hid
+        # (batch x hid, batch x hid)
+        last_states = (state_stp[-1][0], state_stp[-1][1])
+        hidden_states = hidden_states * \
+            mask.unsqueeze(-1)  # batch x time x hid
+        hidden_states = hidden_states.permute(1, 0, 2)  # time x batch x hid
+        return hidden_states, last_states
