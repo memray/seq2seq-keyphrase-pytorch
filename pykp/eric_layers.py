@@ -145,7 +145,7 @@ class MultilayerPerceptron(torch.nn.Module):
         flag = False
         if len(x.size()) == 3:
             dim1, dim2, dim3 = x.size()
-            x = x.view(dim1 * dim2, dim3)
+            x = x.contiguous().view(dim1 * dim2, dim3)
             flag = True
         res = []
         tmp = x
