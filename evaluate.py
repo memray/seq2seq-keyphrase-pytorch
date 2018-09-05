@@ -30,17 +30,20 @@ def has_special_token(seq, special_tokens):
 
 
 def process_predseqs(seq_sentence_np, oov, id2word, opt):
-    # pred_seq is a sequence of word indices, key phrases are separated by special token
+    # pred_seq is a sequence of word indices, key phrases are separated by
+    # special token
     if seq_sentence_np[-1] == opt.word2id[EOS_WORD]:
         seq_sentence_np = seq_sentence_np[:-1]
 
-    processed_seq = [id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in seq_sentence_np]
+    processed_seq = [id2word[x] if x < opt.vocab_size else oov[
+        x - opt.vocab_size] for x in seq_sentence_np]
     processed_string = " ".join(processed_seq)
     processed_strings = processed_string.split(SEP_WORD)
     processed_strings = [item.strip() for item in processed_strings]
     processed_strings = list(set(processed_strings))
     processed_strings = [s.strip().split() for s in processed_strings]
-    processed_strings = [s for s in processed_strings if len(s) > 0 and not has_special_token(s, [",", ".", UNK_WORD, EOS_WORD])]
+    processed_strings = [s for s in processed_strings if len(
+        s) > 0 and not has_special_token(s, [",", ".", UNK_WORD, EOS_WORD])]
 
     return processed_strings
 
@@ -95,7 +98,8 @@ def if_present_duplicate_phrase(src_str, phrase_seqs):
             if match:
                 break
 
-        # if it reaches the end of source and no match, means it doesn't appear in the source, thus discard
+        # if it reaches the end of source and no match, means it doesn't appear
+        # in the source, thus discard
         if match:
             present_index.append(True)
         else:
@@ -109,13 +113,15 @@ def splitz(iterable, sep_ids):
     result = []
     group = []
     for e in iterable:
-        if e in sep_ids: # found delimiter
-            if group: # ignore empty groups (delimiter at beginning or after another delimiter)
+        if e in sep_ids:  # found delimiter
+            # ignore empty groups (delimiter at beginning or after another
+            # delimiter)
+            if group:
                 result.append(group)
-                group = [] # start new accumulator
-        else: 
+                group = []  # start new accumulator
+        else:
             group.append(e)
-    if group: # Handle last group
+    if group:  # Handle last group
         result.append(group)
     return result
 
@@ -143,7 +149,7 @@ def keyphrase_ranking(list_of_beams, max_kps=20, sep_ids=[4]):
             if len(already_in) >= max_kps:
                 return res
     return res
-        
+
 
 def extract_to_list(pred_seq):
     seq_sentence = [int(x.cpu().data.numpy()) for x in pred_seq.sentence]
@@ -173,12 +179,15 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
         # list(batch) of list(beam size) of Sequence
         if opt.eval_method == "beam_search":
-            pred_seq_list = generator.beam_search(src_list, src_len, src_oov_map_list, oov_list, opt.word2id)
+            pred_seq_list = generator.beam_search(
+                src_list, src_len, src_oov_map_list, oov_list, opt.word2id)
             best_pred_seq = pred_seq_list
             eval_topk = 5
         elif opt.eval_method in ["sampling", "greedy", "hybrid"]:
-            pred_seq_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=1, mode=opt.eval_method)        
-            best_pred_seq = [b[0] for b in pred_seq_list]  # list(batch) of Sequence
+            pred_seq_list = generator.sample(
+                src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=1, mode=opt.eval_method)
+            best_pred_seq = [b[0]
+                             for b in pred_seq_list]  # list(batch) of Sequence
             eval_topk = 1000
         else:
             raise NotImplementedError
@@ -189,53 +198,68 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         for src, src_str, trg, trg_str_seqs, trg_copy, pred_seq, oov in zip(src_list, src_str_list, trg_list, trg_str_list, trg_copy_target_list, best_pred_seq, oov_list):
             # logging.info('======================  %d =========================' % (example_idx))
             print_out = ''
-            trg_str_is_present = if_present_duplicate_phrase(src_str, trg_str_seqs)
-            trg_str_seqs = [item for item, _flag in zip(trg_str_seqs, trg_str_is_present) if _flag]
+            trg_str_is_present = if_present_duplicate_phrase(
+                src_str, trg_str_seqs)
+            trg_str_seqs = [item for item, _flag in zip(
+                trg_str_seqs, trg_str_is_present) if _flag]
             if len(trg_str_seqs) == 0:
                 continue
             # 1st filtering
             if opt.eval_method == "beam_search":
                 pred_seq = [extract_to_list(seq) for seq in pred_seq]
-                pred_seq = keyphrase_ranking(pred_seq, sep_ids=[opt.word2id[pykp.io.SEP_WORD]])
+                pred_seq = keyphrase_ranking(
+                    pred_seq, sep_ids=[opt.word2id[pykp.io.SEP_WORD]])
             else:
                 pred_seq = extract_to_list(pred_seq)
-            processed_strings = process_predseqs(pred_seq, oov, opt.id2word, opt)
+            processed_strings = process_predseqs(
+                pred_seq, oov, opt.id2word, opt)
             '''
             Evaluate predictions w.r.t different filterings and metrics
             '''
             score_names = ['precision', 'recall', 'f_score']
-            match_list_exact = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_strings, type="exact")
-            match_list_soft = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_strings, type="partial")
+            match_list_exact = get_match_result(
+                true_seqs=trg_str_seqs, pred_seqs=processed_strings, type="exact")
+            match_list_soft = get_match_result(
+                true_seqs=trg_str_seqs, pred_seqs=processed_strings, type="partial")
 
             # exact scores
             print_out += "\n ======================================================="
-            results_exact = evaluate(match_list_exact, processed_strings, trg_str_seqs, topk=eval_topk)
+            results_exact = evaluate(
+                match_list_exact, processed_strings, trg_str_seqs, topk=eval_topk)
             for k, v in zip(score_names, results_exact):
                 if '%s_exact' % (k) not in score_dict:
                     score_dict['%s_exact' % (k)] = []
                 score_dict['%s_exact' % (k)].append(v)
 
-                    # print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
-            print_processed_strings = [" ".join(item) for item in processed_strings]
+                # print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk,
+                # num_oneword_seq, v)
+            print_processed_strings = [
+                " ".join(item) for item in processed_strings]
             print_trg_str_seqs = [" ".join(item) for item in trg_str_seqs]
-            print_out += "\n PREDICTION: " + " / ".join(print_processed_strings)
+            print_out += "\n PREDICTION: " + \
+                " / ".join(print_processed_strings)
             print_out += "\n GROUND TRUTH: " + " / ".join(print_trg_str_seqs)
-            
+
             print_out += "\n ------------------------------------------------- EXACT"
-            print_out += "\n --- batch precision, recall, fscore: " + str(results_exact[0]) + " , " + str(results_exact[1]) + " , " + str(results_exact[2])
+            print_out += "\n --- batch precision, recall, fscore: " + \
+                str(results_exact[0]) + " , " + \
+                str(results_exact[1]) + " , " + str(results_exact[2])
             print_out += "\n --- total precision, recall, fscore: " + str(np.average(score_dict['precision_exact'])) + " , " +\
                          str(np.average(score_dict['recall_exact'])) + " , " +\
                          str(np.average(score_dict['f_score_exact']))
 
             # soft scores
             print_out += "\n ------------------------------------------------- SOFT"
-            results_soft = evaluate(match_list_soft, processed_strings, trg_str_seqs, topk=eval_topk)
+            results_soft = evaluate(
+                match_list_soft, processed_strings, trg_str_seqs, topk=eval_topk)
             for k, v in zip(score_names, results_soft):
                 if '%s_soft' % (k) not in score_dict:
                     score_dict['%s_soft' % (k)] = []
                 score_dict['%s_soft' % (k)].append(v)
 
-            print_out += "\n --- batch precision, recall, fscore: " + str(results_soft[0]) + " , " + str(results_soft[1]) + " , " + str(results_soft[2])
+            print_out += "\n --- batch precision, recall, fscore: " + \
+                str(results_soft[0]) + " , " + \
+                str(results_soft[1]) + " , " + str(results_soft[2])
             print_out += "\n --- total precision, recall, fscore: " + str(np.average(score_dict['precision_soft'])) + " , " +\
                          str(np.average(score_dict['recall_soft'])) + " , " +\
                          str(np.average(score_dict['f_score_soft']))
@@ -253,13 +277,16 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             example_idx += 1
 
     if save_path:
-        # export scores. Each row is scores (precision, recall and f-score) of different way of filtering predictions (how many one-word predictions to keep)
+        # export scores. Each row is scores (precision, recall and f-score) of
+        # different way of filtering predictions (how many one-word predictions
+        # to keep)
         with open(save_path + os.path.sep + title + '_result.csv', 'w') as result_csv:
             csv_lines = []
             for mode in ["exact", "soft"]:
                 csv_line = ""
                 for k in score_names:
-                    csv_line += ',%f' % np.average(score_dict['%s_%s' % (k, mode)])
+                    csv_line += ',%f' % np.average(
+                        score_dict['%s_%s' % (k, mode)])
                 csv_lines.append(csv_line + '\n')
 
             result_csv.writelines(csv_lines)
@@ -276,14 +303,16 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 def evaluate_greedy(model, data_loader, test_examples, opt):
     model.eval()
 
-    logging.info('======================  Checking GPU Availability  =========================')
+    logging.info(
+        '======================  Checking GPU Availability  =========================')
     if torch.cuda.is_available():
         logging.info('Running on GPU!')
         model.cuda()
     else:
         logging.info('Running on CPU!')
 
-    logging.info('======================  Start Predicting  =========================')
+    logging.info(
+        '======================  Start Predicting  =========================')
     progbar = Progbar(title='Testing', target=len(data_loader), batch_size=data_loader.batch_size,
                       total_examples=len(data_loader.dataset))
 
@@ -293,14 +322,17 @@ def evaluate_greedy(model, data_loader, test_examples, opt):
     for i, (batch, example) in enumerate(zip(data_loader, test_examples)):
         src = batch.src
 
-        logging.info('======================  %d  =========================' % (i + 1))
-        logging.info('\nSource text: \n %s\n' % (' '.join([opt.id2word[wi] for wi in src.data.numpy()[0]])))
+        logging.info(
+            '======================  %d  =========================' % (i + 1))
+        logging.info('\nSource text: \n %s\n' %
+                     (' '.join([opt.id2word[wi] for wi in src.data.numpy()[0]])))
 
         if torch.cuda.is_available():
             src.cuda()
 
         # trg = Variable(torch.from_numpy(np.zeros((src.size(0), opt.max_sent_length), dtype='int64')))
-        trg = Variable(torch.LongTensor([[opt.word2id[pykp.io.BOS_WORD]] * opt.max_sent_length]))
+        trg = Variable(torch.LongTensor(
+            [[opt.word2id[pykp.io.BOS_WORD]] * opt.max_sent_length]))
 
         max_words_pred = model.greedy_predict(src, trg)
         progbar.update(None, i, [])
@@ -346,7 +378,8 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
     target_number = len(true_seqs)
     predicted_number = len(pred_seqs)
 
-    metric_dict = {'target_number': target_number, 'prediction_number': predicted_number, 'correct_number': match_score}
+    metric_dict = {'target_number': target_number,
+                   'prediction_number': predicted_number, 'correct_number': match_score}
 
     # convert target index into string
     if do_stem:
@@ -365,7 +398,8 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
                     if pred_w != true_w:
                         match = False
                         break
-                # if every word in pred_seq matches one true_seq exactly, match succeeds
+                # if every word in pred_seq matches one true_seq exactly, match
+                # succeeds
                 if match:
                     match_score[pred_id] = 1
                     break
@@ -375,13 +409,15 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
             # use the jaccard coefficient as the degree of partial match
             for true_id, true_seq in enumerate(true_seqs):
                 true_seq_set = set(true_seq)
-                jaccard = len(set.intersection(*[set(true_seq_set), set(pred_seq_set)])) / float(len(set.union(*[set(true_seq_set), set(pred_seq_set)])))
+                jaccard = len(set.intersection(*[set(true_seq_set), set(pred_seq_set)])) / float(
+                    len(set.union(*[set(true_seq_set), set(pred_seq_set)])))
                 if jaccard > max_similarity:
                     max_similarity = jaccard
             match_score[pred_id] = max_similarity
 
         elif type == 'bleu':
-            # account for the match of subsequences, like n-gram-based (BLEU) or LCS-based
+            # account for the match of subsequences, like n-gram-based (BLEU)
+            # or LCS-based
             match_score[pred_id] = bleu(pred_seq, true_seqs, [0.1, 0.3, 0.6])
 
     return match_score
@@ -395,8 +431,10 @@ def evaluate(match_list, predicted_list, true_list, topk=5):
         predicted_list = predicted_list[:topk]
 
     # Micro-Averaged  Method
-    micropk = float(sum(match_list)) / float(len(predicted_list)) if len(predicted_list) > 0 else 0.0
-    micrork = float(sum(match_list)) / float(len(true_list)) if len(true_list) > 0 else 0.0
+    micropk = float(sum(match_list)) / float(len(predicted_list)
+                                             ) if len(predicted_list) > 0 else 0.0
+    micrork = float(sum(match_list)) / float(len(true_list)
+                                             ) if len(true_list) > 0 else 0.0
 
     if micropk + micrork > 0:
         microf1 = float(2 * (micropk * micrork)) / (micropk + micrork)
