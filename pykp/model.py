@@ -11,7 +11,7 @@ import numpy as np
 import random
 
 import pykp
-from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, MultilayerPerceptron, UniLSTM
+from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, MultilayerPerceptron, UniLSTM, BiLSTM
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -330,14 +330,15 @@ class Seq2SeqLSTMAttention(nn.Module):
             self.pad_token_src
         )
 
-        self.encoder = nn.LSTM(
-            input_size=self.emb_dim,
-            hidden_size=self.src_hidden_dim,
-            num_layers=self.nlayers_src,
-            bidirectional=self.bidirectional,
-            batch_first=True,
-            dropout=self.dropout
-        )
+        # self.encoder = nn.LSTM(
+        #     input_size=self.emb_dim,
+        #     hidden_size=self.src_hidden_dim,
+        #     num_layers=self.nlayers_src,
+        #     bidirectional=self.bidirectional,
+        #     batch_first=True,
+        #     dropout=self.dropout
+        # )
+        self.encoder = BiLSTM(nemb=self.emb_dim, nhid=self.src_hidden_dim)
 
         self.decoder = nn.LSTM(
             input_size=self.emb_dim if not self.enable_target_encoder else self.emb_dim +
@@ -529,8 +530,8 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # input (batch_size, src_len), src_emb (batch_size, src_len, emb_dim)
         src_emb = self.embedding(input_src)
-        src_emb = nn.utils.rnn.pack_padded_sequence(
-            src_emb, input_src_len, batch_first=True)
+        # src_emb = nn.utils.rnn.pack_padded_sequence(
+        #     src_emb, input_src_len, batch_first=True)
 
         # src_h (batch_size, seq_len, hidden_size * num_directions): outputs (h_t) of all the time steps
         # src_h_t, src_c_t (num_layers * num_directions, batch, hidden_size):
@@ -539,15 +540,11 @@ class Seq2SeqLSTMAttention(nn.Module):
             src_emb, (self.h0_encoder, self.c0_encoder)
         )
 
-        src_h, _ = nn.utils.rnn.pad_packed_sequence(src_h, batch_first=True)
+        # src_h, _ = nn.utils.rnn.pad_packed_sequence(src_h, batch_first=True)
 
         # concatenate to (batch_size, hidden_size * num_directions)
-        if self.bidirectional:
-            h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
-            c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
-        else:
-            h_t = src_h_t[-1]
-            c_t = src_c_t[-1]
+        h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
+        c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
 
         return src_h, (h_t, c_t)
 

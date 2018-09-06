@@ -264,11 +264,14 @@ class UniLSTM(torch.nn.Module):
         dropout_between_rnn_hiddens -- across time step
     '''
 
-    def __init__(self, nemb, nhid):
+    def __init__(self, nemb, nhid, rnn_cell=None):
         super(UniLSTM, self).__init__()
         self.nhid = nhid
         self.nemb = nemb
-        self.rnn = LSTMCell(self.nemb, self.nhid, use_bias=True)
+        if rnn_cell is not None:
+            self.rnn = rnn_cell
+        else:
+            self.rnn = LSTMCell(self.nemb, self.nhid, use_bias=True)
 
     def get_init_hidden(self, bsz):
         if torch.cuda.is_available():
@@ -301,3 +304,94 @@ class UniLSTM(torch.nn.Module):
             mask.unsqueeze(-1)  # batch x time x hid
         hidden_states = hidden_states.permute(1, 0, 2)  # time x batch x hid
         return hidden_states, last_states
+
+
+class BiLSTM(torch.nn.Module):
+    '''
+    inputs: x:          batch x time x emb
+            mask:       batch x time
+            init_states:(2 x batch x h, 2 x batch x h)
+    outputs:encoding:   batch x time x hid*2
+            last_states:(2 x batch x h, 2 x batch x h)
+    Dropout types:
+        dropouth -- dropout on hidden-to-hidden connections
+        dropoutw -- hidden-to-hidden weight dropout
+    '''
+
+    def __init__(self, nemb, nhid, forward_rnn_cell=None, backward_rnn_cell=None):
+        super(BiLSTM, self).__init__()
+        self.nhid = nhid
+        self.nemb = nemb
+        if forward_rnn_cell is not None:
+            self.forward_rnn = forward_rnn_cell
+        else:
+            self.forward_rnn = LSTMCell(self.nemb, self.nhid, use_bias=True)
+        if backward_rnn_cell is not None:
+            self.backward_rnn = backward_rnn_cell
+        else:
+            self.backward_rnn = LSTMCell(self.nemb, self.nhid, use_bias=True)
+
+    def get_init_hidden(self, bsz):
+        if torch.cuda.is_available():
+            return (torch.autograd.Variable(torch.zeros(2, bsz, self.nhid)).cuda(),
+                    torch.autograd.Variable(torch.zeros(2, bsz, self.nhid)).cuda())
+        else:
+            return (torch.autograd.Variable(torch.zeros(2, bsz, self.nhid)),
+                    torch.autograd.Variable(torch.zeros(2, bsz, self.nhid)))
+
+    def flip(self, tensor, flip_dim=0):
+        # flip
+        idx = [i for i in range(tensor.size(flip_dim) - 1, -1, -1)]
+        idx = torch.autograd.Variable(torch.LongTensor(idx))
+        if self.enable_cuda:
+            idx = idx.cuda()
+        inverted_tensor = tensor.index_select(flip_dim, idx)
+        return inverted_tensor
+
+    def forward(self, x, mask, init_states=None):
+        # x = x.permute(1, 0, 2)  # batch x time x emb
+        if init_states is None:
+            init_states = self.get_init_hidden(x.size(0))
+
+        embeddings = x
+        embeddings_inverted = self.flip(embeddings, flip_dim=1)  # batch x time x emb (backward)
+        mask_inverted = self.flip(mask, flip_dim=1)  # batch x time (backward)
+
+        # forward
+        state_stp_foward = [(init_states[0][0], init_states[1][0])]
+        for t in range(embeddings.size(1)):
+            input_mask = mask[:, t]
+            curr_input = embeddings[:, t]
+            previous_h, previous_c = state_stp_foward[t]
+            new_h, new_c = self.rnn.forward(
+                curr_input, input_mask, previous_h, previous_c)
+            state_stp_foward.append((new_h, new_c))
+
+        hidden_states_foward = [hc[0] for hc in state_stp_foward[1:]]  # list of batch x hid
+        hidden_states_foward = torch.stack(hidden_states_foward, 1)  # batch x time x hid
+        # (batch x hid, batch x hid)
+        last_states_foward = (state_stp_foward[-1][0], state_stp_foward[-1][1])
+
+        # backward
+        state_stp_backward = [(init_states[0][1], init_states[1][1])]
+        for t in range(embeddings_inverted.size(1)):
+            input_mask = mask_inverted[:, t]
+            curr_input = embeddings_inverted[:, t]
+            previous_h, previous_c = state_stp_backward[t]
+            new_h, new_c = self.rnn.forward(
+                curr_input, input_mask, previous_h, previous_c)
+            state_stp_backward.append((new_h, new_c))
+        hidden_states_backward = [hc[0] for hc in state_stp_backward[1:]]  # list of batch x hid
+        hidden_states_backward = torch.stack(hidden_states_backward, 1)  # batch x time x hid
+        hidden_states_backward = self.flip(hidden_states_backward, flip_dim=1)  # batch x time x hid
+        last_states_backward = (state_stp_backward[-1][0], state_stp_backward[-1][1])
+
+        # concat
+        concat_states = torch.cat([hidden_states_foward, hidden_states_backward], -1)  # batch x time x hid*2
+        concat_states = concat_states * mask.unsqueeze(-1)  # batch x time x hid
+        
+        concat_last_state = (torch.stack([last_states_foward[0], last_states_backward[0]], 0),
+                             torch.stack([last_states_foward[1], last_states_backward[1]], 0))  # (2 x batch x hid, 2 x batch x hid)
+
+        # concat_states = concat_states.permute(1, 0, 2)  # time x batch x hid
+        return concat_states, concat_last_state
