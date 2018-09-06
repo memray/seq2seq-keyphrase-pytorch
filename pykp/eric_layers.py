@@ -316,14 +316,14 @@ class ReuseForwardLSTM(torch.nn.Module):
     def forward(self, x, mask, init_hidden):
         # x:            time x batch x emb
         # init_hidden:  (time x h, time x h)
-        x = x.permute(1, 0, 2)  # batch x time x emb
+        x = x.permute(1, 0, 2).contiguous()  # batch x time x emb
         batch_size, hid = init_hidden[0].size()
         init_hidden = (init_hidden[0].unsqueeze(0).expand(2, batch_size, hid).contiguous(), init_hidden[1].unsqueeze(0).expand(2, batch_size, hid).contiguous())
 
         h, (h_t, c_t) = self.BiLSTM(x, init_hidden)
-        h = h[:, :, :hid]  # batch x time x hid
-        h_t = h_t[:, :hid]  # batch x hid
-        c_t = c_t[:, :hid]  # batch x hid
+        h = h[:, :, :hid].contiguous()  # batch x time x hid
+        h_t = h_t[:, :hid].contiguous()  # batch x hid
+        c_t = c_t[:, :hid].contiguous()  # batch x hid
 
         h = h * mask.unsqueeze(-1)  # batch x time x hid
         h = h.permute(1, 0, 2)  # time x batch x hid
