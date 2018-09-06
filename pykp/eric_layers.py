@@ -363,7 +363,7 @@ class BiLSTM(torch.nn.Module):
             input_mask = mask[:, t]
             curr_input = embeddings[:, t]
             previous_h, previous_c = state_stp_foward[t]
-            new_h, new_c = self.rnn.forward(
+            new_h, new_c = self.forward_rnn.forward(
                 curr_input, input_mask, previous_h, previous_c)
             state_stp_foward.append((new_h, new_c))
 
@@ -378,7 +378,7 @@ class BiLSTM(torch.nn.Module):
             input_mask = mask_inverted[:, t]
             curr_input = embeddings_inverted[:, t]
             previous_h, previous_c = state_stp_backward[t]
-            new_h, new_c = self.rnn.forward(
+            new_h, new_c = self.backward_rnn.forward(
                 curr_input, input_mask, previous_h, previous_c)
             state_stp_backward.append((new_h, new_c))
         hidden_states_backward = [hc[0] for hc in state_stp_backward[1:]]  # list of batch x hid

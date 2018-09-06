@@ -528,7 +528,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.h0_encoder, self.c0_encoder = self.init_encoder_state(input_src)
 
         # input (batch_size, src_len), src_emb (batch_size, src_len, emb_dim)
-        src_emb = self.embedding(input_src, src_mask)
+        src_emb = self.embedding(input_src)
         # src_emb = nn.utils.rnn.pack_padded_sequence(
         #     src_emb, input_src_len, batch_first=True)
 
@@ -536,7 +536,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         # src_h_t, src_c_t (num_layers * num_directions, batch, hidden_size):
         # hidden and cell state at last time step
         src_h, (src_h_t, src_c_t) = self.encoder(
-            src_emb, (self.h0_encoder, self.c0_encoder)
+            src_emb, src_mask, (self.h0_encoder, self.c0_encoder)
         )
 
         # src_h, _ = nn.utils.rnn.pad_packed_sequence(src_h, batch_first=True)
