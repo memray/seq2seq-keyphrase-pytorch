@@ -247,7 +247,7 @@ class SequenceGenerator(object):
         batch_size = len(src_input)
 
         src_mask = self.get_mask(src_input)  # same size as input_src
-        src_context, (src_h, src_c) = self.model.encode(src_input, src_len)
+        src_context, (src_h, src_c) = self.model.encode(src_input, src_mask)
 
         # prepare the init hidden vector, (batch_size, trg_seq_len,
         # dec_hidden_dim)
@@ -502,7 +502,7 @@ class SequenceGenerator(object):
         batch_size = len(src_input)
 
         src_mask = self.get_mask(src_input)  # same size as input_src
-        src_context, (src_h, src_c) = self.model.encode(src_input, src_len)
+        src_context, (src_h, src_c) = self.model.encode(src_input, src_mask)
 
         # prepare the init hidden vector, (batch_size, trg_seq_len,
         # dec_hidden_dim)

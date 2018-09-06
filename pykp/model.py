@@ -445,17 +445,16 @@ class Seq2SeqLSTMAttention(nn.Module):
 
     def init_encoder_state(self, input):
         """Get cell states and hidden states."""
-        batch_size = input.size(0) \
-            if self.encoder.batch_first else input.size(1)
+        batch_size = input.size(0)
 
         h0_encoder = Variable(torch.zeros(
-            self.encoder.num_layers * self.num_directions,
+            2,
             batch_size,
             self.src_hidden_dim
         ), requires_grad=False)
 
         c0_encoder = Variable(torch.zeros(
-            self.encoder.num_layers * self.num_directions,
+            2,
             batch_size,
             self.src_hidden_dim
         ), requires_grad=False)
@@ -512,7 +511,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             ctx_mask = self.get_mask(input_src)  # same size as input_src
         if not trg_mask:
             trg_mask = self.get_mask(input_trg)  # same size as input_trg
-        src_h, (src_h_t, src_c_t) = self.encode(input_src, input_src_len)
+        src_h, (src_h_t, src_c_t) = self.encode(input_src, ctx_mask)
 
         decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights, trg_encoding_h_last = self.decode(trg_inputs=input_trg, src_map=input_src_ext,
                                                                                                            oov_list=oov_lists, enc_context=src_h, enc_hidden=(
@@ -520,7 +519,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                                                                                                            trg_mask=trg_mask, ctx_mask=ctx_mask)
         return decoder_probs, decoder_hiddens, (attn_weights, copy_attn_weights), src_h_t, trg_encoding_h_last
 
-    def encode(self, input_src, input_src_len):
+    def encode(self, input_src, src_mask):
         """
         Propogate input through the network.
         """
@@ -529,7 +528,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.h0_encoder, self.c0_encoder = self.init_encoder_state(input_src)
 
         # input (batch_size, src_len), src_emb (batch_size, src_len, emb_dim)
-        src_emb = self.embedding(input_src)
+        src_emb = self.embedding(input_src, src_mask)
         # src_emb = nn.utils.rnn.pack_padded_sequence(
         #     src_emb, input_src_len, batch_first=True)
 

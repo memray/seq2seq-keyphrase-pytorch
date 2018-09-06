@@ -343,7 +343,7 @@ class BiLSTM(torch.nn.Module):
         # flip
         idx = [i for i in range(tensor.size(flip_dim) - 1, -1, -1)]
         idx = torch.autograd.Variable(torch.LongTensor(idx))
-        if self.enable_cuda:
+        if torch.cuda.is_available():
             idx = idx.cuda()
         inverted_tensor = tensor.index_select(flip_dim, idx)
         return inverted_tensor
