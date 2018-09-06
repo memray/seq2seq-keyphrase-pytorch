@@ -197,8 +197,9 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
     decoder_log_probs, decoder_outputs, _, source_representations, target_representations = model.forward(
         src, src_len, trg, src_oov, oov_lists)
 
-    te_loss = get_target_encoder_loss(
-        model, source_representations, target_representations, replay_memory, criterion, opt)
+    # te_loss = get_target_encoder_loss(
+    #     model, source_representations, target_representations, replay_memory, criterion, opt)
+    te_loss = 0.0
     penalties = get_orthogonal_penalty(
         trg_copy_target_np, decoder_outputs, opt)
 

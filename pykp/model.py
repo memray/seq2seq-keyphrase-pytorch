@@ -11,7 +11,7 @@ import numpy as np
 import random
 
 import pykp
-from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, MultilayerPerceptron, UniLSTM, BiLSTM
+from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, MultilayerPerceptron, UniLSTM, BiLSTM, LSTMCell
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -286,7 +286,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.nlayers_src = opt.enc_layers
         self.nlayers_trg = opt.dec_layers
         self.dropout = opt.dropout
-        self.target_encoder_dim = opt.target_encoder_dim
+        self.target_encoder_dim = self.src_hidden_dim
         self.enable_target_encoder = opt.target_encoder_lambda > 0.0
         self.target_encoding_mlp_hidden_dim = opt.target_encoding_mlp_hidden_dim
 
@@ -329,16 +329,9 @@ class Seq2SeqLSTMAttention(nn.Module):
             self.emb_dim,
             self.pad_token_src
         )
-
-        # self.encoder = nn.LSTM(
-        #     input_size=self.emb_dim,
-        #     hidden_size=self.src_hidden_dim,
-        #     num_layers=self.nlayers_src,
-        #     bidirectional=self.bidirectional,
-        #     batch_first=True,
-        #     dropout=self.dropout
-        # )
-        self.encoder = BiLSTM(nemb=self.emb_dim, nhid=self.src_hidden_dim)
+        self.forward_rnn_cell = LSTMCell(self.emb_dim, self.src_hidden_dim, use_bias=True)
+        self.backward_rnn_cell = LSTMCell(self.emb_dim, self.src_hidden_dim, use_bias=True)
+        self.encoder = BiLSTM(nemb=self.emb_dim, nhid=self.src_hidden_dim, forward_rnn_cell=self.forward_rnn_cell, backward_rnn_cell=self.backward_rnn_cell)
 
         self.decoder = nn.LSTM(
             input_size=self.emb_dim if not self.enable_target_encoder else self.emb_dim +
@@ -351,7 +344,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         )
 
         self.target_encoder = UniLSTM(nemb=self.emb_dim,
-                                      nhid=self.target_encoder_dim)
+                                      nhid=self.target_encoder_dim, rnn_cell=self.forward_rnn_cell)
 
         self.target_encoding_merger = Concat()
         self.target_encoding_mlp = MultilayerPerceptron(input_dim=self.target_encoder_dim,
