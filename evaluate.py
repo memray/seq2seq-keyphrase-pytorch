@@ -32,7 +32,7 @@ def has_special_token(seq, special_tokens):
 def process_predseqs(seq_sentence_np, oov, id2word, opt):
     # pred_seq is a sequence of word indices, key phrases are separated by
     # special token
-    if seq_sentence_np[-1] == opt.word2id[EOS_WORD]:
+    if len(seq_sentence_np) > 0 and seq_sentence_np[-1] == opt.word2id[EOS_WORD]:
         seq_sentence_np = seq_sentence_np[:-1]
 
     processed_seq = [id2word[x] if x < opt.vocab_size else oov[
@@ -131,6 +131,8 @@ def keyphrase_ranking(list_of_beams, max_kps=20, sep_ids=[4]):
     already_in = set()
     for beam in list_of_beams:
         kps = splitz(beam, sep_ids=sep_ids)
+        if len(kps) == 0 or len(kps[-1]) == 0:
+            continue
         # if last kp ends with <EOS>, then remove <EOS> and keep the kp
         # else we assume the last kp hasn't finished generating, drop it.
         if kps[-1][-1] == 2:

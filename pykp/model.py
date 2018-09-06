@@ -11,7 +11,7 @@ import numpy as np
 import random
 
 import pykp
-from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, MultilayerPerceptron
+from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, MultilayerPerceptron, UniLSTM
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -349,14 +349,9 @@ class Seq2SeqLSTMAttention(nn.Module):
             dropout=self.dropout
         )
 
-        self.target_encoder = nn.LSTM(
-            input_size=self.emb_dim,
-            hidden_size=self.target_encoder_dim,
-            num_layers=1,
-            bidirectional=False,
-            batch_first=False,
-            dropout=self.dropout
-        )
+        self.target_encoder = UniLSTM(nemb=self.emb_dim,
+                                      nhid=self.target_encoder_dim)
+
         self.target_encoding_merger = Concat()
         self.target_encoding_mlp = MultilayerPerceptron(input_dim=self.target_encoder_dim,
                                                         hidden_dim=self.target_encoding_mlp_hidden_dim)
@@ -473,13 +468,11 @@ class Seq2SeqLSTMAttention(nn.Module):
         """Get cell states and hidden states."""
 
         h0_target_encoder = Variable(torch.zeros(
-            self.target_encoder.num_layers,
             batch_size,
             self.target_encoder_dim
         ), requires_grad=False)
 
         c0_target_encoder = Variable(torch.zeros(
-            self.target_encoder.num_layers,
             batch_size,
             self.target_encoder_dim
         ), requires_grad=False)
@@ -612,7 +605,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         # prepare the init hidden vector, (batch_size, dec_hidden_dim) -> 2 *
         # (1, batch_size, dec_hidden_dim)
         init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
-        # (self.encoder.num_layers * self.num_directions, batch_size, self.src_hidden_dim)
+        # ((batch_size, self.src_hidden_dim), (batch_size, self.src_hidden_dim))
         init_hidden_target_encoder = self.init_target_encoder_state(batch_size)
 
         # enc_context has to be reshaped before dot attention (batch_size,
@@ -640,8 +633,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         if self.enable_target_encoder:
             # target encoder
             trg_enc_h, (trg_enc_h_last, _) = self.target_encoder(
-                trg_emb, init_hidden_target_encoder)
-            trg_enc_h_last = trg_enc_h_last[0]  # bi directional
+                trg_emb, trg_mask, init_hidden_target_encoder)
             trg_enc_h = self.target_encoding_mlp(
                 trg_enc_h)[0]  # output of the 1st layer
             trg_enc_h = trg_enc_h.detach()
@@ -680,7 +672,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 _, copy_weighted_context, copy_weights, copy_logits = self.copy_attention_layer(
                     decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
             else:
-                copy_weighted_context, copy_logits, copy_weights = weighted_context, attn_logits, attn_weights
+                copy_weighted_context, copy_weights = weighted_context, attn_weights
 
             # (batch_size, trg_len, trg_hidden_dim)
             decoder_outputs = decoder_outputs.permute(1, 0, 2)
@@ -916,7 +908,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         if self.enable_target_encoder:
             # target encoder
             trg_enc_h, trg_enc_hidden = self.target_encoder(
-                trg_emb, trg_enc_hidden
+                trg_emb, trg_mask, trg_enc_hidden
             )
             trg_enc_h = self.target_encoding_mlp(
                 trg_enc_h)[0]  # output of the 1st layer
