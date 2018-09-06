@@ -287,7 +287,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.nlayers_trg = opt.dec_layers
         self.dropout = opt.dropout
         self.target_encoder_dim = self.src_hidden_dim
-        self.enable_target_encoder = opt.target_encoder_lambda > 0.0
+        self.enable_target_encoder = True
         self.target_encoding_mlp_hidden_dim = opt.target_encoding_mlp_hidden_dim
 
         self.pad_token_src = opt.word2id[pykp.io.PAD_WORD]
