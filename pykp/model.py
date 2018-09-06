@@ -11,7 +11,7 @@ import numpy as np
 import random
 
 import pykp
-from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, MultilayerPerceptron, UniLSTM
+from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, MultilayerPerceptron, UniLSTM, ReuseForwardLSTM
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -286,8 +286,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.nlayers_src = opt.enc_layers
         self.nlayers_trg = opt.dec_layers
         self.dropout = opt.dropout
-        self.target_encoder_dim = opt.target_encoder_dim
-        self.enable_target_encoder = opt.target_encoder_lambda > 0.0
+        self.target_encoder_dim = self.src_hidden_dim
+        self.enable_target_encoder = True
         self.target_encoding_mlp_hidden_dim = opt.target_encoding_mlp_hidden_dim
 
         self.pad_token_src = opt.word2id[pykp.io.PAD_WORD]
@@ -349,8 +349,9 @@ class Seq2SeqLSTMAttention(nn.Module):
             dropout=self.dropout
         )
 
-        self.target_encoder = UniLSTM(nemb=self.emb_dim,
-                                      nhid=self.target_encoder_dim)
+        self.target_encoder = ReuseForwardLSTM(BiLSTM=self.encoder)
+        # self.target_encoder = UniLSTM(nemb=self.emb_dim,
+        #                               nhid=self.target_encoder_dim)
 
         self.target_encoding_merger = Concat()
         self.target_encoding_mlp = MultilayerPerceptron(input_dim=self.target_encoder_dim,

@@ -80,8 +80,8 @@ class TimeDistributedDense(torch.nn.Module):
             y = y * mask.unsqueeze(-1)  # batch x time x b
         return y
 
-
 class MLPMultiToOne(torch.nn.Module):
+
     '''
     input:  [x1: batch x input_1_dim
             ...
@@ -301,3 +301,36 @@ class UniLSTM(torch.nn.Module):
             mask.unsqueeze(-1)  # batch x time x hid
         hidden_states = hidden_states.permute(1, 0, 2)  # time x batch x hid
         return hidden_states, last_states
+
+
+
+class ReuseForwardLSTM(torch.nn.Module):
+
+    '''
+    input:  [x1: batch x input_1_dim
+            ...
+            xk: batch x input_k_dim]
+    output: y:  batch x output_dim
+    '''
+
+    def __init__(self, BiLSTM):
+        super(ReuseForwardLSTM, self).__init__()
+        self.BiLSTM = BiLSTM
+
+    def forward(self, x, mask, init_hidden):
+        # x:            time x batch x emb
+        # init_hidden:  (time x h, time x h)
+        x = x.permute(1, 0, 2)  # batch x time x emb
+        batch_size, hid = init_hidden[0].size()
+        init_hidden = (init_hidden[0].unsqueeze(0).expand(2, batch_size, hid), init_hidden[1].unsqueeze(0).expand(2, batch_size, hid))
+
+        h, (h_t, c_t) = self.BiLSTM(x, init_hidden)
+        h = h[:, :, :hid]  # batch x time x hid
+        h_t = h_t[:, :hid]  # batch x hid
+        c_t = c_t[:, :hid]  # batch x hid
+
+        h = h * mask.unsqueeze(-1)  # batch x time x hid
+        
+        h = x.permute(1, 0, 2)  # time x batch x hid
+
+        return h, (h_t, c_t)
