@@ -158,6 +158,16 @@ def extract_to_list(pred_seq):
     return seq_sentence
 
 
+def clean_list_of_list(list_of_list):
+    output = []
+    for item in list_of_list:
+        item = [word.strip() for word in item]
+        item = [word for word in item if word != ""]
+        if len(item) > 0:
+            output.append(item)
+    return output
+
+
 def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_path=None):
     logging = config.init_logging(title, save_path + '/%s.log' % title)
     progbar = Progbar(logger=logging, title=title, target=len(data_loader.dataset.examples), batch_size=data_loader.batch_size,
@@ -204,6 +214,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 src_str, trg_str_seqs)
             trg_str_seqs = [item for item, _flag in zip(
                 trg_str_seqs, trg_str_is_present) if _flag]
+            trg_str_seqs = clean_list_of_list(trg_str_seqs)
             if len(trg_str_seqs) == 0:
                 continue
             # 1st filtering
