@@ -322,8 +322,8 @@ class ReuseForwardLSTM(torch.nn.Module):
 
         h, (h_t, c_t) = self.BiLSTM(x, init_hidden)
         h = h[:, :, :hid].contiguous()  # batch x time x hid
-        h_t = h_t[:, :hid].contiguous()  # batch x hid
-        c_t = c_t[:, :hid].contiguous()  # batch x hid
+        h_t = h_t[0].contiguous()  # batch x hid
+        c_t = c_t[0].contiguous()  # batch x hid
 
         h = h * mask.unsqueeze(-1)  # batch x time x hid
         h = h.permute(1, 0, 2)  # time x batch x hid
