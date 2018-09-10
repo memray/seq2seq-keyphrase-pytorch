@@ -255,8 +255,8 @@ class SequenceGenerator(object):
         for seq in flattened_sequences:
             one_sent = []
             for i in range(len(seq.sentence)):
-                if seq.senttence[i] < self.model.vocab_size:
-                    one_sent.append(seq.senttence[i])
+                if seq.sentence[i] < self.model.vocab_size:
+                    one_sent.append(seq.sentence[i])
                 else:
                     one_sent.append(self.model.unk_word)
             tmp.append(one_sent)
