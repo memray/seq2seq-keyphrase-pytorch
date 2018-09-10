@@ -161,7 +161,7 @@ def get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt):
         for j in range(len(trg_copy_target_np[i])):  # len of target
             if trg_copy_target_np[i][j] == sep_id:
                 seps.append(decoder_outputs[i][j])
-        if len(seps) > 0:
+        if len(seps) > 1:
             seps = torch.stack(seps, -1)  # h x n
             identity = torch.eye(seps.size(-1))  # n x n
             if torch.cuda.is_available():
