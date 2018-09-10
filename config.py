@@ -256,18 +256,17 @@ def train_opts(parser):
     parser.add_argument('-keyphrase_ordering', default='source', type=str,
                         help="""sort keyphrases or randomly shuffle them:
                                 origin, source, alphabet, shuffle""")
-
-    parser.add_argument('-target_encoder_dim', default=256, type=int,
-                        help="""target encoder dim, 0 means average""")
-
-    parser.add_argument('-target_encoder_lambda', default=0.0, type=float,
-                        help="""target encoder lambda""")
     parser.add_argument('-orthogonal_regularization_lambda', default=0.0, type=float,
                         help="""target encoder lambda""")
-    parser.add_argument('-replay_buffer_capacity', default=100, type=int,
-                        help="""replay buffer lambda""")
-    parser.add_argument('-target_encoding_mlp_hidden_dim', default=[32, 32], type=list,
+
+    parser.add_argument('-target_encoder_dim', default=2048, type=int,
+                        help="""target encoder dim, 0 means average""")
+    parser.add_argument('-target_encoder_lambda', default=0.0, type=float,
+                        help="""target encoder lambda""")
+    parser.add_argument('-target_encoding_mlp_hidden_dim', default=[128], type=list,
                         help="""target_encoding_mlp_hidden_dim""")
+    parser.add_argument('-target_encoder_data_path', default='gensen/data/', type=str,
+                        help="""gensen data path""")
 
     # GPU
 

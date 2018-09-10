@@ -76,33 +76,6 @@ def orthogonal_penalty(_m, I, l_n_norm=2):
     return torch.norm((m - I), p=l_n_norm)
 
 
-class ReplayMemory(object):
-
-    def __init__(self, capacity=500):
-        # vanilla replay memory
-        self.capacity = capacity
-        self.memory = []
-        self.position = 0
-
-    def push(self, stuff):
-        """Saves a transition."""
-        if len(self.memory) < self.capacity:
-            self.memory.append(None)
-        self.memory[self.position] = stuff
-        self.position = (self.position + 1) % self.capacity
-
-    def sample(self, batch_size):
-        return random.sample(self.memory, batch_size)
-
-    def __len__(self):
-        return len(self.memory)
-
-
-def random_insert(_list, elem):
-    insert_before_this = np.random.randint(low=0, high=len(_list) + 1)
-    return _list[:insert_before_this] + [elem] + _list[insert_before_this:], insert_before_this
-
-
 def get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt):
     orth_coef = opt.orthogonal_regularization_lambda
     if orth_coef == 0:
@@ -132,7 +105,7 @@ def get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt):
     return penalties
 
 
-def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
+def train_ml(one2one_batch, model, optimizer, criterion, opt):
     src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists = one2one_batch
     max_oov_number = max([len(oov) for oov in oov_lists])
     trg_copy_target_np = copy.copy(trg_copy_target)
@@ -288,7 +261,6 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     train_ml_losses = []
     total_batch = -1
     early_stop_flag = False
-    replay_memory = ReplayMemory(opt.replay_buffer_capacity)
 
     for epoch in range(opt.start_epoch, opt.epochs):
         if early_stop_flag:
@@ -306,7 +278,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
             # Training
             if opt.train_ml:
                 loss_ml, decoder_log_probs, nll_loss, penalty, te_loss = train_ml(
-                    one2seq_batch, model, optimizer_ml, criterion, replay_memory, opt)
+                    one2seq_batch, model, optimizer_ml, criterion, opt)
                 train_ml_losses.append(loss_ml)
                 report_loss.append(('train_ml_loss', loss_ml))
                 report_loss.append(('PPL', loss_ml))
