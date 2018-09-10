@@ -627,10 +627,8 @@ class Seq2SeqLSTMAttention(nn.Module):
             # trg_enc_h: batch x len x 2048
             trg_enc_h = trg_enc_h.detach()
             trg_enc_h =  trg_enc_h * trg_mask.unsqueeze(-1)  # batch x len x 2048
-
-            trg_enc_h = self.target_encoding_mlp(
-                trg_enc_h)[0]  # output of the 1st layer
-            decoder_input = self.target_encoding_merger([trg_enc_h, trg_emb])
+            trg_enc_h = self.target_encoding_mlp(trg_enc_h)[0]  # output of the 1st layer
+            decoder_input = self.target_encoding_merger([trg_enc_h.permute(1, 0, 2), trg_emb])
         else:
             decoder_input = trg_emb
 
@@ -905,7 +903,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
             trg_enc_h_t = self.target_encoding_mlp(
                 trg_enc_h_t)[0]  # output of the 1st layer
-            dec_input = self.target_encoding_merger([trg_enc_h_t, trg_emb])
+            dec_input = self.target_encoding_merger([trg_enc_h_t.permute(1, 0, 2), trg_emb])
         else:
             dec_input = trg_emb
 
