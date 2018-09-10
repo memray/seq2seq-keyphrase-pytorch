@@ -103,52 +103,6 @@ def random_insert(_list, elem):
     return _list[:insert_before_this] + [elem] + _list[insert_before_this:], insert_before_this
 
 
-def get_target_encoder_loss(model, source_representations, target_representations, replay_memory, criterion, opt):
-    # source_representations: batch x hid
-    # target_representations: batch x hid
-    batch_size = target_representations.size(0)
-    n_neg = opt.n_negative_samples
-    coef = opt.target_encoder_lambda
-    if coef == 0.0:
-        return 0.0
-    batch_inputs_source, batch_inputs_target, batch_labels = [], [], []
-    source_representations = source_representations.detach()
-    for b in range(batch_size):
-        # 1. negative sampling
-        if len(replay_memory) >= n_neg:
-            neg_list = replay_memory.sample(n_neg)
-            inputs, which = random_insert(neg_list, source_representations[b])
-            inputs = torch.stack(inputs, 0)  # n_neg+1 x hid
-            batch_inputs_source.append(inputs)
-            batch_inputs_target.append(target_representations[b])
-            batch_labels.append(which)
-        # 2. push source representations into replay memory
-        replay_memory.push(source_representations[b])
-    if len(batch_inputs_source) == 0:
-        return 0.0
-    batch_inputs_source = torch.stack(
-        batch_inputs_source, 0)  # batch x n_neg+1 x hid
-    batch_inputs_target = torch.stack(batch_inputs_target, 0)  # batch x hid
-    batch_labels = np.array(batch_labels)  # batch
-    batch_labels = torch.autograd.Variable(
-        torch.from_numpy(batch_labels).type(torch.LongTensor))
-    if torch.cuda.is_available():
-        batch_labels = batch_labels.cuda()
-
-    # 3. prediction
-    batch_inputs_target = model.target_encoding_mlp(
-        batch_inputs_target)[-1]  # last layer, batch x mlp_hid
-    batch_inputs_target = torch.stack(
-        [batch_inputs_target] * batch_inputs_source.size(1), 1)
-    pred = model.bilinear_layer(
-        batch_inputs_source, batch_inputs_target).squeeze(-1)  # batch x n_neg+1
-    pred = torch.nn.functional.log_softmax(pred, dim=-1)  # batch x n_neg+1
-    # 4. backprop & update
-    loss = criterion(pred, batch_labels)
-    loss = loss * coef
-    return loss
-
-
 def get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt):
     orth_coef = opt.orthogonal_regularization_lambda
     if orth_coef == 0:
@@ -194,10 +148,9 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
         trg_copy_target = trg_copy_target.cuda()
         src_oov = src_oov.cuda()
 
-    decoder_log_probs, decoder_outputs, _, source_representations, target_representations = model.forward(
-        src, src_len, trg, src_oov, oov_lists)
+    decoder_log_probs, decoder_outputs, _ = model.forward(src, src_len, trg, src_oov, oov_lists)
 
-    te_loss = get_target_encoder_loss(model, source_representations, target_representations, replay_memory, criterion, opt)
+    te_loss = 0.0
     penalties = get_orthogonal_penalty(
         trg_copy_target_np, decoder_outputs, opt)
 

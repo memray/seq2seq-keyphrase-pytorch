@@ -27,10 +27,71 @@ import logging
 from torch.distributions import Categorical
 
 
+def pad_sequences(sequences, maxlen=None, dtype='int32', padding='post', truncating='pre', value=0.):
+    '''
+    FROM KERAS
+    Pads each sequence to the same length:
+    the length of the longest sequence.
+    If maxlen is provided, any sequence longer
+    than maxlen is truncated to maxlen.
+    Truncation happens off either the beginning (default) or
+    the end of the sequence.
+    Supports post-padding and pre-padding (default).
+    # Arguments
+        sequences: list of lists where each element is a sequence
+        maxlen: int, maximum length
+        dtype: type to cast the resulting sequence.
+        padding: 'pre' or 'post', pad either before or after each sequence.
+        truncating: 'pre' or 'post', remove values from sequences larger than
+            maxlen either in the beginning or in the end of the sequence
+        value: float, value to pad the sequences to the desired value.
+    # Returns
+        x: numpy array with dimensions (number_of_sequences, maxlen)
+    '''
+    lengths = [len(s) for s in sequences]
+
+    nb_samples = len(sequences)
+    if maxlen is None:
+        maxlen = np.max(lengths)
+
+    # take the sample shape from the first non empty sequence
+    # checking for consistency in the main loop below.
+    sample_shape = tuple()
+    for s in sequences:
+        if len(s) > 0:
+            sample_shape = np.asarray(s).shape[1:]
+            break
+
+    x = (np.ones((nb_samples, maxlen) + sample_shape) * value).astype(dtype)
+    for idx, s in enumerate(sequences):
+        if len(s) == 0:
+            continue  # empty list was found
+        if truncating == 'pre':
+            trunc = s[-maxlen:]
+        elif truncating == 'post':
+            trunc = s[:maxlen]
+        else:
+            raise ValueError('Truncating type "%s" not understood' % truncating)
+
+        # check `trunc` has expected shape
+        trunc = np.asarray(trunc, dtype=dtype)
+        if trunc.shape[1:] != sample_shape:
+            raise ValueError('Shape of sample %s of sequence at position %s is different from expected shape %s' %
+                                (trunc.shape[1:], idx, sample_shape))
+
+        if padding == 'post':
+            x[idx, :len(trunc)] = trunc
+        elif padding == 'pre':
+            x[idx, -len(trunc):] = trunc
+        else:
+            raise ValueError('Padding type "%s" not understood' % padding)
+    return x
+
+
 class Sequence(object):
     """Represents a complete or partial sequence."""
 
-    def __init__(self, batch_id, sentence, dec_hidden, trg_enc_hidden, context, ctx_mask, src_oov, oov_list, logprobs, score, attention=None):
+    def __init__(self, batch_id, sentence, dec_hidden, context, ctx_mask, src_oov, oov_list, logprobs, score, attention=None):
         """Initializes the Sequence.
 
         Args:
@@ -44,7 +105,6 @@ class Sequence(object):
         self.sentence = sentence
         self.vocab = set(sentence)  # for filtering duplicates
         self.dec_hidden = dec_hidden
-        self.trg_enc_hidden = trg_enc_hidden
         self.context = context
         self.ctx_mask = ctx_mask
         self.src_oov = src_oov
@@ -190,24 +250,25 @@ class SequenceGenerator(object):
         # if it's oov, replace it with <unk> (batch_size, 1)
         inputs = torch.cat([Variable(torch.LongTensor([seq.sentence[-1]] if seq.sentence[-1] <
                                                       self.model.vocab_size else [self.model.unk_word])) for seq in flattened_sequences]).view(batch_size, -1)
-
+        # this also contains input at current time step
+        tmp = []
+        for seq in flattened_sequences:
+            one_sent = []
+            for i in range(len(seq.sentence)):
+                if seq.senttence[i] < self.model.vocab_size:
+                    one_sent.append(seq.senttence[i])
+                else:
+                    one_sent.append(self.model.unk_word)
+            tmp.append(one_sent)
+        tmp = pad_sequences(tmp)  # batch x len
+        input_histories = Variable(torch.LongTensor(tmp))  # batch x len
         # (batch_size, trg_hidden_dim)
         if isinstance(flattened_sequences[0].dec_hidden, tuple):
-            h_states = torch.cat([seq.dec_hidden[0] for seq in flattened_sequences]).view(
-                1, batch_size, -1)
-            c_states = torch.cat([seq.dec_hidden[1] for seq in flattened_sequences]).view(
-                1, batch_size, -1)
+            h_states = torch.cat([seq.dec_hidden[0] for seq in flattened_sequences]).view(1, batch_size, -1)
+            c_states = torch.cat([seq.dec_hidden[1] for seq in flattened_sequences]).view(1, batch_size, -1)
             dec_hiddens = (h_states, c_states)
         else:
             dec_hiddens = torch.cat([seq.state for seq in flattened_sequences])
-
-        if isinstance(flattened_sequences[0].trg_enc_hidden, tuple):
-            h_states = torch.stack([seq.trg_enc_hidden[0] for seq in flattened_sequences], 0)  # batch x hid
-            c_states = torch.stack([seq.trg_enc_hidden[1] for seq in flattened_sequences], 0)  # batch x hid
-            trg_enc_hiddens = (h_states, c_states)
-        else:
-            trg_enc_hiddens = torch.cat(
-                [seq.state for seq in flattened_sequences])
 
         contexts = torch.cat([seq.context for seq in flattened_sequences]).view(
             batch_size, *flattened_sequences[0].context.size())
@@ -219,20 +280,16 @@ class SequenceGenerator(object):
 
         if torch.cuda.is_available():
             inputs = inputs.cuda()
+            input_histories = input_histories.cuda()
             if isinstance(flattened_sequences[0].dec_hidden, tuple):
                 dec_hiddens = (dec_hiddens[0].cuda(), dec_hiddens[1].cuda())
             else:
                 dec_hiddens = dec_hiddens.cuda()
-            if isinstance(flattened_sequences[0].trg_enc_hidden, tuple):
-                trg_enc_hiddens = (
-                    trg_enc_hiddens[0].cuda(), trg_enc_hiddens[1].cuda())
-            else:
-                trg_enc_hiddens = trg_enc_hiddens.cuda()
             contexts = contexts.cuda()
             ctx_mask = ctx_mask.cuda()
             src_oovs = src_oovs.cuda()
 
-        return seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, trg_enc_hiddens, contexts, ctx_mask, src_oovs, oov_lists
+        return seq_id2batch_id, flattened_id_map, inputs, input_histories, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists
 
     def beam_search(self, src_input, src_len, src_oov, oov_list, word2id):
         """Runs beam search sequence generation given input (padded word indexes)
@@ -252,7 +309,6 @@ class SequenceGenerator(object):
         # prepare the init hidden vector, (batch_size, trg_seq_len,
         # dec_hidden_dim)
         dec_hiddens = self.model.init_decoder_state(src_h, src_c)
-        trg_enc_hiddens = self.model.init_target_encoder_state(batch_size)
 
         # each dec_hidden is (trg_seq_len, dec_hidden_dim)
         initial_input = [word2id[pykp.io.BOS_WORD]] * batch_size
@@ -263,11 +319,6 @@ class SequenceGenerator(object):
                            for i in range(batch_size)]
         elif isinstance(dec_hiddens, list):
             dec_hiddens = dec_hiddens
-        if isinstance(trg_enc_hiddens, tuple):
-            trg_enc_hiddens = [(trg_enc_hiddens[0][i], trg_enc_hiddens[
-                                1][i]) for i in range(batch_size)]
-        elif isinstance(trg_enc_hiddens, list):
-            trg_enc_hiddens = trg_enc_hiddens
 
         partial_sequences = [TopN_heap(self.beam_size)
                              for _ in range(batch_size)]
@@ -280,7 +331,6 @@ class SequenceGenerator(object):
                 batch_id=batch_i,
                 sentence=[initial_input[batch_i]],
                 dec_hidden=dec_hiddens[batch_i],
-                trg_enc_hidden=trg_enc_hiddens[batch_i],
                 context=src_context[batch_i],
                 ctx_mask=src_mask[batch_i],
                 src_oov=src_oov[batch_i],
@@ -304,15 +354,15 @@ class SequenceGenerator(object):
 
             # flatten 2d sequences (batch_size, beam_size) into 1d batches
             # (batch_size * beam_size) to feed model
-            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, trg_enc_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(
+            _, flattened_id_map, inputs, input_histories, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(
                 partial_sequences)
 
             # Run one-step generation. probs=(batch_size, 1, K),
             # dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
-            log_probs, new_dec_hiddens, new_trg_enc_hiddens, attn_weights = self.model.generate(
+            log_probs, new_dec_hiddens, attn_weights = self.model.generate(
                 trg_input=inputs,
+                trg_input_history=input_histories,
                 dec_hidden=dec_hiddens,
-                trg_enc_hidden=trg_enc_hiddens,
                 enc_context=contexts,
                 ctx_mask=ctx_mask,
                 src_map=src_oovs,
@@ -342,9 +392,6 @@ class SequenceGenerator(object):
                 new_dec_hiddens2 = new_dec_hiddens[1].squeeze(0)
                 new_dec_hiddens = [(new_dec_hiddens1[i], new_dec_hiddens2[
                                     i]) for i in range(num_partial_sequences)]
-            if isinstance(new_trg_enc_hiddens, tuple):
-                new_trg_enc_hiddens = [(new_trg_enc_hiddens[0][i], new_trg_enc_hiddens[1][
-                                        i]) for i in range(num_partial_sequences)]
 
             # For every partial_sequence (num_partial_sequences in total), find
             # and trim to the best hypotheses (beam_size in total)
@@ -381,7 +428,6 @@ class SequenceGenerator(object):
                             batch_id=partial_seq.batch_id,
                             sentence=new_sent,
                             dec_hidden=None,
-                            trg_enc_hidden=None,
                             context=partial_seq.context,
                             ctx_mask=partial_seq.ctx_mask,
                             src_oov=partial_seq.src_oov,
@@ -399,8 +445,6 @@ class SequenceGenerator(object):
                         # dec_hidden and attention of this partial_seq are
                         # shared by its descendant beams
                         new_partial_seq.dec_hidden = new_dec_hiddens[
-                            flattened_seq_id]
-                        new_partial_seq.trg_enc_hidden = new_trg_enc_hiddens[
                             flattened_seq_id]
 
                         if self.return_attention:
@@ -507,7 +551,6 @@ class SequenceGenerator(object):
         # prepare the init hidden vector, (batch_size, trg_seq_len,
         # dec_hidden_dim)
         dec_hiddens = self.model.init_decoder_state(src_h, src_c)
-        trg_enc_hiddens = self.model.init_target_encoder_state(batch_size)
 
         # each dec_hidden is (trg_seq_len, dec_hidden_dim)
         initial_input = [word2id[pykp.io.BOS_WORD]] * batch_size
@@ -518,10 +561,6 @@ class SequenceGenerator(object):
                            for i in range(batch_size)]
         elif isinstance(dec_hiddens, list):
             dec_hiddens = dec_hiddens
-        if isinstance(trg_enc_hiddens, tuple):
-            trg_enc_hiddens = [(trg_enc_hiddens[0][i], trg_enc_hiddens[1][i]) for i in range(batch_size)]
-        elif isinstance(trg_enc_hiddens, list):
-            trg_enc_hiddens = trg_enc_hiddens
 
         sampled_sequences = [TopN_heap(k) for _ in range(batch_size)]
 
@@ -530,7 +569,6 @@ class SequenceGenerator(object):
                 batch_id=batch_i,
                 sentence=[initial_input[batch_i]],
                 dec_hidden=dec_hiddens[batch_i],
-                trg_enc_hidden=trg_enc_hiddens[batch_i],
                 context=src_context[batch_i],
                 ctx_mask=src_mask[batch_i],
                 src_oov=src_oov[batch_i],
@@ -547,15 +585,15 @@ class SequenceGenerator(object):
 
             # flatten 2d sequences (batch_size, beam_size) into 1d batches
             # (batch_size * beam_size) to feed model
-            _, flattened_id_map, inputs, dec_hiddens, trg_enc_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(
+            _, flattened_id_map, inputs, input_histories, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(
                 sampled_sequences)
 
             # Run one-step generation. log_probs=(batch_size, 1, K),
             # dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
-            log_probs, new_dec_hiddens, new_trg_enc_hiddens, attn_weights = self.model.generate(
+            log_probs, new_dec_hiddens, attn_weights = self.model.generate(
                 trg_input=inputs,
+                trg_input_history=input_histories,
                 dec_hidden=dec_hiddens,
-                trg_enc_hidden=trg_enc_hiddens,
                 enc_context=contexts,
                 ctx_mask=ctx_mask,
                 src_map=src_oovs,
@@ -612,10 +650,6 @@ class SequenceGenerator(object):
                 new_dec_hiddens = [(new_dec_hiddens1[i], new_dec_hiddens2[
                                     i]) for i in range(num_partial_sequences)]
 
-            if isinstance(new_trg_enc_hiddens, tuple):
-                new_trg_enc_hiddens = [(new_trg_enc_hiddens[0][i], new_trg_enc_hiddens[1][
-                                        i]) for i in range(num_partial_sequences)]
-
             # For every partial_sequence (num_partial_sequences in total), find
             # and trim to the best hypotheses (beam_size in total)
             for batch_i in range(batch_size):
@@ -650,7 +684,6 @@ class SequenceGenerator(object):
                         # dec_hidden and attention of this partial_seq are
                         # shared by its descendant beams
                         new_dec_hidden = new_dec_hiddens[flattened_seq_id]
-                        new_trg_enc_hidden = new_trg_enc_hiddens[flattened_seq_id]
 
                         if self.return_attention:
                             new_attention = copy.copy(partial_seq.attention)
@@ -669,7 +702,6 @@ class SequenceGenerator(object):
                             batch_id=partial_seq.batch_id,
                             sentence=new_sent,
                             dec_hidden=new_dec_hidden,
-                            trg_enc_hidden=new_trg_enc_hidden,
                             context=partial_seq.context,
                             ctx_mask=partial_seq.ctx_mask,
                             src_oov=partial_seq.src_oov,

@@ -12,6 +12,7 @@ import random
 
 import pykp
 from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, MultilayerPerceptron, UniLSTM
+from pykp.gensen_encoder import SentenceEncoder
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -286,6 +287,11 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.nlayers_src = opt.enc_layers
         self.nlayers_trg = opt.dec_layers
         self.dropout = opt.dropout
+        id2word_list = []
+        for _id in opt.id2word:
+            id2word_list.append(opt.id2word[_id])
+        self.id2word = opt.id2word
+        self.target_encoder = SentenceEncoder(opt.target_encoder_data_path, vocab_expansion=id2word_list)
         self.target_encoder_dim = opt.target_encoder_dim
         self.enable_target_encoder = opt.target_encoder_lambda > 0.0
         self.target_encoding_mlp_hidden_dim = opt.target_encoding_mlp_hidden_dim
@@ -349,15 +355,9 @@ class Seq2SeqLSTMAttention(nn.Module):
             dropout=self.dropout
         )
 
-        self.target_encoder = UniLSTM(nemb=self.emb_dim,
-                                      nhid=self.target_encoder_dim)
-
         self.target_encoding_merger = Concat()
         self.target_encoding_mlp = MultilayerPerceptron(input_dim=self.target_encoder_dim,
                                                         hidden_dim=self.target_encoding_mlp_hidden_dim)
-        self.bilinear_layer = nn.Bilinear(self.src_hidden_dim * 2 if self.bidirectional else
-                                          self.src_hidden_dim,
-                                          self.target_encoding_mlp_hidden_dim[-1], 1)
 
         self.attention_layer = Attention(
             self.src_hidden_dim * self.num_directions, self.trg_hidden_dim, method=self.attention_mode)
@@ -422,6 +422,16 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.init_weights()
         self.print_grads = {}
 
+    def get_sentence_list(self, word_ids):
+        # word_ids: batch x sent_len
+        word_ids = word_ids.cpu().data.numpy().tolist()  # list of np arrays
+        output = []
+        for sent in word_ids:
+            sent = [self.id2word[_id] for _id in sent if _id >= 5]
+            sent = " ".join(sent)
+            output.append(sent)
+        return output
+
     def save_grad(self, name):
         def hook(grad):
             self.print_grads[name] = grad
@@ -464,24 +474,6 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return h0_encoder, c0_encoder
 
-    def init_target_encoder_state(self, batch_size):
-        """Get cell states and hidden states."""
-
-        h0_target_encoder = Variable(torch.zeros(
-            batch_size,
-            self.target_encoder_dim
-        ), requires_grad=False)
-
-        c0_target_encoder = Variable(torch.zeros(
-            batch_size,
-            self.target_encoder_dim
-        ), requires_grad=False)
-
-        if torch.cuda.is_available():
-            return h0_target_encoder.cuda(), c0_target_encoder.cuda()
-
-        return h0_target_encoder, c0_target_encoder
-
     def init_decoder_state(self, enc_h, enc_c):
         # prepare the init hidden vector for decoder, (batch_size, num_layers *
         # num_directions * enc_hidden_dim) -> (num_layers * num_directions,
@@ -513,11 +505,11 @@ class Seq2SeqLSTMAttention(nn.Module):
             trg_mask = self.get_mask(input_trg)  # same size as input_trg
         src_h, (src_h_t, src_c_t) = self.encode(input_src, input_src_len)
 
-        decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights, trg_encoding_h_last = self.decode(trg_inputs=input_trg, src_map=input_src_ext,
-                                                                                                           oov_list=oov_lists, enc_context=src_h, enc_hidden=(
-                                                                                                               src_h_t, src_c_t),
-                                                                                                           trg_mask=trg_mask, ctx_mask=ctx_mask)
-        return decoder_probs, decoder_hiddens, (attn_weights, copy_attn_weights), src_h_t, trg_encoding_h_last
+        decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights = self.decode(trg_inputs=input_trg, src_map=input_src_ext,
+                                                                                      oov_list=oov_lists, enc_context=src_h, enc_hidden=(
+                                                                                          src_h_t, src_c_t),
+                                                                                      trg_mask=trg_mask, ctx_mask=ctx_mask)
+        return decoder_probs, decoder_hiddens, (attn_weights, copy_attn_weights)
 
     def encode(self, input_src, input_src_len):
         """
@@ -606,7 +598,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         # (1, batch_size, dec_hidden_dim)
         init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
         # ((batch_size, self.src_hidden_dim), (batch_size, self.src_hidden_dim))
-        init_hidden_target_encoder = self.init_target_encoder_state(batch_size)
 
         # enc_context has to be reshaped before dot attention (batch_size,
         # src_len, context_dim) -> (batch_size, src_len, trg_hidden_dim)
@@ -631,16 +622,17 @@ class Seq2SeqLSTMAttention(nn.Module):
         trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
 
         if self.enable_target_encoder:
-            # target encoder
-            trg_enc_h, (trg_enc_h_last, _) = self.target_encoder(
-                trg_emb, trg_mask, init_hidden_target_encoder)
+            trg_sentences = self.get_sentence_list(trg_inputs)
+            trg_enc_h, _ = self.target_encoder.get_representations(trg_sentences, return_numpy=False)
+            # trg_enc_h: batch x len x 2048
+            trg_enc_h = trg_enc_h.detach()
+            trg_enc_h =  trg_enc_h * trg_mask.unsqueeze(-1)  # batch x len x 2048
+
             trg_enc_h = self.target_encoding_mlp(
                 trg_enc_h)[0]  # output of the 1st layer
-            trg_enc_h = trg_enc_h.detach()
             decoder_input = self.target_encoding_merger([trg_enc_h, trg_emb])
         else:
             decoder_input = trg_emb
-            trg_enc_h_last = init_hidden_target_encoder[0]
 
         # both in/output of decoder LSTM is batch-second (trg_len, batch_size,
         # trg_hidden_dim)
@@ -687,7 +679,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # Return final outputs (logits after log_softmax), hidden states, and
         # attention weights (for visualization)
-        return decoder_log_probs, decoder_outputs, attn_weights, copy_weights, trg_enc_h_last
+        return decoder_log_probs, decoder_outputs, attn_weights, copy_weights
 
     def merge_oov2unk(self, decoder_log_prob, max_oov_number):
         '''
@@ -867,7 +859,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return do_tf
 
-    def generate(self, trg_input, dec_hidden, enc_context, trg_enc_hidden, ctx_mask=None, src_map=None, oov_list=None, max_len=1, return_attention=False):
+    def generate(self, trg_input, dec_hidden, enc_context, trg_input_history, ctx_mask=None, src_map=None, oov_list=None, max_len=1, return_attention=False):
         '''
         Given the initial input, state and the source contexts, return the top K restuls for each time step
         :param trg_input: just word indexes of target texts (usually zeros indicating BOS <s>)
@@ -906,14 +898,14 @@ class Seq2SeqLSTMAttention(nn.Module):
         trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
 
         if self.enable_target_encoder:
-            # target encoder
-            trg_enc_h, trg_enc_hidden = self.target_encoder(
-                trg_emb, trg_mask, trg_enc_hidden
-            )
-            trg_enc_h = self.target_encoding_mlp(
-                trg_enc_h)[0]  # output of the 1st layer
-            trg_enc_h = trg_enc_h.detach()
-            dec_input = self.target_encoding_merger([trg_enc_h, trg_emb])
+            trg_sentences = self.get_sentence_list(trg_input_history)
+            _, trg_enc_h_t = self.target_encoder.get_representations(trg_sentences, return_numpy=False)  # batch x 2048
+            trg_enc_h_t = trg_enc_h_t.unsqueeze(1)  # batch x 1 x 2048
+            trg_enc_h_t = trg_enc_h_t.detach()
+
+            trg_enc_h_t = self.target_encoding_mlp(
+                trg_enc_h_t)[0]  # output of the 1st layer
+            dec_input = self.target_encoding_merger([trg_enc_h_t, trg_emb])
         else:
             dec_input = trg_emb
 
@@ -972,13 +964,13 @@ class Seq2SeqLSTMAttention(nn.Module):
         # visualization)
         if return_attention:
             if not self.copy_attention:
-                return log_probs, dec_hidden, trg_enc_hidden, attn_weights
+                return log_probs, dec_hidden, attn_weights
             else:
                 # (batch_size, max_len, src_seq_len)
                 copy_weights = torch.cat(copy_weights, 1)
-                return log_probs, dec_hidden, trg_enc_hidden, (attn_weights, copy_weights)
+                return log_probs, dec_hidden, (attn_weights, copy_weights)
         else:
-            return log_probs, dec_hidden, trg_enc_hidden
+            return log_probs, dec_hidden
 
     def greedy_predict(self, input_src, input_trg, trg_mask=None, ctx_mask=None):
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
