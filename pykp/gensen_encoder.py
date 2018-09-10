@@ -5,11 +5,12 @@ from gensen.gensen import GenSenSingle
 class SentenceEncoder(object):
     """Gets sentence representations from a pretrained sentence encoder"""
 
-    def __init__(self, gensen_data_path, vocab_expansion=None):
+    def __init__(self, gensen_data_path, vocab_expansion=None, cuda=False):
         self.gensen_data_path = gensen_data_path
         self.gensen = GenSenSingle(model_folder=self.gensen_data_path + 'models',
                                    filename_prefix='nli_large_bothskip_parse',
-                                   pretrained_emb=self.gensen_data_path + 'embedding/glove.840B.300d.h5')
+                                   pretrained_emb=self.gensen_data_path + 'embedding/glove.840B.300d.h5',
+                                   cuda=cuda)
         if vocab_expansion is not None:
             self.gensen.vocab_expansion(vocab_expansion)
         logging.info("Finished loading pretrained sentence encoder...")

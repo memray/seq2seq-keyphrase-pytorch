@@ -291,7 +291,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         for _id in opt.id2word:
             id2word_list.append(opt.id2word[_id])
         self.id2word = opt.id2word
-        self.target_encoder = SentenceEncoder(opt.target_encoder_data_path, vocab_expansion=id2word_list)
+        self.target_encoder = SentenceEncoder(opt.target_encoder_data_path, vocab_expansion=id2word_list, cuda=torch.cuda.is_available())
         self.target_encoder_dim = opt.target_encoder_dim
         self.enable_target_encoder = opt.target_encoder_lambda > 0.0
         self.target_encoding_mlp_hidden_dim = opt.target_encoding_mlp_hidden_dim
@@ -427,7 +427,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         word_ids = word_ids.cpu().data.numpy().tolist()  # list of np arrays
         output = []
         for sent in word_ids:
-            sent = [self.id2word[_id] for _id in sent if _id >= 5]
+            sent = [self.id2word[_id] for _id in sent]
             sent = " ".join(sent)
             output.append(sent)
         return output
