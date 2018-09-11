@@ -1,4 +1,6 @@
 import logging
+import numpy as np
+import torch
 from gensen.gensen import GenSenSingle
 
 
@@ -17,11 +19,26 @@ class SentenceEncoder(object):
 
     def get_representations(self, list_of_sentences, return_numpy=False):
         # Sentences need to be lowercased.
+        list_of_sentences = [" ".join(sent) for sent in list_of_sentences]
         list_of_sentences = [sent.lower() for sent in list_of_sentences]
         reps_h, reps_h_t = self.gensen.get_representation(list_of_sentences, pool='last', return_numpy=return_numpy, add_start_end=False)
         # reps_h: batch x sent len x 2048
         # reps_h_t: batch x 2048
         return reps_h, reps_h_t
+
+    def get_prefix_represenatatons(self, list_of_sentences, return_numpy=False):
+        # "<pad>" is the padding token in gensen
+        maxlen = max(map(len, list_of_sentences))
+        for i in range(len(list_of_sentences)):
+            list_of_sentences[i] = list_of_sentences[i] + ["<pad>"] * (maxlen - len(list_of_sentences[i]))
+        res = []
+        for i in range(maxlen):
+            tmp_inp = [sent[: i + 1] for sent in list_of_sentences]
+            res.append(self.get_representations(tmp_inp, return_numpy=return_numpy)[1])
+        if return_numpy:
+            return np.stack(res, 1)
+        else:
+            return torch.stack(res, 1)
 
 
 if __name__ == '__main__':

@@ -428,7 +428,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         output = []
         for sent in word_ids:
             sent = [self.id2word[_id] for _id in sent]
-            sent = " ".join(sent)
             output.append(sent)
         return output
 
@@ -623,7 +622,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         if self.enable_target_encoder:
             trg_sentences = self.get_sentence_list(trg_inputs)
-            trg_enc_h, _ = self.target_encoder.get_representations(trg_sentences, return_numpy=False)
+            trg_enc_h = self.target_encoder.get_prefix_represenatatons(trg_sentences, return_numpy=False)
             # trg_enc_h: batch x len x 2048
             trg_enc_h = trg_enc_h.detach()
             trg_enc_h =  trg_enc_h * trg_mask.unsqueeze(-1)  # batch x len x 2048
