@@ -529,6 +529,8 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # input (batch_size, src_len), src_emb (batch_size, src_len, emb_dim)
         src_emb = self.embedding(input_src)
+        
+        src_emb = nn.functional.dropout(src_emb, p=self.dropout, training=self.training)
         src_emb = nn.utils.rnn.pack_padded_sequence(
             src_emb, input_src_len, batch_first=True)
 
@@ -541,6 +543,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         src_h, _ = nn.utils.rnn.pad_packed_sequence(src_h, batch_first=True)
 
+        src_h = nn.functional.dropout(src_h, p=self.dropout, training=self.training)
         # concatenate to (batch_size, hidden_size * num_directions)
         if self.bidirectional:
             h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
@@ -641,6 +644,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         else:
             decoder_input = trg_emb
             trg_enc_h_last = init_hidden_target_encoder[0]
+        decoder_input = nn.functional.dropout(decoder_input, p=self.dropout, training=self.training)
 
         # both in/output of decoder LSTM is batch-second (trg_len, batch_size,
         # trg_hidden_dim)
@@ -648,6 +652,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             decoder_input, init_hidden
         )
 
+        decoder_outputs = nn.functional.dropout(decoder_outputs, p=self.dropout, training=self.training)
         '''
         (2) Standard Attention
         '''
