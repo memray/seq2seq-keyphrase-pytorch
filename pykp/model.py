@@ -347,7 +347,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         self.decoder = nn.LSTM(
             input_size=self.emb_dim if not self.enable_target_encoder else self.emb_dim +
-            self.target_encoding_mlp_hidden_dim[0],
+            self.target_encoding_mlp_hidden_dim[-1],
             hidden_size=self.trg_hidden_dim,
             num_layers=self.nlayers_trg,
             bidirectional=False,
@@ -627,7 +627,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             # trg_enc_h: batch x len x 2048
             trg_enc_h = trg_enc_h.detach()
             trg_enc_h =  trg_enc_h * trg_mask.unsqueeze(-1)  # batch x len x 2048
-            trg_enc_h = self.target_encoding_mlp(trg_enc_h)[0]  # output of the 1st layer
+            trg_enc_h = self.target_encoding_mlp(trg_enc_h)[-1]  # output of the 1st layer
             decoder_input = self.target_encoding_merger([trg_enc_h.permute(1, 0, 2), trg_emb])
         else:
             decoder_input = trg_emb
@@ -901,8 +901,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             trg_enc_h_t = trg_enc_h_t.unsqueeze(1)  # batch x 1 x 2048
             trg_enc_h_t = trg_enc_h_t.detach()
 
-            trg_enc_h_t = self.target_encoding_mlp(
-                trg_enc_h_t)[0]  # output of the 1st layer
+            trg_enc_h_t = self.target_encoding_mlp(trg_enc_h_t)[-1]  # output of the 1st layer
             dec_input = self.target_encoding_merger([trg_enc_h_t.permute(1, 0, 2), trg_emb])
         else:
             dec_input = trg_emb
