@@ -376,7 +376,7 @@ class SequenceGenerator(object):
 
             del log_probs, new_dec_hiddens, attn_weights
             torch.cuda.empty_cache()
-            print('Step=%d, \tlen(src) = %d, \t#(batch) = %d, '
+            logging.info('Step=%d, \tlen(src) = %d, \t#(batch) = %d, '
                   '\t#(hypothese) = %d, \t#(completed) = %d' %
                   (current_len, max_src_len, batch_size,
                    sum([len(batch_heap) for batch_heap in partial_sequences]),

@@ -103,11 +103,12 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
     if opt.train_rl:
         loss = loss * (1 - opt.loss_scale)
 
-    logging.info("--forward+loss- %s seconds ---" % (time.time() - start_time))
+    logging.info("--forward %s seconds ---" % (time.time() - start_time))
+
     start_time = time.time()
     loss.backward()
     optimizer.step()
-    logging.info("--backward- %s seconds ---" % (time.time() - start_time))
+    logging.info("--backward %s seconds ---" % (time.time() - start_time))
 
     if opt.max_grad_norm > 0:
         pre_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), opt.max_grad_norm)
@@ -474,7 +475,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     if opt.train_rl:
         reward_cache = RewardCache(2000)
 
-    if False:  # opt.train_from:
+    # load previous training status
+    if opt.train_from:
         state_path = opt.train_from.replace('.model', '.state')
         logging.info('Loading training state from: %s' % state_path)
         if os.path.exists(state_path):
@@ -786,9 +788,9 @@ def init_model(opt):
     if opt.train_from:
         logging.info("loading previous checkpoint from %s" % opt.train_from)
         # load the saved the meta-model and override the current one
-        model = torch.load(
-            open(os.path.join(opt.model_path, opt.exp, '.initial.model'), 'wb')
-        )
+        # model = torch.load(
+        #     open(os.path.join(opt.model_path, opt.exp + '.initial.model'), 'rb')
+        # )
 
         if torch.cuda.is_available():
             checkpoint = torch.load(open(opt.train_from, 'rb'))
@@ -797,13 +799,13 @@ def init_model(opt):
                 open(opt.train_from, 'rb'), map_location=lambda storage, loc: storage
             )
         # some compatible problems, keys are started with 'module.'
-        checkpoint = dict([(k[7:], v) if k.startswith('module.') else (k, v) for k, v in checkpoint.items()])
+        # checkpoint = dict([(k[7:], v) if k.startswith('module.') else (k, v) for k, v in checkpoint.items()])
         model.load_state_dict(checkpoint)
     else:
         # dump the meta-model
         torch.save(
             model.state_dict(),
-            open(os.path.join(opt.train_from[: opt.train_from.find('.epoch=')], 'initial.model'), 'wb')
+            open(os.path.join(opt.model_path, opt.exp + '.initial.model'), 'wb')
         )
 
     utils.tally_parameters(model)
@@ -861,9 +863,13 @@ def process_opt(opt):
 
     # dump the setting (opt) to disk in order to reuse easily
     if opt.train_from:
-        opt = torch.load(
+        new_opt = torch.load(
             open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'rb')
         )
+        new_opt.train_from = opt.train_from
+        new_opt.save_model_every = opt.save_model_every
+        new_opt.run_valid_every = opt.run_valid_every
+        new_opt.report_every = opt.report_every
     else:
         torch.save(opt,
                    open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'wb')

@@ -25,6 +25,10 @@ def process_predseqs_batch(pred_seqs_batch, src_str_batch, oov_list_batch, id2wo
     '''
     Check the validity and presence of predicted phrases of each example in batch
     :return:
+    pred_seq_strs_batch: a sequence converted from word_id to string
+    seq_scores_batch: likelihood of sequence
+    valid_flags_batch: a sequence of booleans showing if each sequence is valid
+    present_flags_batch: a sequence of booleans showing if each sequence is present in source text
     '''
     pred_seq_strs_batch = []
     seq_scores_batch = []
@@ -57,7 +61,6 @@ def process_predseqs_example(src_str, pred_seqs, oov_list, id2word, vocab_size):
     '''
     1. convert word_id to strings
     '''
-    print(oov_list)
     pred_seq_strs = []
     for seq in pred_seqs:
         # convert to words and remove the EOS token
@@ -92,6 +95,9 @@ def process_predseqs_example(src_str, pred_seqs, oov_list, id2word, vocab_size):
 
 
 def post_process_predseqs(seqs, num_oneword_seq=1):
+    """
+    Deprecated, reimplemented in process_predseqs_batch()
+    """
     processed_seqs = []
 
     # -1 means no filter applied
@@ -197,7 +203,6 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
             src_copy_batch = src_copy_batch.cuda()
             src_len_batch = src_len_batch.cuda()
             oov_numbers_batch = oov_numbers_batch.cuda()
-
 
         generator.model.eval()
         batch_size = len(src_batch)
@@ -317,89 +322,123 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
             trg_present_flags = if_present_duplicate_phrase(src_str, trg_strs)
             print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(trg_present_flags), len(trg_present_flags))
-            print_out += '\n'.join(['\t\t%s' % ' '.join(phrase) if is_present else '\t\t[ABSENT] %s' % ' '.join(phrase) for phrase, is_present in zip(trg_strs, trg_present_flags)])
+            print_out += '\n'.join(['\t\t%s' % ' '.join(phrase) if is_present else '\t\t*[%s]* (ABSENT)' % ' '.join(phrase) for phrase, is_present in zip(trg_strs, trg_present_flags)])
             print_out += '\n\noov_list:   \n\t\t%s \n\n' % str(oov)
 
-            # ignore the cases that there's no present phrases
-            if opt.must_appear_in_src and np.sum(trg_present_flags) == 0:
-                print_out += 'Found no present phrases, skip!'
-                logging.info(print_out)
-                continue
-
             '''
-            Evaluate predictions w.r.t different metrics
+            1. Evaluate predictions w.r.t different metrics
             '''
-            if opt.must_appear_in_src:
-                trg_strs_to_match = [trg_str for trg_str, trg_present_flag
+            trg_strs_present = [trg_str for trg_str, trg_present_flag
                                      in zip(trg_strs, trg_present_flags)
                                      if trg_present_flag]
+
+            if opt.must_appear_in_src:
+                trg_strs_to_evaluate = trg_strs_present
             else:
-                trg_strs_to_match = trg_strs
+                trg_strs_to_evaluate = trg_strs
+
+            valid_and_present = np.asarray(valid_flags) * np.asarray(present_flags)
+            valid_seq_scores = [seq_score for seq_score, flag in zip(seq_scores, valid_and_present) if flag]
+            valid_pred_seqs = [seq for seq, flag in zip(pred_seqs, valid_and_present) if flag]
+            valid_pred_seq_strs = [seq_str for seq_str, flag in zip(pred_seq_strs, valid_and_present) if flag]
 
             # Get the match list (if a predicted phrase is correct, appears in ground-truth)
-            match_flags = get_match_result(true_seqs=trg_strs_to_match, pred_seqs=pred_seq_strs)
-            valid_and_present = np.asarray(valid_flags) * np.asarray(present_flags)
+            valid_match_flags_exact = get_match_result(true_seqs=trg_strs_to_evaluate, pred_seqs=valid_pred_seq_strs, type='exact')
 
+            # ignore the scores if there's no present ground-truth phrases
             print_out += '[SCORES]\n'
+
+            if np.sum(trg_present_flags) == 0:
+                skip_score_flag = True
+            else:
+                skip_score_flag = False
+
             topk_range = [5, 10]
-            score_names = ['precision', 'recall', 'f_score']
+            modes = ['exact', 'soft']
 
-            num_oneword_seq = -1
+            score_print_out = ''
             for topk in topk_range:
-                results = evaluate(match_flags, pred_seq_strs, trg_strs_to_match, topk=topk)
-                for k, v in zip(score_names, results):
-                    if '%s@%d#oneword=%d' % (k, topk, num_oneword_seq) not in score_dict:
-                        score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)] = []
-                    score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)].append(v)
+                results_exact = evaluate(valid_match_flags_exact, valid_pred_seq_strs, trg_strs_to_evaluate, topk=topk)
+                # soft matching to each target is exclusive, thus we need to give top_k
+                valid_match_flags_soft = get_match_result(true_seqs=trg_strs_to_evaluate, pred_seqs=valid_pred_seq_strs, type='partial', topk=topk)
+                results_soft = evaluate(valid_match_flags_soft, valid_pred_seq_strs, trg_strs_to_evaluate, topk=topk)
+                for mode in modes:
+                    if mode == 'exact':
+                        results_dict = results_exact
+                    else:
+                        results_dict = results_soft
+                    score_print_out += ('-' * 30) + ('%s, k=%d\n' % (mode.upper(), topk))
+                    for score_name, score_value in results_dict.items():
+                        if '%s@%d_%s' % (score_name, topk, mode) not in score_dict:
+                            score_dict['%s@%d_%s' % (score_name, topk, mode)] = []
+                        if not skip_score_flag:
+                            score_dict['%s@%d_%s' % (score_name, topk, mode)].append(score_value)
+                            score_print_out += '\t%s = %f,' % (score_name, score_value)
+                    score_print_out += '\n'
 
-                    print_out += '\t%s@%d#oneword=%d = %f\n' % (k, topk, num_oneword_seq, v)
+            if skip_score_flag:
+                print_out += '\t\tFound no present phrases, NO scores count!'
+            else:
+                print_out += score_print_out
+
             '''
-            Print valid predicted phrases that count for evaluation
+            2.1 Print valid predicted phrases that count for evaluation
             '''
-            print_out += '\n[PREDICTION for EVAL] #(pred)=%d\n' % (sum(valid_and_present))
+            min_k_and_5 = min(len(valid_match_flags_exact), 5)
+            min_k_and_10 = min(len(valid_match_flags_exact), 10)
+            print_out += '\n[PREDICTION for EVAL] #(pred)=%d, #(correct@5)=%d, #(correct@10)=%d\n' \
+                         % (sum(valid_and_present),
+                            sum(valid_match_flags_exact[:min_k_and_5]),
+                            sum(valid_match_flags_exact[:min_k_and_10]))
 
-            for p_id, (seq, word, score, match, is_valid, is_present) in enumerate(
-                    zip(pred_seqs, pred_seq_strs, seq_scores, match_flags, valid_flags, present_flags)):
-                if is_present and is_valid:
-                    print_phrase = ' '.join(word)
-                else:
-                    continue
+            for p_id, (seq, word, score, match_flag) in enumerate(
+                    zip(valid_pred_seqs, valid_pred_seq_strs, valid_seq_scores, valid_match_flags_exact)):
+                print_phrase = ' '.join(word)
 
-                if match == 1.0:
-                    correct_str = '[correct!]'
+                if match_flag == 1.0:
+                    correct_str = '[CORRECT!]'
                 else:
                     correct_str = ''
                 if any([t >= opt.vocab_size for t in seq.sentence]):
-                    copy_str = '[copied!]'
+                    copy_str = '[COPIED!]'
                 else:
                     copy_str = ''
 
                 print_out += '\t\t[%.4f]\t%s \t %s %s%s\n' % (-score, print_phrase, str(seq.sentence), correct_str, copy_str)
 
-            print_out += '\n[ALL PREDICTIONs] #(valid)=%d, #(present)=%d, #(retained & present)=%d, #(all)=%d\n' % (sum(valid_flags), sum(present_flags), sum(valid_and_present), len(pred_seq))
-
-            print_out += ''
-
             '''
-            Print all predictions for debug
+            2.2 Print all predictions for debug
             '''
-            for p_id, (seq, word, score, match, is_valid, is_present) in enumerate(
-                    zip(pred_seqs, pred_seq_strs, seq_scores, match_flags, valid_flags, present_flags)):
+            match_flags_exact = get_match_result(true_seqs=trg_strs_to_evaluate, pred_seqs=pred_seq_strs, type='exact')
+            min_k_and_5 = min(len(match_flags_exact), 5)
+            min_k_and_10 = min(len(match_flags_exact), 10)
 
-                if is_present:
+            print_out += '\n[ALL PREDICTIONs] #(valid)=%d, #(present)=%d, ' \
+                         '#(retained & present)=%d, #(all)=%d, ' \
+                         '#(correct@5)=%d, #(correct@10)=%d\n' \
+                         % (sum(valid_flags), sum(present_flags),
+                            sum(valid_and_present), len(pred_seq),
+                            sum(match_flags_exact[:min_k_and_5]),
+                            sum(match_flags_exact[:min_k_and_10]))
+            for p_id, (seq, word, score, match_flag, is_valid, is_present) in enumerate(
+                    zip(pred_seqs, pred_seq_strs, seq_scores, match_flags_exact, valid_flags, present_flags)):
+
+                if is_present and is_valid:
                     print_phrase = ' '.join(word)
                 else:
-                    print_phrase = '[absent] %s' % ' '.join(word)
+                    print_phrase = '*[%s]*' % ' '.join(word)
 
+                if not is_present:
+                    print_phrase += ' [ABSENT]'
                 if not is_valid:
-                    print_phrase = '[invalid] %s' % print_phrase
+                    print_phrase += '[INVALID]'
 
-                if match == 1.0:
-                    correct_str = '[correct!]'
+                if match_flag == 1.0:
+                    correct_str = '[CORRENT!]'
                 else:
                     correct_str = ''
                 if any([t >= opt.vocab_size for t in seq.sentence]):
-                    copy_str = '[copied!]'
+                    copy_str = '[COPIED!]'
                 else:
                     copy_str = ''
 
@@ -412,32 +451,28 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
                     os.makedirs(os.path.join(predict_save_path, title + '_detail'))
                 with open(os.path.join(predict_save_path, title + '_detail', str(example_idx) + '_print.txt'), 'w') as f_:
                     f_.write(print_out)
+                with open(os.path.join(predict_save_path, title + '_detail', str(example_idx) + '_prediction.txt'), 'w') as f_:
+                    f_.write('\n'.join([' '.join(tokens) for tokens in valid_pred_seq_strs]))
 
-            progbar.update(epoch, example_idx,
-                           [('f_score@5#oneword=-1', np.average(score_dict['f_score@5#oneword=-1'])),
-                            ('f_score@10#oneword=-1', np.average(score_dict['f_score@10#oneword=-1']))])
+            progbar.update(epoch, example_idx, [('f_score@5_exact', np.average(score_dict['f_score@5_exact'])),
+                                                ('f_score@5_soft', np.average(score_dict['f_score@5_soft'])),
+                                                ('f_score@10_exact', np.average(score_dict['f_score@10_exact'])),
+                                                ('f_score@10_soft', np.average(score_dict['f_score@10_soft'])),])
 
             example_idx += 1
 
-        logging.debug('#(f_score@5#oneword=-1)=%d, sum=%f' %
-          (len(score_dict['f_score@5#oneword=-1']),
-           sum(score_dict['f_score@5#oneword=-1'])))
-
-    logging.debug('#(f_score@10#oneword=-1)=%d, sum=%f' %
-          (len(score_dict['f_score@10#oneword=-1']),
-           sum(score_dict['f_score@10#oneword=-1'])))
 
     if predict_save_path:
         # export scores, each row is scores (precision, recall and f-score)
         # with different way of filtering predictions (how many one-word predictions to keep)
         with open(predict_save_path + os.path.sep + title + '_result.csv', 'w') as result_csv:
             csv_lines = []
-            num_oneword_seq = -1
-            for topk in topk_range:
-                csv_line = '#oneword=%d,@%d' % (num_oneword_seq, topk)
-                for k in score_names:
-                    csv_line += ',%f' % np.average(score_dict['%s@%d#oneword=%d' % (k, topk, num_oneword_seq)])
-                csv_lines.append(csv_line + '\n')
+            for mode in ["exact", "soft"]:
+                for topk in topk_range:
+                    csv_line = ""
+                    for score_name in score_names:
+                        csv_line += ',%f' % np.average(score_dict['%s@%d_%s' % (score_name, topk, mode)])
+                    csv_lines.append(csv_line + '\n')
 
             result_csv.writelines(csv_lines)
 
@@ -447,8 +482,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
     # precision, recall, f_score = evaluate(true_seqs=target_all, pred_seqs=prediction_all, topn=5)
     # logging.info('micro precision %.4f , micro recall %.4f, micro fscore %.4f ' % (precision, recall, f_score))
 
-    for k,v in score_dict.items():
-        print('#(%s) = %d' % (k, len(v)))
+    for score_name, score_value in score_dict.items():
+        logging.info('\n#(%s) = %d, macro_avg = %f' % (score_name, len(score_value), np.average(score_value)))
 
     del pred_seq_list, pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch,\
         src_batch, src_copy_batch, src_len_batch, src_str_batch, trg_batch, trg_str_batch, trg_copy_for_loss_batch,\
@@ -514,7 +549,7 @@ def macro_averaged_score(precisionlist, recalllist):
     return precision, recall, f_score
 
 
-def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
+def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact', topk=None):
     '''
     :param true_seqs:
     :param pred_seqs:
@@ -525,6 +560,9 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
     '''
     micro_metrics = []
     micro_matches = []
+
+    if type == 'partial' and not topk:
+        raise Exception('topk must be given if it is partial match')
 
     # do processing to baseline predictions
     match_score = np.asarray([0.0] * len(pred_seqs), dtype='float32')
@@ -538,34 +576,53 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
         true_seqs = [stem_word_list(seq) for seq in true_seqs]
         pred_seqs = [stem_word_list(seq) for seq in pred_seqs]
 
-    for pred_id, pred_seq in enumerate(pred_seqs):
-        if type == 'exact':
-            match_score[pred_id] = 0
-            for true_id, true_seq in enumerate(true_seqs):
-                match = True
-                if len(pred_seq) != len(true_seq):
-                    continue
-                for pred_w, true_w in zip(pred_seq, true_seq):
-                    # if one two words are not same, match fails
-                    if pred_w != true_w:
-                        match = False
+    if type == 'exact':
+        for pred_id, pred_seq in enumerate(pred_seqs):
+                match_score[pred_id] = 0
+                for true_id, true_seq in enumerate(true_seqs):
+                    match = True
+                    if len(pred_seq) != len(true_seq):
+                        continue
+                    for pred_w, true_w in zip(pred_seq, true_seq):
+                        # if one two words are not same, match fails
+                        if pred_w != true_w:
+                            match = False
+                            break
+                    # if every word in pred_seq matches one true_seq exactly, match succeeds
+                    if match:
+                        match_score[pred_id] = 1
                         break
-                # if every word in pred_seq matches one true_seq exactly, match succeeds
-                if match:
-                    match_score[pred_id] = 1
-                    break
-        elif type == 'partial':
+    elif type == 'partial':
+        '''
+        This is a very greedy implementation, different order of sequence may result in different score
+        Matching to each target is exclusive, otherwise the recall can exceed 1.0 
+        Within the topk predictions, each target matches to the most similar one
+        '''
+        max_index_set = set()
+        # only consider the top K and ignore the remaining
+        if len(pred_seqs) > topk:
+            pred_seqs_for_evaluate = pred_seqs[:topk]
+        else:
+            pred_seqs_for_evaluate = pred_seqs
+        for true_id, true_seq in enumerate(true_seqs):
+            true_seq_set = set(true_seq)
             max_similarity = 0.
-            pred_seq_set = set(pred_seq)
-            # use the jaccard coefficient as the degree of partial match
-            for true_id, true_seq in enumerate(true_seqs):
-                true_seq_set = set(true_seq)
-                jaccard = len(set.intersection(*[set(true_seq_set), set(pred_seq_set)])) / float(len(set.union(*[set(true_seq_set), set(pred_seq_set)])))
-                if jaccard > max_similarity:
-                    max_similarity = jaccard
-            match_score[pred_id] = max_similarity
+            max_index = 0
 
-        elif type == 'bleu':
+            for pred_id, pred_seq in enumerate(pred_seqs_for_evaluate):
+                pred_seq_set = set(pred_seq)
+                # use the jaccard coefficient as the degree of partial match
+                jaccard = len(set.intersection(*[set(true_seq_set), set(pred_seq_set)])) / float(len(set.union(*[set(true_seq_set), set(pred_seq_set)])))
+                if jaccard > max_similarity and pred_id not in max_index_set:
+                    max_similarity = jaccard
+                    max_index = pred_id
+
+            if max_similarity > 0:
+                match_score[max_index] = max_similarity
+                max_index_set.add(max_index)
+
+    elif type == 'bleu':
+        for pred_id, pred_seq in enumerate(pred_seqs):
             # account for the match of subsequences, like n-gram-based (BLEU) or LCS-based
             match_score[pred_id] = bleu(pred_seq, true_seqs, [0.1, 0.3, 0.6])
 
@@ -578,16 +635,23 @@ def evaluate(match_list, predicted_list, true_list, topk=5):
     if len(predicted_list) > topk:
         predicted_list = predicted_list[:topk]
 
-    # Micro-Averaged  Method
+    # precision and recall
     pk = float(sum(match_list)) / float(len(predicted_list)) if len(predicted_list) > 0 else 0.0
     rk = float(sum(match_list)) / float(len(true_list)) if len(true_list) > 0 else 0.0
 
+    # F1-score
     if pk + rk > 0:
         f1 = float(2 * (pk * rk)) / (pk + rk)
     else:
         f1 = 0.0
 
-    return pk, rk, f1
+    # Mean reciprocal rank
+    mrr = 0.0
+    for i, match_score in enumerate(match_list):
+        mrr += match_score / (i + 1)
+    mrr /= len(match_list)
+
+    return {'precision': pk, 'recall': rk, 'f_score': f1, 'mrr': mrr}
 
 
 def f1_score(prediction, ground_truth):

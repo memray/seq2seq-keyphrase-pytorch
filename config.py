@@ -6,7 +6,7 @@ import sys
 import time
 
 
-def init_logging(logger_name, log_file, redirect_to_stdout=False):
+def init_logging(logger_name, log_file, redirect_to_stdout=False, level=logging.INFO):
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s',
                                   datefmt='%m/%d/%Y %H:%M:%S'   )
 
@@ -15,11 +15,11 @@ def init_logging(logger_name, log_file, redirect_to_stdout=False):
 
     fh = logging.FileHandler(log_file)
     fh.setFormatter(formatter)
-    fh.setLevel(logging.INFO)
+    fh.setLevel(level)
 
     logger = logging.getLogger(logger_name)
     logger.addHandler(fh)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(level)
 
     logger.info('Making log output file: %s' % log_file)
     logger.info(log_file[: log_file.rfind(os.sep)])
@@ -27,7 +27,7 @@ def init_logging(logger_name, log_file, redirect_to_stdout=False):
     if redirect_to_stdout:
         ch = logging.StreamHandler(sys.stdout)
         ch.setFormatter(formatter)
-        ch.setLevel(logging.INFO)
+        ch.setLevel(level)
         logger.addHandler(ch)
 
     return logger
@@ -87,7 +87,7 @@ def model_opts(parser):
                         help="whether the encoder is bidirectional")
 
     # Attention options
-    parser.add_argument('-attention_mode', type=str, default='concat',
+    parser.add_argument('-attention_mode', type=str, default='general',
                         choices=['dot', 'general', 'concat'],
                         help="""The attention type to use:
                         dot or general (Luong) or concat (Bahdanau)""")
@@ -96,7 +96,7 @@ def model_opts(parser):
     parser.add_argument('-copy_attention', action="store_true",
                         help='Train a copy model.')
 
-    parser.add_argument('-copy_mode', type=str, default='concat',
+    parser.add_argument('-copy_mode', type=str, default='general',
                         choices=['dot', 'general', 'concat'],
                         help="""The attention type to use: dot or general (Luong) or concat (Bahdanau)""")
 
@@ -311,6 +311,7 @@ def train_opts(parser):
                         help='Beam size')
     parser.add_argument('-beam_search_max_length', type=int, default=5,
                         help='Maximum sentence length for beam search.')
+
     parser.add_argument('-beam_search_round_number', type=int, default=10,
                         help='Number of search rounds for beam search, mainly used in cascading model.')
     parser.add_argument('-eval_method', type=str, default="beam_search",
@@ -323,4 +324,4 @@ def predict_opts(parser):
     parser.add_argument('-num_oneword_seq', type=int, default=10000,
                         help="""Source sequence to decode (one line per
                         sequence)""")
-    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5#oneword=-1', 'f_score@10#oneword=-1'], help="""Default measure to report""")
+    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5_exact', 'f_score@10_exact'], help="""Default measure to report""")
