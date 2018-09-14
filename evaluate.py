@@ -461,7 +461,6 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
             example_idx += 1
 
-
     if predict_save_path:
         # export scores, each row is scores (precision, recall and f-score)
         # with different way of filtering predictions (how many one-word predictions to keep)
@@ -470,8 +469,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
             for mode in ["exact", "soft"]:
                 for topk in topk_range:
                     csv_line = ""
-                    for score_name in score_names:
-                        csv_line += ',%f' % np.average(score_dict['%s@%d_%s' % (score_name, topk, mode)])
+                    for score_name, score_values in score_dict.items():
+                        csv_line += ',%f' % np.average(score_values)
                     csv_lines.append(csv_line + '\n')
 
             result_csv.writelines(csv_lines)
@@ -482,8 +481,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
     # precision, recall, f_score = evaluate(true_seqs=target_all, pred_seqs=prediction_all, topn=5)
     # logging.info('micro precision %.4f , micro recall %.4f, micro fscore %.4f ' % (precision, recall, f_score))
 
-    for score_name, score_value in score_dict.items():
-        logging.info('\n#(%s) = %d, macro_avg = %f' % (score_name, len(score_value), np.average(score_value)))
+    for score_name, score_values in score_dict.items():
+        logging.info('\n#(%s) = %d, macro_avg = %f' % (score_name, len(score_values), np.average(score_values)))
 
     del pred_seq_list, pred_seq_strs_batch, seq_scores_batch, valid_flags_batch, present_flags_batch,\
         src_batch, src_copy_batch, src_len_batch, src_str_batch, trg_batch, trg_str_batch, trg_copy_for_loss_batch,\
@@ -649,7 +648,7 @@ def evaluate(match_list, predicted_list, true_list, topk=5):
     mrr = 0.0
     for i, match_score in enumerate(match_list):
         mrr += match_score / (i + 1)
-    mrr /= len(match_list)
+    mrr = mrr / len(match_list) if len(match_list) > 0 else 0.0
 
     return {'precision': pk, 'recall': rk, 'f_score': f1, 'mrr': mrr}
 

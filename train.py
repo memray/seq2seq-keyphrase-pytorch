@@ -89,7 +89,7 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
     del src, trg, src_copy, src_len, oov_numbers, decoder_hiddens, attn_weights, copy_attn_weights
     torch.cuda.empty_cache()
 
-    if not opt.copy_attention:
+    if not opt.copy_attention_mode:
         loss = criterion(
             decoder_log_probs.contiguous().view(-1, opt.vocab_size),
             trg_unk_for_loss.contiguous().view(-1)
@@ -371,7 +371,7 @@ def brief_report(epoch, batch_i, one2many_batch, one2one_batch, loss_ml, decoder
         argmax_pred_trgs = [argmax_pred_trgs[i * trg_max_num] for i in sampled_src_idx]
         decoder_log_probs = [decoder_log_probs[i * trg_max_num] for i in sampled_src_idx]
 
-        if not opt.copy_attention:
+        if not opt.copy_attention_mode:
             # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
             trgs = [trg_unk_for_loss[i * trg_max_num] for i in sampled_src_idx]
         else:
@@ -405,7 +405,7 @@ def brief_report(epoch, batch_i, one2many_batch, one2one_batch, loss_ml, decoder
         argmax_pred_trgs = [argmax_pred_trgs[i] for i in sampled_trg_idx]
         decoder_log_probs = decoder_log_probs[sampled_trg_idx]
 
-        if not opt.copy_attention:
+        if not opt.copy_attention_mode:
             # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
             trgs = [trg_unk_for_loss[i] for i in sampled_trg_idx]
         else:
@@ -744,7 +744,7 @@ def init_optimizer_criterion(model, opt):
     :return:
     """
     '''
-    if not opt.copy_attention:
+    if not opt.copy_attention_mode:
         weight_mask = torch.ones(opt.vocab_size).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size)
     else:
         weight_mask = torch.ones(opt.vocab_size + opt.max_unk_words).cuda() if torch.cuda.is_available() else torch.ones(opt.vocab_size + opt.max_unk_words)
@@ -779,7 +779,7 @@ def init_model(opt):
     if opt.cascading_model:
         model = Seq2SeqLSTMAttentionCascading(opt)
     else:
-        if opt.copy_attention:
+        if opt.copy_attention_mode:
             logging.info('Train a Seq2Seq model with Copy Mechanism')
         else:
             logging.info('Train a normal Seq2Seq model')
@@ -826,7 +826,7 @@ def process_opt(opt):
     if hasattr(opt, 'train_rl') and opt.train_rl:
         opt.exp += '.rl'
 
-    if hasattr(opt, 'copy_attention') and opt.copy_attention:
+    if hasattr(opt, 'copy_attention_mode') and opt.copy_attention_mode:
         opt.exp += '.copy'
 
     # if hasattr(opt, 'bidirectional') and opt.bidirectional:
