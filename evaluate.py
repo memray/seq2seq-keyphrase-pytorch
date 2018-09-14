@@ -199,10 +199,11 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
         oov_numbers_batch = Variable(torch.from_numpy(np.asarray(oov_numbers))).long()
 
         if torch.cuda.is_available():
-            src_batch = src_batch.cuda()
-            src_copy_batch = src_copy_batch.cuda()
-            src_len_batch = src_len_batch.cuda()
-            oov_numbers_batch = oov_numbers_batch.cuda()
+            # use the first device for generation
+            src_batch = src_batch.cuda(device=opt.device_ids[0])
+            src_copy_batch = src_copy_batch.cuda(device=opt.device_ids[0])
+            src_len_batch = src_len_batch.cuda(device=opt.device_ids[0])
+            oov_numbers_batch = oov_numbers_batch.cuda(device=opt.device_ids[0])
 
         generator.model.eval()
         batch_size = len(src_batch)
@@ -466,12 +467,10 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
         # with different way of filtering predictions (how many one-word predictions to keep)
         with open(predict_save_path + os.path.sep + title + '_result.csv', 'w') as result_csv:
             csv_lines = []
-            for mode in ["exact", "soft"]:
-                for topk in topk_range:
-                    csv_line = ""
-                    for score_name, score_values in score_dict.items():
-                        csv_line += ',%f' % np.average(score_values)
-                    csv_lines.append(csv_line + '\n')
+            csv_line = ""
+            for score_name, score_values in score_dict.items():
+                csv_line += ',%f' % np.average(score_values)
+            csv_lines.append(csv_line + '\n')
 
             result_csv.writelines(csv_lines)
 
