@@ -199,10 +199,16 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
         oov_numbers_batch = Variable(torch.from_numpy(np.asarray(oov_numbers))).long()
 
         if torch.cuda.is_available():
-            src_batch = src_batch.cuda()
-            src_copy_batch = src_copy_batch.cuda()
-            src_len_batch = src_len_batch.cuda()
-            oov_numbers_batch = oov_numbers_batch.cuda()
+            if len(opt.device_ids) == 1:
+                src_batch = src_batch.cuda(opt.device_ids[0])
+                src_copy_batch = src_copy_batch.cuda(opt.device_ids[0])
+                src_len_batch = src_len_batch.cuda(opt.device_ids[0])
+                oov_numbers_batch = oov_numbers_batch.cuda(opt.device_ids[0])
+            else:
+                src_batch = src_batch.cuda()
+                src_copy_batch = src_copy_batch.cuda()
+                src_len_batch = src_len_batch.cuda()
+                oov_numbers_batch = oov_numbers_batch.cuda()
 
         generator.model.eval()
         batch_size = len(src_batch)
@@ -517,7 +523,10 @@ def evaluate_greedy(model, data_loader, test_examples, opt):
         logging.info('\nSource text: \n %s\n' % (' '.join([opt.id2word[wi] for wi in src.data.numpy()[0]])))
 
         if torch.cuda.is_available():
-            src.cuda()
+            if len(opt.device_ids) == 1:
+                src.cuda(opt.device_ids[0])
+            else:
+                src.cuda()
 
         trg = Variable(torch.LongTensor([[opt.word2id[pykp.io.BOS_WORD]] * opt.beam_search_max_length]))
 
