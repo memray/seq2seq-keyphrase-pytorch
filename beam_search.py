@@ -192,15 +192,27 @@ class SequenceGenerator(object):
         oov_number_batch = torch.stack([seq.oov_number for seq in flattened_sequences])
 
         if torch.cuda.is_available():
-            prev_word_batch = prev_word_batch.cuda()
-            if isinstance(flattened_sequences[0].dec_hidden, tuple):
-                dec_hidden_batch = (dec_hidden_batch[0].cuda(), dec_hidden_batch[1].cuda())
+            if len(self.model.device_ids) == 1:
+                prev_word_batch = prev_word_batch.cuda(self.model.device_ids[0])
+                if isinstance(flattened_sequences[0].dec_hidden, tuple):
+                    dec_hidden_batch = (dec_hidden_batch[0].cuda(self.model.device_ids[0]),
+                                        dec_hidden_batch[1].cuda(self.model.device_ids[0]))
+                else:
+                    dec_hidden_batch = dec_hidden_batch.cuda(self.model.device_ids[0])
+                src_context_batch = src_context_batch.cuda(self.model.device_ids[0])
+                src_mask_batch = src_mask_batch.cuda(self.model.device_ids[0])
+                src_copy_batch = src_copy_batch.cuda(self.model.device_ids[0])
+                oov_number_batch = oov_number_batch.cuda(self.model.device_ids[0])
             else:
-                dec_hidden_batch = dec_hidden_batch.cuda()
-            src_context_batch = src_context_batch.cuda()
-            src_mask_batch = src_mask_batch.cuda()
-            src_copy_batch = src_copy_batch.cuda()
-            oov_number_batch = oov_number_batch.cuda()
+                prev_word_batch = prev_word_batch.cuda()
+                if isinstance(flattened_sequences[0].dec_hidden, tuple):
+                    dec_hidden_batch = (dec_hidden_batch[0].cuda(), dec_hidden_batch[1].cuda())
+                else:
+                    dec_hidden_batch = dec_hidden_batch.cuda()
+                src_context_batch = src_context_batch.cuda()
+                src_mask_batch = src_mask_batch.cuda()
+                src_copy_batch = src_copy_batch.cuda()
+                oov_number_batch = oov_number_batch.cuda()
 
         return seq_id2batch_id, flattened_id_map, prev_word_batch, dec_hidden_batch, src_context_batch, src_mask_batch, src_copy_batch, oov_number_batch
 
