@@ -72,14 +72,14 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
 
     if torch.cuda.is_available():
         if len(opt.device_ids) == 1:
-            src = src.cuda()
-            trg = trg.cuda()
-            src_copy = src_copy.cuda()
-            src_len = src_len.cuda()
-            oov_numbers = oov_numbers.cuda()
+            src = src.cuda(device=opt.device_ids[0])
+            trg = trg.cuda(device=opt.device_ids[0])
+            src_copy = src_copy.cuda(device=opt.device_ids[0])
+            src_len = src_len.cuda(device=opt.device_ids[0])
+            oov_numbers = oov_numbers.cuda(device=opt.device_ids[0])
 
-        trg_unk_for_loss = trg_unk_for_loss.cuda()
-        trg_copy_for_loss = trg_copy_for_loss.cuda()
+        trg_unk_for_loss = trg_unk_for_loss.cuda(device=opt.device_ids[0])
+        trg_copy_for_loss = trg_copy_for_loss.cuda(device=opt.device_ids[0])
 
     start_time = time.time()
     optimizer.zero_grad()
