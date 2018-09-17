@@ -264,6 +264,8 @@ def train_opts(parser):
                         help="""target encoder lambda""")
     parser.add_argument('-orthogonal_regularization_lambda', default=0.0, type=float,
                         help="""target encoder lambda""")
+    parser.add_argument('-orthogonal_regularization_position', default='sep', type=str,
+                        help="""which position to apply orth reg: sep, post""")
     parser.add_argument('-replay_buffer_capacity', default=100, type=int,
                         help="""replay buffer lambda""")
     parser.add_argument('-target_encoding_mlp_hidden_dim', default=[32, 32], type=list,

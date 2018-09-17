@@ -153,14 +153,21 @@ def get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt):
     orth_coef = opt.orthogonal_regularization_lambda
     if orth_coef == 0:
         return 0.0
+    orth_position = opt.orthogonal_regularization_position
     # aux loss: make the decoder outputs at all <SEP>s to be orthogonal
     sep_id = opt.word2id[pykp.io.SEP_WORD]
     penalties = []
     for i in range(len(trg_copy_target_np)):
         seps = []
         for j in range(len(trg_copy_target_np[i])):  # len of target
-            if trg_copy_target_np[i][j] == sep_id:
-                seps.append(decoder_outputs[i][j])
+            if orth_position == "sep":
+                if trg_copy_target_np[i][j] == sep_id:
+                    seps.append(decoder_outputs[i][j])
+            elif orth_position == "post":
+                if j == 0:
+                    continue
+                if trg_copy_target_np[i][j - 1] == sep_id:
+                    seps.append(decoder_outputs[i][j])
         if len(seps) > 1:
             seps = torch.stack(seps, -1)  # h x n
             identity = torch.eye(seps.size(-1))  # n x n
