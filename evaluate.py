@@ -161,16 +161,21 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         for src, src_str, trg, trg_str_seqs, trg_copy, pred_seq, oov in zip(src_list, src_str_list, trg_list, trg_str_list, trg_copy_target_list, pred_seq_list, oov_list):
             # logging.info('======================  %d =========================' % (example_idx))
             print_out = ''
-            # print_out += '[Source][%d]: %s \n' % (len(src_str), ' '.join(src_str))
-            # src = src.cpu().data.numpy() if torch.cuda.is_available() else src.data.numpy()
-            # print_out += '\nSource Input: \n %s\n' % (' '.join([opt.id2word[x] for x in src[:len(src_str) + 5]]))
-            # print_out += 'Real Target String [%d] \n\t\t%s \n' % (len(trg_str_seqs), trg_str_seqs)
-            # print_out += 'Real Target Input:  \n\t\t%s \n' % str([[opt.id2word[x] for x in t] for t in trg])
-            # print_out += 'Real Target Copy:   \n\t\t%s \n' % str([[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in t] for t in trg_copy])
+            print_out += '[Source][%d]: %s \n' % (len(src_str), ' '.join(src_str))
+            src = src.cpu().data.numpy() if torch.cuda.is_available() else src.data.numpy()
+            print_out += '\nSource Input: \n %s\n' % (' '.join([opt.id2word[x] for x in src[:len(src_str) + 5]]))
+            print_out += 'Real Target String [%d] \n\t\t%s \n' % (len(trg_str_seqs), trg_str_seqs)
+            print_out += 'Real Target Input:  \n\t\t%s \n' % str([[opt.id2word[x] for x in t] for t in trg])
+            print_out += 'Real Target Copy:   \n\t\t%s \n' % str([[opt.id2word[x] if x < opt.vocab_size else oov[x - opt.vocab_size] for x in t] for t in trg_copy])
             trg_str_is_present = if_present_duplicate_phrase(src_str, trg_str_seqs)
-            # print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(trg_str_is_present), len(trg_str_is_present))
-            # print_out += '\n'.join(['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in zip(trg_str_seqs, trg_str_is_present)])
-            # print_out += '\noov_list:   \n\t\t%s \n' % str(oov)
+
+            # ignore the cases that there's no present phrases
+            if opt.must_appear_in_src and np.sum(trg_str_is_present) == 0:
+                continue
+
+            print_out += '[GROUND-TRUTH] #(present)/#(all targets)=%d/%d\n' % (sum(trg_str_is_present), len(trg_str_is_present))
+            print_out += '\n'.join(['\t\t[%s]' % ' '.join(phrase) if is_present else '\t\t%s' % ' '.join(phrase) for phrase, is_present in zip(trg_str_seqs, trg_str_is_present)])
+            print_out += '\noov_list:   \n\t\t%s \n' % str(oov)
 
             # 1st filtering
             pred_is_valid, processed_pred_seqs, processed_pred_str_seqs, processed_pred_score = process_predseqs(pred_seq, oov, opt.id2word, opt)
@@ -183,8 +188,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
             valid_and_present = np.asarray(pred_is_valid) * np.asarray(pred_is_present)
             match_list = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_pred_str_seqs)
-            # print_out += '[PREDICTION] #(valid)=%d, #(present)=%d, #(retained&present)=%d, #(all)=%d\n' % (sum(pred_is_valid), sum(pred_is_present), sum(valid_and_present), len(pred_seq))
-            # print_out += ''
+            print_out += '[PREDICTION] #(valid)=%d, #(present)=%d, #(retained&present)=%d, #(all)=%d\n' % (sum(pred_is_valid), sum(pred_is_present), sum(valid_and_present), len(pred_seq))
+            print_out += ''
             '''
             Print and export predictions
             '''
@@ -213,7 +218,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 else:
                     copy_str = ''
 
-                # print_out += '\t\t[%.4f]\t%s \t %s %s%s\n' % (-score, print_phrase, str(seq.sentence), correct_str, copy_str)
+                print_out += '\t\t[%.4f]\t%s \t %s %s%s\n' % (-score, print_phrase, str(seq.sentence), correct_str, copy_str)
 
             '''
             Evaluate predictions w.r.t different filterings and metrics
@@ -237,8 +242,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             print_out += "\n ======================================================="
             print_pred_str_seqs = [" ".join(item) for item in filtered_pred_str_seqs]
             print_trg_str_seqs = [" ".join(item) for item in trg_str_seqs]
-            print_out += "\n PREDICTION: " + " / ".join(print_pred_str_seqs)
-            print_out += "\n GROUND TRUTH: " + " / ".join(print_trg_str_seqs)
+            # print_out += "\n PREDICTION: " + " / ".join(print_pred_str_seqs)
+            # print_out += "\n GROUND TRUTH: " + " / ".join(print_trg_str_seqs)
 
             for topk in topk_range:
                 results_exact = evaluate(match_list_exact, filtered_pred_str_seqs, trg_str_seqs, topk=topk)
@@ -306,6 +311,9 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
     # logging.info("Macro@10\n\t\tprecision %.4f\n\t\tmacro recall %.4f\n\t\tmacro fscore %.4f " % (np.average(score_dict['precision@10']), np.average(score_dict['recall@10']), np.average(score_dict['f1score@10'])))
     # precision, recall, f_score = evaluate(true_seqs=target_all, pred_seqs=prediction_all, topn=5)
     # logging.info("micro precision %.4f , micro recall %.4f, micro fscore %.4f " % (precision, recall, f_score))
+
+    for k,v in score_dict.items():
+        print('#(%s) = %d' % (k, len(v)))
 
     return score_dict
 
