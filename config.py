@@ -130,6 +130,9 @@ def model_opts(parser):
     # Cascading model options
     parser.add_argument('-cascading_model', action="store_true",
                         help='Train a copy model.')
+                        
+    parser.add_argument('-test_2k', action="store_true",
+                        help="test on a subset")
 
 
 def preprocess_opts(parser):

@@ -502,8 +502,9 @@ def load_data_vocab(opt, load_train=True):
     test_one2seq = torch.load(opt.data + '.test.one2many.pt', 'wb')
 
     # !important. As it takes too long to do beam search, thus reduce the size of validation and test datasets
-    valid_one2seq = valid_one2seq[:2000]
-    test_one2seq = test_one2seq[:2000]
+    if opt.test_2k:
+        valid_one2seq = valid_one2seq[:2000]
+        test_one2seq = test_one2seq[:2000]
 
     valid_one2seq_dataset = KeyphraseDataset(
         valid_one2seq, word2id=word2id, id2word=id2word, type='one2seq', include_original=True, ordering=opt.keyphrase_ordering)
