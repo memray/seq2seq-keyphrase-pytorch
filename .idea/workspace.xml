@@ -12,10 +12,8 @@
       <change type="DELETED" beforePath="$PROJECT_DIR$/.idea/modules.xml" afterPath="" />
       <change type="DELETED" beforePath="$PROJECT_DIR$/.idea/seq2seq-keyphrase-pytorch.iml" afterPath="" />
       <change type="DELETED" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.gitignore" afterPath="$PROJECT_DIR$/.gitignore" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/beam_search.py" afterPath="$PROJECT_DIR$/beam_search.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/config.py" afterPath="$PROJECT_DIR$/config.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/evaluate.py" afterPath="$PROJECT_DIR$/evaluate.py" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/requirements.txt" afterPath="$PROJECT_DIR$/requirements.txt" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/train.py" afterPath="$PROJECT_DIR$/train.py" />
     </list>
     <list id="8ca2e02f-7766-4a75-8d04-6d2af4014691" name="Failed commit: Default" comment="remove useless code and add pack_padded_sequence and pad_packed_sequence" />
@@ -36,7 +34,7 @@
     <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$train_copy.coverage" NAME="train_copy Coverage Results" MODIFIED="1513027900755" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$predict.coverage" NAME="predict Coverage Results" MODIFIED="1516043659622" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$train_copy_with_previous_model.coverage" NAME="train_copy with previous model Coverage Results" MODIFIED="1516052579671" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$train.coverage" NAME="train Coverage Results" MODIFIED="1534999636328" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$train.coverage" NAME="train Coverage Results" MODIFIED="1537237110282" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$IO.coverage" NAME="IO Coverage Results" MODIFIED="1510630922462" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/pykp" />
     <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$preprocess.coverage" NAME="preprocess Coverage Results" MODIFIED="1532025250737" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/seq2seq-keyphrase-pytorch$Model.coverage" NAME="Model Coverage Results" MODIFIED="1510543093516" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/pykp" />
@@ -50,18 +48,28 @@
       <file leaf-file-name="beam_search.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/beam_search.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="98">
-              <caret line="295" column="95" lean-forward="false" selection-start-line="295" selection-start-column="95" selection-end-line="295" selection-end-column="95" />
+            <state relative-caret-position="95">
+              <caret line="393" column="0" lean-forward="true" selection-start-line="393" selection-start-column="0" selection-end-line="393" selection-end-column="0" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name=".gitignore" pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/.gitignore">
+      <file leaf-file-name="requirements.txt" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/requirements.txt">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="90">
-              <caret line="6" column="13" lean-forward="false" selection-start-line="6" selection-start-column="13" selection-end-line="6" selection-end-column="13" />
+            <state relative-caret-position="75">
+              <caret line="5" column="0" lean-forward="true" selection-start-line="5" selection-start-column="0" selection-end-line="5" selection-end-column="0" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="dataloader.py" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/pykp/dataloader.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="170">
+              <caret line="157" column="23" lean-forward="false" selection-start-line="157" selection-start-column="13" selection-end-line="157" selection-end-column="23" />
               <folding />
             </state>
           </provider>
@@ -70,7 +78,7 @@
       <file leaf-file-name="model.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pykp/model.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="64">
+            <state relative-caret-position="7200">
               <caret line="480" column="37" lean-forward="false" selection-start-line="480" selection-start-column="37" selection-end-line="480" selection-end-column="37" />
               <folding>
                 <element signature="e#54#68#0" expanded="true" />
@@ -82,7 +90,7 @@
       <file leaf-file-name="config.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/config.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="74">
+            <state relative-caret-position="3375">
               <caret line="230" column="76" lean-forward="false" selection-start-line="230" selection-start-column="76" selection-end-line="230" selection-end-column="76" />
               <folding />
             </state>
@@ -92,7 +100,7 @@
       <file leaf-file-name="evaluate.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/evaluate.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="240">
+            <state relative-caret-position="2055">
               <caret line="155" column="40" lean-forward="false" selection-start-line="155" selection-start-column="40" selection-end-line="155" selection-end-column="40" />
               <folding />
             </state>
@@ -102,8 +110,8 @@
       <file leaf-file-name="train.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/train.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="149">
-              <caret line="475" column="30" lean-forward="false" selection-start-line="475" selection-start-column="30" selection-end-line="475" selection-end-column="30" />
+            <state relative-caret-position="161">
+              <caret line="155" column="43" lean-forward="true" selection-start-line="155" selection-start-column="43" selection-end-line="155" selection-end-column="43" />
               <folding>
                 <element signature="e#54#65#0" expanded="true" />
               </folding>
@@ -132,9 +140,6 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>is forced to turn off</find>
-      <find>input_fee</find>
-      <find>repeat</find>
       <find>copy_inp</find>
       <find>copy</find>
       <find>copy_mode</find>
@@ -162,6 +167,9 @@
       <find>attent</find>
       <find>loss_ml.data.numpy()</find>
       <find>loss_scale</find>
+      <find>pin_memory_batch</find>
+      <find>pin_memory</find>
+      <find>Batch=</find>
     </findStrings>
     <replaceStrings>
       <replace>tgr</replace>
@@ -223,7 +231,6 @@
         <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy-concat.sh" />
         <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy-dot.sh" />
         <option value="$PROJECT_DIR$/train-kp20k-bidirectional-copy-general.sh" />
-        <option value="$PROJECT_DIR$/requirements.txt" />
         <option value="$PROJECT_DIR$/train-kp20k-bidirectional.sh" />
         <option value="$PROJECT_DIR$/train-kp20k-bidirectional-general-IFCF.sh" />
         <option value="$PROJECT_DIR$/train-kp20k-bidirectional-general-CF.sh" />
@@ -234,10 +241,11 @@
         <option value="$PROJECT_DIR$/preprocess.py" />
         <option value="$PROJECT_DIR$/pykp/model.py" />
         <option value="$PROJECT_DIR$/config.py" />
-        <option value="$PROJECT_DIR$/train.py" />
-        <option value="$PROJECT_DIR$/beam_search.py" />
         <option value="$PROJECT_DIR$/evaluate.py" />
         <option value="$PROJECT_DIR$/.gitignore" />
+        <option value="$PROJECT_DIR$/train.py" />
+        <option value="$PROJECT_DIR$/beam_search.py" />
+        <option value="$PROJECT_DIR$/requirements.txt" />
       </list>
     </option>
   </component>
@@ -327,7 +335,7 @@
   </component>
   <component name="PropertiesComponent">
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
-    <property name="settings.editor.selected.configurable" value="vcs.Git" />
+    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="js.eslint.eslintPackage" value="" />
     <property name="SearchEverywhereHistoryKey" value="pykp.IO&#9;null&#9;null" />
@@ -1085,8 +1093,8 @@
       <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.39489797" sideWeight="0.4941427" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Execute Anonymous" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33960396" sideWeight="0.4978701" order="11" side_tool="false" content_ui="tabs" />
-      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.2851038" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
-      <window_info id="SonarLint" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="-1" side_tool="false" content_ui="tabs" />
+      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.2881563" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
+      <window_info id="SonarLint" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="14" side_tool="false" content_ui="tabs" />
       <window_info id="Database" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
       <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.24973376" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="Favorites" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="true" content_ui="tabs" />
@@ -1178,6 +1186,11 @@
           <line>236</line>
           <option name="timeStamp" value="649" />
         </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/train.py</url>
+          <line>155</line>
+          <option name="timeStamp" value="651" />
+        </line-breakpoint>
       </breakpoints>
       <breakpoints-dialog>
         <breakpoints-dialog />
@@ -1189,21 +1202,12 @@
           </properties>
         </breakpoint>
       </default-breakpoints>
-      <option name="time" value="651" />
+      <option name="time" value="652" />
     </breakpoint-manager>
     <watches-manager>
       <configuration name="PythonConfigurationType">
-        <watch expression="self.dec_input_dim" language="Python" />
-        <watch expression="vars(opt)" language="Python" />
-        <watch expression="trg_emb.shape" language="Python" />
-        <watch expression="h_tilde.shape" language="Python" />
-        <watch expression="copy_h_tilde.shape" language="Python" />
-        <watch expression="inputs.shape" language="Python" />
-        <watch expression="torch.cat((inputs, h_tilde), 2)" language="Python" />
-        <watch expression="nn.Tanh()(self.dec_input_bridge(inputs))" language="Python" />
-        <watch expression="trg_emb" language="Python" />
-        <watch expression="opt.train_path" language="Python" />
-        <watch expression="src_fields" language="Python" />
+        <watch expression="loss" language="Python" />
+        <watch expression="float(loss.data.numpy())" language="Python" />
       </configuration>
     </watches-manager>
   </component>
@@ -1248,13 +1252,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="192">
           <caret line="324" column="0" lean-forward="false" selection-start-line="324" selection-start-column="0" selection-end-line="324" selection-end-column="0" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pykp/dataloader.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="189">
-          <caret line="260" column="29" lean-forward="false" selection-start-line="260" selection-start-column="29" selection-end-line="260" selection-end-column="29" />
         </state>
       </provider>
     </entry>
@@ -1370,13 +1367,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/requirements.txt">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="68">
-          <caret line="4" column="16" lean-forward="true" selection-start-line="4" selection-start-column="16" selection-end-line="4" selection-end-column="16" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/script/train-kp20k-bidirectional-copy-dot.sh">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="425">
@@ -1435,7 +1425,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="-2618">
           <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-          <folding />
         </state>
       </provider>
     </entry>
@@ -1474,7 +1463,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="136">
           <caret line="117" column="7" lean-forward="true" selection-start-line="117" selection-start-column="7" selection-end-line="117" selection-end-column="7" />
-          <folding />
         </state>
       </provider>
     </entry>
@@ -1482,7 +1470,7 @@
     <entry file="file://$PROJECT_DIR$/data/stackexchange/length_statistics.csv" />
     <entry file="file://$PROJECT_DIR$/pykp/model.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="64">
+        <state relative-caret-position="7200">
           <caret line="480" column="37" lean-forward="false" selection-start-line="480" selection-start-column="37" selection-end-line="480" selection-end-column="37" />
           <folding>
             <element signature="e#54#68#0" expanded="true" />
@@ -1498,19 +1486,9 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/train.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="149">
-          <caret line="475" column="30" lean-forward="false" selection-start-line="475" selection-start-column="30" selection-end-line="475" selection-end-column="30" />
-          <folding>
-            <element signature="e#54#65#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/config.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="74">
+        <state relative-caret-position="3375">
           <caret line="230" column="76" lean-forward="false" selection-start-line="230" selection-start-column="76" selection-end-line="230" selection-end-column="76" />
           <folding />
         </state>
@@ -1518,24 +1496,50 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/evaluate.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="240">
+        <state relative-caret-position="2055">
           <caret line="155" column="40" lean-forward="false" selection-start-line="155" selection-start-column="40" selection-end-line="155" selection-end-column="40" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pykp/dataloader.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="170">
+          <caret line="157" column="23" lean-forward="false" selection-start-line="157" selection-start-column="13" selection-end-line="157" selection-end-column="23" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/train.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="161">
+          <caret line="155" column="43" lean-forward="true" selection-start-line="155" selection-start-column="43" selection-end-line="155" selection-end-column="43" />
+          <folding>
+            <element signature="e#54#65#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/.gitignore">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="165">
+          <caret line="11" column="6" lean-forward="false" selection-start-line="11" selection-start-column="6" selection-end-line="11" selection-end-column="6" />
           <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/beam_search.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="98">
-          <caret line="295" column="95" lean-forward="false" selection-start-line="295" selection-start-column="95" selection-end-line="295" selection-end-column="95" />
+        <state relative-caret-position="95">
+          <caret line="393" column="0" lean-forward="true" selection-start-line="393" selection-start-column="0" selection-end-line="393" selection-end-column="0" />
           <folding />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/.gitignore">
+    <entry file="file://$PROJECT_DIR$/requirements.txt">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="90">
-          <caret line="6" column="13" lean-forward="false" selection-start-line="6" selection-start-column="13" selection-end-line="6" selection-end-column="13" />
+        <state relative-caret-position="75">
+          <caret line="5" column="0" lean-forward="true" selection-start-line="5" selection-start-column="0" selection-end-line="5" selection-end-column="0" />
           <folding />
         </state>
       </provider>

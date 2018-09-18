@@ -151,9 +151,9 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
     optimizer.step()
 
     if torch.cuda.is_available():
-        loss_val = loss.cpu().data.numpy()[0]
+        loss_val = float(loss.cpu().data.numpy())
     else:
-        loss_val = loss.data.numpy()[0]
+        loss_val = float(loss.data.numpy())
 
     return loss_val, decoder_log_probs
 
@@ -580,25 +580,24 @@ def load_data_vocab(opt, load_train=True):
 
     logging.info("Loading vocab from disk: %s" % (opt.vocab))
     word2id, id2word, vocab = torch.load(opt.vocab, 'wb')
+    pin_memory = torch.cuda.is_available()
 
     # one2one data loader
     logging.info("Loading train and validate data from '%s'" % opt.data)
-    '''
-    train_one2one  = torch.load(opt.data + '.train.one2one.pt', 'wb')
-    valid_one2one  = torch.load(opt.data + '.valid.one2one.pt', 'wb')
-
-    train_one2one_dataset = KeyphraseDataset(train_one2one, word2id=word2id)
-    valid_one2one_dataset = KeyphraseDataset(valid_one2one, word2id=word2id)
-    train_one2one_loader = DataLoader(dataset=train_one2one_dataset, collate_fn=train_one2one_dataset.collate_fn_one2one, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=True)
-    valid_one2one_loader = DataLoader(dataset=valid_one2one_dataset, collate_fn=valid_one2one_dataset.collate_fn_one2one, num_workers=opt.batch_workers, batch_size=opt.batch_size, pin_memory=True, shuffle=False)
-    '''
 
     logging.info('======================  Dataset  =========================')
     # one2many data loader
     if load_train:
         train_one2many = torch.load(opt.data + '.train.one2many.pt', 'wb')
         train_one2many_dataset = KeyphraseDataset(train_one2many, word2id=word2id, id2word=id2word, type='one2many')
-        train_one2many_loader = KeyphraseDataLoader(dataset=train_one2many_dataset, collate_fn=train_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=1024, max_batch_pair=opt.batch_size, pin_memory=True, shuffle=True)
+        train_one2many_loader = KeyphraseDataLoader(dataset=train_one2many_dataset,
+                                                    collate_fn=train_one2many_dataset.collate_fn_one2many,
+                                                    num_workers=opt.batch_workers,
+                                                    max_batch_example=1024,
+                                                    max_batch_pair=opt.batch_size,
+                                                    pin_memory=pin_memory,
+                                                    shuffle=True)
+
         logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d, #(average examples/batch)=%.3f' % (len(train_one2many_loader.dataset), train_one2many_loader.one2one_number(), len(train_one2many_loader), train_one2many_loader.one2one_number() / len(train_one2many_loader)))
     else:
         train_one2many_loader = None
@@ -623,8 +622,20 @@ def load_data_vocab(opt, load_train=True):
     exit()
     """
 
-    valid_one2many_loader = KeyphraseDataLoader(dataset=valid_one2many_dataset, collate_fn=valid_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.beam_search_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
-    test_one2many_loader = KeyphraseDataLoader(dataset=test_one2many_dataset, collate_fn=test_one2many_dataset.collate_fn_one2many, num_workers=opt.batch_workers, max_batch_example=opt.beam_search_batch_example, max_batch_pair=opt.beam_search_batch_size, pin_memory=True, shuffle=False)
+    valid_one2many_loader = KeyphraseDataLoader(dataset=valid_one2many_dataset,
+                                                collate_fn=valid_one2many_dataset.collate_fn_one2many,
+                                                num_workers=opt.batch_workers,
+                                                max_batch_example=opt.beam_search_batch_example,
+                                                max_batch_pair=opt.beam_search_batch_size,
+                                                pin_memory=pin_memory,
+                                                shuffle=False)
+    test_one2many_loader = KeyphraseDataLoader(dataset=test_one2many_dataset,
+                                               collate_fn=test_one2many_dataset.collate_fn_one2many,
+                                               num_workers=opt.batch_workers,
+                                               max_batch_example=opt.beam_search_batch_example,
+                                               max_batch_pair=opt.beam_search_batch_size,
+                                               pin_memory=pin_memory,
+                                               shuffle=False)
 
     opt.word2id = word2id
     opt.id2word = id2word
