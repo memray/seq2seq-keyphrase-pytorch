@@ -1039,14 +1039,14 @@ class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
 
             # convert outputs to batch first and append to the final return lists
             # (batch_size, trg_max_len-1, vocab_size + max_oov_number)
-            decoder_log_prob_trgs.append(torch.cat(decoder_log_prob_trg, 0).permute(1, 0, 2))
+            # decoder_log_prob_trgs.append(torch.cat(decoder_log_prob_trg, 0).permute(1, 0, 2))
             # (batch_size, trg_max_len-1, hidden_size)
-            decoder_output_trgs.append(torch.cat(decoder_output_trg, 0).permute(1, 0, 2))
+            # decoder_output_trgs.append(torch.cat(decoder_output_trg, 0).permute(1, 0, 2))
             # (batch_size, trg_max_len-1, src_max_len)
-            attn_weight_trgs.append(torch.cat(attn_weight_trg, 0).permute(1, 0, 2))
-            if self.copy_attention_layer:
+            # attn_weight_trgs.append(torch.cat(attn_weight_trg, 0).permute(1, 0, 2))
+            # if self.copy_attention_layer:
                 # (batch_size, trg_max_len-1, src_max_len)
-                copy_weight_trgs.append(torch.cat(copy_weight_trg, 0).permute(1, 0, 2))
+                # copy_weight_trgs.append(torch.cat(copy_weight_trg, 0).permute(1, 0, 2))
 
             # prepare for the hidden state, get the last relevant one (after feeding EOS)
             if isinstance(dec_hidden_trg[0], tuple):
@@ -1066,11 +1066,11 @@ class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
             # TODO, generate history vectors
 
         # concatenate final outputs (batch_size * trg_num, trg_max_len - 1, *)
-        decoder_log_prob_trgs = torch.cat(decoder_log_prob_trgs, 0)
-        decoder_output_trgs = torch.cat(decoder_output_trgs, 0)
-        attn_weight_trgs = torch.cat(attn_weight_trgs, 0)
-        if self.copy_attention_layer:
-            copy_weight_trgs = torch.cat(copy_weight_trgs, 0)
+        # decoder_log_prob_trgs = torch.cat(decoder_log_prob_trgs, 0)
+        # decoder_output_trgs = torch.cat(decoder_output_trgs, 0)
+        # attn_weight_trgs = torch.cat(attn_weight_trgs, 0)
+        # if self.copy_attention_layer:
+            # copy_weight_trgs = torch.cat(copy_weight_trgs, 0)
 
         # Return final outputs (logits after log_softmax), hidden states, and two attention weights (for visualization)
         return decoder_log_prob_trgs, decoder_output_trgs, attn_weight_trgs, copy_weight_trgs
