@@ -92,7 +92,7 @@ def model_opts(parser):
                         help="""The attention type to use:
                         dot or general (Luong) or concat (Bahdanau)""")
 
-    parser.add_argument('-pointer_softmax_hidden_dim', type=int, default=0,
+    parser.add_argument('-pointer_softmax_hidden_dim', type=int, default=64,
                         help='pointer softmax hidden size, 0 to disable')
 
     # Genenerator and loss options.
@@ -233,7 +233,7 @@ def train_opts(parser):
                         max_grad_norm""")
     parser.add_argument('-truncated_decoder', type=int, default=0,
                         help="""Truncated bptt.""")
-    parser.add_argument('-dropout', type=float, default=0.0,
+    parser.add_argument('-dropout', type=float, default=0.3,
                         help="Dropout probability; applied in LSTM stacks.")
 
     # Learning options
@@ -250,14 +250,12 @@ def train_opts(parser):
                         help="""0: ori, 1: running average as baseline""")
     parser.add_argument('-rl_start_epoch', default=2, type=int,
                         help="""from which epoch rl training starts""")
-    parser.add_argument('-n_negative_samples', default=20, type=int,
-                        help="""how many negative samples""")
 
     parser.add_argument('-keyphrase_ordering', default='source', type=str,
                         help="""sort keyphrases or randomly shuffle them:
                                 origin, source, alphabet, shuffle""")
 
-    parser.add_argument('-target_encoder_dim', default=256, type=int,
+    parser.add_argument('-target_encoder_dim', default=32, type=int,
                         help="""target encoder dim, 0 means average""")
 
     parser.add_argument('-target_encoder_lambda', default=0.0, type=float,
@@ -266,10 +264,12 @@ def train_opts(parser):
                         help="""target encoder lambda""")
     parser.add_argument('-orthogonal_regularization_position', default='sep', type=str,
                         help="""which position to apply orth reg: sep, post""")
-    parser.add_argument('-replay_buffer_capacity', default=100, type=int,
+    parser.add_argument('-replay_buffer_capacity', default=128, type=int,
                         help="""replay buffer lambda""")
     parser.add_argument('-target_encoding_mlp_hidden_dim', default=[32, 32], type=list,
                         help="""target_encoding_mlp_hidden_dim""")
+    parser.add_argument('-n_negative_samples', default=64, type=int,
+                        help="""how many negative samples""")
 
     # GPU
 
@@ -308,7 +308,7 @@ def train_opts(parser):
     parser.add_argument('-warmup_steps', type=int, default=4000,
                         help="""Number of warmup steps for custom decay.""")
 
-    parser.add_argument('-run_valid_every', type=int, default=2000,
+    parser.add_argument('-run_valid_every', type=int, default=-1,
                         help="Run validation test at this interval (every run_valid_every batches)")
     parser.add_argument('-early_stop_tolerance', type=int, default=10,
                         help="Stop training if it doesn't improve any more for serveral rounds of validation")
