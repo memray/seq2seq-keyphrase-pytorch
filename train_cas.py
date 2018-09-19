@@ -103,9 +103,13 @@ def random_insert(_list, elem):
     return _list[:insert_before_this] + [elem] + _list[insert_before_this:], insert_before_this
 
 
-def get_target_encoder_loss(model, source_representations, target_representations, replay_memory, criterion, opt):
+def get_target_encoder_loss(model, source_representations, target_representations, input_trg_np, replay_memory, criterion, opt):
     # source_representations: batch x hid
-    # target_representations: batch x hid
+    # target_representations: time x batch x hid
+    # here, we use all target representations at sep positions, to do the classification task
+    sep_id = opt.word2id[pykp.io.SEP_WORD]
+    eos_id = opt.word2id[pykp.io.EOS_WORD]
+    target_representations = target_representations.permute(1, 0, 2)  # batch x time x hid
     batch_size = target_representations.size(0)
     n_neg = opt.n_negative_samples
     coef = opt.target_encoder_lambda
@@ -114,14 +118,19 @@ def get_target_encoder_loss(model, source_representations, target_representation
     batch_inputs_source, batch_inputs_target, batch_labels = [], [], []
     source_representations = source_representations.detach()
     for b in range(batch_size):
-        # 1. negative sampling
-        if len(replay_memory) >= n_neg:
-            neg_list = replay_memory.sample(n_neg)
-            inputs, which = random_insert(neg_list, source_representations[b])
-            inputs = torch.stack(inputs, 0)  # n_neg+1 x hid
-            batch_inputs_source.append(inputs)
-            batch_inputs_target.append(target_representations[b])
-            batch_labels.append(which)
+        # 0. find sep positions
+        inp_trg_np = input_trg_np[b]
+        for i in range(len(inp_trg_np)):
+            if inp_trg_np[i] in [sep_id, eos_id]:
+                trg_rep = target_representations[b][i]
+                # 1. negative sampling
+                if len(replay_memory) >= n_neg:
+                    neg_list = replay_memory.sample(n_neg)
+                    inputs, which = random_insert(neg_list, source_representations[b])
+                    inputs = torch.stack(inputs, 0)  # n_neg+1 x hid
+                    batch_inputs_source.append(inputs)
+                    batch_inputs_target.append(trg_rep)
+                    batch_labels.append(which)
         # 2. push source representations into replay memory
         replay_memory.push(source_representations[b])
     if len(batch_inputs_source) == 0:
@@ -189,6 +198,7 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
     src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists = one2one_batch
     max_oov_number = max([len(oov) for oov in oov_lists])
     trg_copy_target_np = copy.copy(trg_copy_target)
+    trg_copy_np = copy.copy(trg)
 
     print("src size - ", src.size())
     print("target size - ", trg.size())
@@ -201,12 +211,10 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
         trg_copy_target = trg_copy_target.cuda()
         src_oov = src_oov.cuda()
 
-    decoder_log_probs, decoder_outputs, _, source_representations, target_representations = model.forward(
-        src, src_len, trg, src_oov, oov_lists)
+    decoder_log_probs, decoder_outputs, _, source_representations, target_representations = model.forward(src, src_len, trg, src_oov, oov_lists)
 
-    te_loss = get_target_encoder_loss(model, source_representations, target_representations, replay_memory, criterion, opt)
-    penalties = get_orthogonal_penalty(
-        trg_copy_target_np, decoder_outputs, opt)
+    te_loss = get_target_encoder_loss(model, source_representations, target_representations, trg_copy_np, replay_memory, criterion, opt)
+    penalties = get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt)
 
     # simply average losses of all the predicitons
     # IMPORTANT, must use logits instead of probs to compute the loss,
