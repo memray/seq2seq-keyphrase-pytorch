@@ -513,11 +513,11 @@ class Seq2SeqLSTMAttention(nn.Module):
             trg_mask = self.get_mask(input_trg)  # same size as input_trg
         src_h, (src_h_t, src_c_t) = self.encode(input_src, input_src_len)
 
-        decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights, trg_encoding_h_last = self.decode(trg_inputs=input_trg, src_map=input_src_ext,
+        decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights, trg_encoding_h_last, trg_encoding_h = self.decode(trg_inputs=input_trg, src_map=input_src_ext,
                                                                                                            oov_list=oov_lists, enc_context=src_h, enc_hidden=(
                                                                                                                src_h_t, src_c_t),
                                                                                                            trg_mask=trg_mask, ctx_mask=ctx_mask)
-        return decoder_probs, decoder_hiddens, (attn_weights, copy_attn_weights), src_h_t, trg_encoding_h_last
+        return decoder_probs, decoder_hiddens, (attn_weights, copy_attn_weights), src_h_t, trg_encoding_h_last, trg_encoding_h
 
     def encode(self, input_src, input_src_len):
         """
@@ -637,13 +637,11 @@ class Seq2SeqLSTMAttention(nn.Module):
             # target encoder
             trg_enc_h, (trg_enc_h_last, _) = self.target_encoder(
                 trg_emb, trg_mask, init_hidden_target_encoder)
-            trg_enc_h = self.target_encoding_mlp(
-                trg_enc_h)[0]  # output of the 1st layer
-            trg_enc_h = trg_enc_h.detach()
-            decoder_input = self.target_encoding_merger([trg_enc_h, trg_emb])
+            decoder_input = self.target_encoding_merger([self.target_encoding_mlp(trg_enc_h)[0].detach(), trg_emb])
         else:
             decoder_input = trg_emb
             trg_enc_h_last = init_hidden_target_encoder[0]
+            trg_enc_h = init_hidden_target_encoder[0].unsqueeze(0)
         decoder_input = nn.functional.dropout(decoder_input, p=self.dropout, training=self.training)
 
         # both in/output of decoder LSTM is batch-second (trg_len, batch_size,
@@ -692,7 +690,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # Return final outputs (logits after log_softmax), hidden states, and
         # attention weights (for visualization)
-        return decoder_log_probs, decoder_outputs, attn_weights, copy_weights, trg_enc_h_last
+        return decoder_log_probs, decoder_outputs, attn_weights, copy_weights, trg_enc_h_last, trg_enc_h
 
     def merge_oov2unk(self, decoder_log_prob, max_oov_number):
         '''

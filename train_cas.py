@@ -201,12 +201,12 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
         trg_copy_target = trg_copy_target.cuda()
         src_oov = src_oov.cuda()
 
-    decoder_log_probs, decoder_outputs, _, source_representations, target_representations = model.forward(
+    decoder_log_probs, decoder_outputs, _, source_representations, target_representations, target_representations_seq = model.forward(
         src, src_len, trg, src_oov, oov_lists)
 
     te_loss = get_target_encoder_loss(model, source_representations, target_representations, replay_memory, criterion, opt)
-    penalties = get_orthogonal_penalty(
-        trg_copy_target_np, decoder_outputs, opt)
+    penalties = get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt)
+    penalties = penalties + get_orthogonal_penalty(trg_copy_target_np, target_representations_seq.permute(1, 0, 2), opt)
 
     # simply average losses of all the predicitons
     # IMPORTANT, must use logits instead of probs to compute the loss,
