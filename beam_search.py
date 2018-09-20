@@ -202,8 +202,8 @@ class SequenceGenerator(object):
             dec_hiddens = torch.cat([seq.state for seq in flattened_sequences])
 
         if isinstance(flattened_sequences[0].trg_enc_hidden, tuple):
-            h_states = torch.stack([seq.trg_enc_hidden[0] for seq in flattened_sequences], 0)  # batch x hid
-            c_states = torch.stack([seq.trg_enc_hidden[1] for seq in flattened_sequences], 0)  # batch x hid
+            h_states = torch.stack([seq.trg_enc_hidden[0] for seq in flattened_sequences], 0).unsqueeze(0)  # batch x hid
+            c_states = torch.stack([seq.trg_enc_hidden[1] for seq in flattened_sequences], 0).unsqueeze(0)  # batch x hid
             trg_enc_hiddens = (h_states, c_states)
         else:
             trg_enc_hiddens = torch.cat(
@@ -257,15 +257,13 @@ class SequenceGenerator(object):
         # each dec_hidden is (trg_seq_len, dec_hidden_dim)
         initial_input = [word2id[pykp.io.BOS_WORD]] * batch_size
         if isinstance(dec_hiddens, tuple):
-            dec_hiddens = (dec_hiddens[0].squeeze(
-                0), dec_hiddens[1].squeeze(0))
-            dec_hiddens = [(dec_hiddens[0][i], dec_hiddens[1][i])
-                           for i in range(batch_size)]
+            dec_hiddens = (dec_hiddens[0].squeeze(0), dec_hiddens[1].squeeze(0))
+            dec_hiddens = [(dec_hiddens[0][i], dec_hiddens[1][i]) for i in range(batch_size)]
         elif isinstance(dec_hiddens, list):
             dec_hiddens = dec_hiddens
         if isinstance(trg_enc_hiddens, tuple):
-            trg_enc_hiddens = [(trg_enc_hiddens[0][i], trg_enc_hiddens[
-                                1][i]) for i in range(batch_size)]
+            trg_enc_hiddens = (trg_enc_hiddens[0].squeeze(0), trg_enc_hiddens[1].squeeze(0))
+            trg_enc_hiddens = [(trg_enc_hiddens[0][i], trg_enc_hiddens[1][i]) for i in range(batch_size)]
         elif isinstance(trg_enc_hiddens, list):
             trg_enc_hiddens = trg_enc_hiddens
 
@@ -340,11 +338,9 @@ class SequenceGenerator(object):
             if isinstance(new_dec_hiddens, tuple):
                 new_dec_hiddens1 = new_dec_hiddens[0].squeeze(0)
                 new_dec_hiddens2 = new_dec_hiddens[1].squeeze(0)
-                new_dec_hiddens = [(new_dec_hiddens1[i], new_dec_hiddens2[
-                                    i]) for i in range(num_partial_sequences)]
+                new_dec_hiddens = [(new_dec_hiddens1[i], new_dec_hiddens2[i]) for i in range(num_partial_sequences)]
             if isinstance(new_trg_enc_hiddens, tuple):
-                new_trg_enc_hiddens = [(new_trg_enc_hiddens[0][i], new_trg_enc_hiddens[1][
-                                        i]) for i in range(num_partial_sequences)]
+                new_trg_enc_hiddens = [(new_trg_enc_hiddens[0].squeeze(0)[i], new_trg_enc_hiddens[1].squeeze(0)[i]) for i in range(num_partial_sequences)]
 
             # For every partial_sequence (num_partial_sequences in total), find
             # and trim to the best hypotheses (beam_size in total)
@@ -398,10 +394,8 @@ class SequenceGenerator(object):
 
                         # dec_hidden and attention of this partial_seq are
                         # shared by its descendant beams
-                        new_partial_seq.dec_hidden = new_dec_hiddens[
-                            flattened_seq_id]
-                        new_partial_seq.trg_enc_hidden = new_trg_enc_hiddens[
-                            flattened_seq_id]
+                        new_partial_seq.dec_hidden = new_dec_hiddens[flattened_seq_id]
+                        new_partial_seq.trg_enc_hidden = new_trg_enc_hiddens[flattened_seq_id]
 
                         if self.return_attention:
                             if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
@@ -512,14 +506,12 @@ class SequenceGenerator(object):
         # each dec_hidden is (trg_seq_len, dec_hidden_dim)
         initial_input = [word2id[pykp.io.BOS_WORD]] * batch_size
         if isinstance(dec_hiddens, tuple):
-            dec_hiddens = (dec_hiddens[0].squeeze(
-                0), dec_hiddens[1].squeeze(0))
-            dec_hiddens = [(dec_hiddens[0][i], dec_hiddens[1][i])
-                           for i in range(batch_size)]
+            dec_hiddens = (dec_hiddens[0].squeeze(0), dec_hiddens[1].squeeze(0))
+            dec_hiddens = [(dec_hiddens[0][i], dec_hiddens[1][i]) for i in range(batch_size)]
         elif isinstance(dec_hiddens, list):
             dec_hiddens = dec_hiddens
         if isinstance(trg_enc_hiddens, tuple):
-            trg_enc_hiddens = [(trg_enc_hiddens[0][i], trg_enc_hiddens[1][i]) for i in range(batch_size)]
+            trg_enc_hiddens = [(trg_enc_hiddens[0].squeeze(0)[i], trg_enc_hiddens[1].squeeze(0)[i]) for i in range(batch_size)]
         elif isinstance(trg_enc_hiddens, list):
             trg_enc_hiddens = trg_enc_hiddens
 
@@ -609,12 +601,10 @@ class SequenceGenerator(object):
             if isinstance(new_dec_hiddens, tuple):
                 new_dec_hiddens1 = new_dec_hiddens[0].squeeze(0)
                 new_dec_hiddens2 = new_dec_hiddens[1].squeeze(0)
-                new_dec_hiddens = [(new_dec_hiddens1[i], new_dec_hiddens2[
-                                    i]) for i in range(num_partial_sequences)]
+                new_dec_hiddens = [(new_dec_hiddens1[i], new_dec_hiddens2[i]) for i in range(num_partial_sequences)]
 
             if isinstance(new_trg_enc_hiddens, tuple):
-                new_trg_enc_hiddens = [(new_trg_enc_hiddens[0][i], new_trg_enc_hiddens[1][
-                                        i]) for i in range(num_partial_sequences)]
+                new_trg_enc_hiddens = [(new_trg_enc_hiddens[0].squeeze(0)[i], new_trg_enc_hiddens[1].squeeze(0)[i]) for i in range(num_partial_sequences)]
 
             # For every partial_sequence (num_partial_sequences in total), find
             # and trim to the best hypotheses (beam_size in total)

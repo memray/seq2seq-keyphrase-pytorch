@@ -349,8 +349,12 @@ class Seq2SeqLSTMAttention(nn.Module):
             dropout=self.dropout
         )
 
-        self.target_encoder = UniLSTM(nemb=self.emb_dim,
-                                      nhid=self.target_encoder_dim)
+        self.target_encoder = nn.LSTM(input_size=self.emb_dim,
+                                      hidden_size=self.target_encoder_dim,
+                                      num_layers=1,        
+                                      bidirectional=False,
+                                      batch_first=False,
+                                      dropout=self.dropout)
 
         self.target_encoding_merger = Concat()
         self.target_encoding_mlp = MultilayerPerceptron(input_dim=self.target_encoder_dim,
@@ -468,11 +472,13 @@ class Seq2SeqLSTMAttention(nn.Module):
         """Get cell states and hidden states."""
 
         h0_target_encoder = Variable(torch.zeros(
+            1,
             batch_size,
             self.target_encoder_dim
         ), requires_grad=False)
 
         c0_target_encoder = Variable(torch.zeros(
+            1,
             batch_size,
             self.target_encoder_dim
         ), requires_grad=False)
@@ -636,7 +642,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         if self.enable_target_encoder:
             # target encoder
             trg_enc_h, _ = self.target_encoder(
-                trg_emb, trg_mask, init_hidden_target_encoder)
+                trg_emb, init_hidden_target_encoder)
             decoder_input = self.target_encoding_merger([self.target_encoding_mlp(trg_enc_h)[0].detach(), trg_emb])
         else:
             decoder_input = trg_emb
@@ -910,11 +916,10 @@ class Seq2SeqLSTMAttention(nn.Module):
         if self.enable_target_encoder:
             # target encoder
             trg_enc_h, trg_enc_hidden = self.target_encoder(
-                trg_emb, trg_mask, trg_enc_hidden
+                trg_emb, trg_enc_hidden
             )
             trg_enc_h = self.target_encoding_mlp(
                 trg_enc_h)[0]  # output of the 1st layer
-            trg_enc_h = trg_enc_h.detach()
             dec_input = self.target_encoding_merger([trg_enc_h, trg_emb])
         else:
             dec_input = trg_emb
