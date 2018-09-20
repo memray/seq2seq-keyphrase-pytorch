@@ -3,6 +3,7 @@
 Python File Template 
 """
 import codecs
+import json
 import os
 
 import re
@@ -21,7 +22,7 @@ class Document(object):
         self.keyphrases    = []
 
     def __str__(self):
-        return '%s\n\t%s\n\t%s' % (self.title, self.abstract, str(self.keyphrases))
+        return '%s\n\t%s\n\t%s\n\t%s' % (self.name, self.title, self.abstract, str(self.keyphrases))
 
     def to_dict(self):
         d = {}
@@ -39,7 +40,7 @@ class Dataset(object):
         self.name    = self.__class__.__name__
         dir = os.path.dirname(os.path.realpath(__file__))
         self.basedir = os.path.join(dir[: dir.rfind('pykp')], 'source_data', '')
-        self.datadir = os.path.join(self.basedir, self.name)
+        self.datadir = os.path.join(self.basedir, self.name.lower())
         self.textdir = self.datadir + '/all_texts/'
         self.keyphrasedir = self.datadir + '/gold_standard_keyphrases/'
         self.train_test_splitted = False
@@ -47,10 +48,8 @@ class Dataset(object):
 
         self.doc_list = []
 
-        self._load_dataset()
 
-
-    def _load_dataset(self):
+    def load_dataset(self):
         self.load_text(self.textdir)
         self.load_keyphrase(self.keyphrasedir)
 
@@ -74,9 +73,42 @@ class Dataset(object):
         train_data = []
         test_data = []
         if self.train_test_splitted:
+            '''
+            if the split of train/test is given, return as it is
+            '''
             for doc in self.doc_list:
                 if doc.name.startswith('train'):
                     train_data.append(doc)
+                elif doc.name.startswith('test'):
+                    test_data.append(doc)
+                else:
+                    raise Exception('File must start with either train or test if train_test_splitted is on for class %s' % self.__class__)
+        else:
+            '''
+            if split is not given, take the first 20% for test, rest 80% for training
+            '''
+            # ensure files are sorted in an alphabetical order
+            doc_list = sorted(self.doc_list, key=lambda d:d.name)
+            test_data = doc_list[: int(len(doc_list) * 0.2)]
+            train_data = doc_list[int(len(doc_list) * 0.2): ]
+
+        train_data_dicts = self._convert_docs_to_dicts(train_data)
+        test_data_dicts = self._convert_docs_to_dicts(test_data)
+
+        return train_data_dicts, test_data_dicts
+
+
+    def dump_train_test_to_json(self):
+        train_data_dicts, test_data_dicts = self.load_train_test_dataset()
+        train_json_path = os.path.join(self.datadir, self.name+'_training.json')
+        with open(train_json_path, 'w') as train_json:
+            for d in train_data_dicts:
+                train_json.write(json.dumps(d) + '\n')
+
+        test_json_path = os.path.join(self.datadir, self.name+'_testing.json')
+        with open(test_json_path, 'w') as test_json:
+            for d in test_data_dicts:
+                test_json.write(json.dumps(d) + '\n')
 
 
     def load_text(self, textdir):
@@ -114,33 +146,35 @@ class Dataset(object):
                                 break
 
                         # lines between T and A are title
-                        title = ' '.join([''.join(line) for line in lines[T_index + 1: A_index]])
+                        title = ' '.join(lines[T_index + 1: A_index])
                         # lines between A and B are abstract
-                        abstract = ' '.join([''.join(line) for line in lines[A_index + 1: B_index]])
+                        abstract = ' '.join(lines[A_index + 1: B_index])
                         # lines after B are fulltext
-                        text = ' '.join([''.join(line) for line in lines[B_index + 1:]])
+                        text = '\n'.join(lines[B_index + 1:])
 
-                        if not T_index or not A_index or not B_index:
+                        if T_index is None or A_index is None or B_index is None:
                             print('Wrong format detected : %s' % (filename))
-                            print('Name: ' + doc.name.strip())
+                            print('Name: ' + textdir + filename)
                             print('Title: ' + title.strip())
-                            if ''.join(lines[0]).strip() != '--T':
+                            if not T_index:
                                 print('line 0 should be --T: ' + ''.join(lines[0]).strip())
-                            if ''.join(lines[2]).strip() != '--A':
+                            if not A_index:
                                 print('line 2 should be --A: ' + ''.join(lines[2]).strip())
-                            if ''.join(lines[4]).strip() != '--B':
+                            if not B_index:
                                 print('line 4 should be --B: ' + ''.join(lines[4]).strip())
+                            print()
                         else:
                             pass
                             # print('No Problem: %s' % filename)
 
                     else:
                         '''
-                        otherwise, 1st line is title, and 2nd line is abstract
+                        otherwise, 1st line is title, and rest lines are abstract
                         '''
+
                         # 1st line is title
                         title = lines[0]
-                        # 2nd line is abstract
+                        # rest lines are abstract
                         abstract = (' '.join([''.join(line).strip() for line in lines[1:]]))
                         # no fulltext is given, ignore it
                         text = ''
@@ -188,7 +222,8 @@ class SemEval(Dataset):
     def __init__(self, **kwargs):
         super(SemEval, self).__init__(**kwargs)
         self.train_test_splitted = True
-        self.title_abstract_body_separated = True
+        # self.title_abstract_body_separated = True
+        self.title_abstract_body_separated = False
 
 
 class KRAPIVIN(Dataset):
@@ -227,7 +262,7 @@ def get_from_module(identifier, module_params, module_name, instantiate=False, k
     return identifier
 
 
-def initialize_testing_data(identifier, kwargs=None):
+def initialize_test_data_loader(identifier, kwargs=None):
     '''
     load testing data dynamically
     :return:
@@ -239,8 +274,24 @@ def initialize_testing_data(identifier, kwargs=None):
 
 if __name__ == '__main__':
     for dataset_name in dataset_names:
-        dataset = initialize_testing_data(dataset_name)
-        dataset_dict = dataset.load_dataset_as_dicts()
+        print('-' * 50)
+        print('Loading %s' % dataset_name)
 
-        print('#(%s) = %d' % (dataset_name, len(dataset_dict)))
-        print('avg #(keyphrase) = %.3f\n' % (sum([len(d.keyphrases) for d in dataset.doc_list]) / len(dataset_dict)))
+        dataset_loader = initialize_test_data_loader(dataset_name)
+        dataset_loader.load_dataset()
+        dataset_dict = dataset_loader.load_dataset_as_dicts()
+        train_data_dicts, test_data_dicts = dataset_loader.load_train_test_dataset()
+        dataset_loader.dump_train_test_to_json()
+
+        print('#(doc) = %d' % (len(dataset_dict)))
+        print('#(keyphrase) = %.3f' % (sum([len(d.keyphrases) for d in dataset_loader.doc_list]) / len(dataset_dict)))
+        print('#(train) = %d, #(test)=%d' % (len(train_data_dicts), len(test_data_dicts)))
+
+        print('\nlen(title) = %.3f' % (sum([len(d.title.split()) for d in dataset_loader.doc_list]) / len(dataset_dict)))
+        print('len(abstract) = %.3f' % (sum([len(d.abstract.split()) for d in dataset_loader.doc_list]) / len(dataset_dict)))
+        print('len(text) = %.3f' % (sum([len(d.text.split()) for d in dataset_loader.doc_list]) / len(dataset_dict)))
+
+        # print(dataset_loader.doc_list[10])
+        # print(dataset_loader.doc_list[20])
+
+        print('-' * 50)
