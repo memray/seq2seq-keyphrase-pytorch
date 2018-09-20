@@ -6,27 +6,28 @@ import sys
 import time
 
 
-def init_logging(logger_name, log_file, stdout=False):
+def init_logging(logger_name, log_file, redirect_to_stdout=False, level=logging.INFO):
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s',
                                   datefmt='%m/%d/%Y %H:%M:%S'   )
 
-    print('Making log output file: %s' % log_file)
-    print(log_file[: log_file.rfind(os.sep)])
     if not os.path.exists(log_file[: log_file.rfind(os.sep)]):
         os.makedirs(log_file[: log_file.rfind(os.sep)])
 
     fh = logging.FileHandler(log_file)
     fh.setFormatter(formatter)
-    fh.setLevel(logging.INFO)
+    fh.setLevel(level)
 
     logger = logging.getLogger(logger_name)
     logger.addHandler(fh)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(level)
 
-    if stdout:
+    logger.info('Making log output file: %s' % log_file)
+    logger.info(log_file[: log_file.rfind(os.sep)])
+
+    if redirect_to_stdout:
         ch = logging.StreamHandler(sys.stdout)
         ch.setFormatter(formatter)
-        ch.setLevel(logging.INFO)
+        ch.setLevel(level)
         logger.addHandler(ch)
 
     return logger
@@ -111,7 +112,7 @@ def model_opts(parser):
                         help="A gate controling the flow from generative model and copy model (see See et al.)")
 
     # parser.add_argument('-coverage_attn', action="store_true",
-    #                     help='Train a coverage attention layer.')
+    #                     help='Train a coverage attention layer by Tu:2016:ACL.')
     # parser.add_argument('-lambda_coverage', type=float, default=1,
     #                     help='Lambda value for coverage by Tu:2016:ACL.')
 
@@ -133,7 +134,7 @@ def preprocess_opts(parser):
                         help="Size of the source vocabulary")
     # for copy model
     parser.add_argument('-max_unk_words', type=int, default=1000,
-                        help="Maximum number of unknown words the model supports (mainly for masking in loss)")
+                        help="Maximum number of unknown words the model supports (mainly for masking in loss).")
 
     parser.add_argument('-words_min_frequency', type=int, default=0)
 
@@ -165,10 +166,10 @@ def preprocess_opts(parser):
 
 def train_opts(parser):
     # Model loading/saving options
-    parser.add_argument('-data', required=True,
+    parser.add_argument('-data_path_prefix', required=True,
                         help="""Path prefix to the ".train.pt" and
                         ".valid.pt" file path from preprocess.py""")
-    parser.add_argument('-vocab', required=True,
+    parser.add_argument('-vocab_file', required=True,
                         help="""Path prefix to the ".vocab.pt"
                         file path from preprocess.py""")
 
@@ -291,6 +292,7 @@ def train_opts(parser):
     parser.add_argument('-timemark', type=str, default=timemark,
                         help="Save checkpoint at this interval.")
 
+    # output setting
     parser.add_argument('-save_model_every', type=int, default=2000,
                         help="Save checkpoint at this interval.")
 
