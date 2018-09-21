@@ -9,15 +9,12 @@ import json
 import re
 import random
 import traceback
+import os
+import copy
 from collections import Counter
 from collections import defaultdict
 import numpy as np
-import sys
 from torch.autograd import Variable
-
-import torch.multiprocessing as multiprocessing
-import queue
-import threading
 
 
 __author__ = "Rui Meng"
@@ -560,15 +557,19 @@ def tokenize_filter_data(
                 continue
 
             # FILTER 5: filter keywords like primary 75v05;secondary 76m10;65n30
-            if (len(trg_tokens) > 0 and re.match(r'\d\d[a-zA-Z\-]\d\d', trg_tokens[0].strip())) or (len(trg_tokens) > 1 and re.match(r'\d\d\w\d\d', trg_tokens[1].strip())):
+            if valid_check and (len(trg_tokens) > 0 and re.match(r'\d\d[a-zA-Z\-]\d\d', trg_tokens[0].strip())) or (len(trg_tokens) > 1 and re.match(r'\d\d\w\d\d', trg_tokens[1].strip())):
                 print('Find dirty keyword of type \d\d[a-z]\d\d: %s' % trg)
                 continue
 
             trgs_tokens.append(trg_tokens)
 
+        # ignore the examples that have zero valid targets, for training they are no helpful
+        if valid_check and len(trgs_tokens) == 0:
+            continue
+
         return_pairs.append((src_tokens, trgs_tokens))
 
-        if idx % 2000 == 0:
+        if idx % 20000 == 0:
             print('-------------------- %s: %d ---------------------------' % (inspect.getframeinfo(inspect.currentframe()).function, idx))
             print(src)
             print(src_tokens)
@@ -585,45 +586,45 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
     :param include_original: keep the original texts of source and target
     :return:
     '''
-    return_examples = []
-    oov_target = 0
-    max_oov_len = 0
-    max_oov_sent = ''
+    return_example_list = []
+    count_oov_in_targets = 0
+    max_oov_num_in_src = 0
+    max_oov_src = ''
 
     for idx, (source, targets) in enumerate(src_trgs_pairs):
         # if w is not seen in training data vocab (word2id, size could be larger than opt.vocab_size), replace with <unk>
-        src_all = [word2id[w] if w in word2id else word2id[UNK_WORD] for w in source]
+        # src_all = [word2id[w] if w in word2id else word2id[UNK_WORD] for w in source]
         # if w's id is larger than opt.vocab_size, replace with <unk>
         src_unk = [word2id[w] if w in word2id and word2id[w] < opt.vocab_size else word2id[UNK_WORD] for w in source]
 
         # create a local vocab for the current source text. If there're V words in the vocab of this string, len(itos)=V+2 (including <unk> and <pad>), len(stoi)=V+1 (including <pad>)
         src_copy, oov_dict, oov_list = extend_vocab_OOV(source, word2id, opt.vocab_size, opt.max_unk_words)
-        examples = []  # for one-to-many
+        one2one_example_list = []  # for one-to-many
+        find_oov_in_targets = False
 
         for target in targets:
-            example = {}
-
+            '''
+            Initialize an example and input the shared source information
+            Note that do not use copy.deepcopy() as it forcibly creates new object and consumes too much disk
+            '''
+            one2one_example = {}
             if include_original:
-                example['src_str'] = source
-                example['trg_str'] = target
+                one2one_example['src_str'] = source
+                one2one_example['trg_str'] = target
 
-            example['src'] = src_unk
-            # example['src_input'] = [word2id[BOS_WORD]] + src + [word2id[EOS_WORD]] # target input, requires BOS at the beginning
-            # example['src_all']   = src_all
+            one2one_example['src'] = src_unk
+            one2one_example['src_oov'] = src_copy
+            one2one_example['oov_dict'] = oov_dict
+            one2one_example['oov_list'] = oov_list
+            if len(oov_list) > max_oov_num_in_src:
+                max_oov_num_in_src = len(oov_list)
+                max_oov_src = source
 
+            '''
+            process targets and add into example
+            '''
             trg = [word2id[w] if w in word2id and word2id[w] < opt.vocab_size else word2id[UNK_WORD] for w in target]
-            example['trg'] = trg
-            # example['trg_input']   = [word2id[BOS_WORD]] + trg + [word2id[EOS_WORD]] # target input, requires BOS at the beginning
-            # example['trg_all']   = [word2id[w] if w in word2id else word2id[UNK_WORD] for w in target]
-            # example['trg_loss']  = example['trg'] + [word2id[EOS_WORD]] # target for loss computation, ignore BOS
-
-            example['src_oov'] = src_copy
-            example['oov_dict'] = oov_dict
-            example['oov_list'] = oov_list
-            if len(oov_list) > max_oov_len:
-                max_oov_len = len(oov_list)
-                max_oov_sent = source
-
+            one2one_example['trg'] = trg
             # oov words are replaced with new index
             trg_copy = []
             for w in target:
@@ -633,61 +634,59 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
                     trg_copy.append(oov_dict[w])
                 else:
                     trg_copy.append(word2id[UNK_WORD])
-
-            example['trg_copy'] = trg_copy
-            # example['trg_copy_input'] = [word2id[BOS_WORD]] + trg_copy + [word2id[EOS_WORD]] # target input, requires BOS at the beginning
-            # example['trg_copy_loss']  = example['trg_copy'] + [word2id[EOS_WORD]] # target for loss computation, ignore BOS
-
-            # example['copy_martix'] = copy_martix(source, target)
-            # C = [0 if w not in source else source.index(w) + opt.vocab_size for w in target]
-            # example["copy_index"] = C
-            # A = [word2idx[w] if w in word2idx else word2idx['<unk>'] for w in source]
-            # B = [[word2idx[w] if w in word2idx else word2idx['<unk>'] for w in p] for p in target]
-            # C = [[0 if w not in source else source.index(w) + Lmax for w in p] for p in target]
+            one2one_example['trg_copy'] = trg_copy
 
             if any([w >= opt.vocab_size for w in trg_copy]):
-                oov_target += 1
+                find_oov_in_targets= True
 
-            if idx % 2000 == 0:
+            if idx % 20000 == 0:
                 print('-------------------- %s: %d ---------------------------' % (inspect.getframeinfo(inspect.currentframe()).function, idx))
                 print('source    \n\t\t[len=%d]: %s' % (len(source), source))
                 print('target    \n\t\t[len=%d]: %s' % (len(target), target))
-                # print('src_all   \n\t\t[len=%d]: %s' % (len(example['src_all']), example['src_all']))
-                # print('trg_all   \n\t\t[len=%d]: %s' % (len(example['trg_all']), example['trg_all']))
-                print('src       \n\t\t[len=%d]: %s' % (len(example['src']), example['src']))
-                # print('src_input \n\t\t[len=%d]: %s' % (len(example['src_input']), example['src_input']))
-                print('trg       \n\t\t[len=%d]: %s' % (len(example['trg']), example['trg']))
-                # print('trg_input \n\t\t[len=%d]: %s' % (len(example['trg_input']), example['trg_input']))
+                print('src       \n\t\t[len=%d]: %s' % (len(one2one_example['src']), one2one_example['src']))
+                print('trg       \n\t\t[len=%d]: %s' % (len(one2one_example['trg']), one2one_example['trg']))
 
                 print('src_copy \n\t\t[len=%d]: %s' % (len(src_copy), src_copy))
-
                 print('oov_dict         \n\t\t[len=%d]: %s' % (len(oov_dict), oov_dict))
                 print('oov_list         \n\t\t[len=%d]: %s' % (len(oov_list), oov_list))
                 if len(oov_dict) > 0:
                     print('Find OOV in source')
 
                 print('trg_copy \n\t\t[len=%d]: %s' % (len(trg_copy), trg_copy))
-                # print('trg_copy_input   \n\t\t[len=%d]: %s' % (len(example["trg_copy_input"]), example["trg_copy_input"]))
 
                 if any([w >= opt.vocab_size for w in trg_copy]):
                     print('Find OOV in target')
 
-                # print('copy_martix      \n\t\t[len=%d]: %s' % (len(example["copy_martix"]), example["copy_martix"]))
-                # print('copy_index  \n\t\t[len=%d]: %s' % (len(example["copy_index"]), example["copy_index"]))
+            one2one_example_list.append(one2one_example)
 
-            if mode == 'one2one':
-                return_examples.append(example)
-            else:
-                examples.append(example)
+        if find_oov_in_targets:
+            count_oov_in_targets += 1
 
-        if mode == 'one2many' and len(examples) > 0:
+        # if it is one2many mode, merge multiple one2one examples to one
+        if mode == 'one2many':
+            # take care of the cases that no targets in an example
+            if len(one2one_example_list) == 0:
+                one2one_example = {}
+                if include_original:
+                    one2one_example['src_str'] = source
+                    one2one_example['trg_str'] = target
+
+                one2one_example['src'] = src_unk
+                one2one_example['src_oov'] = src_copy
+                one2one_example['oov_dict'] = oov_dict
+                one2one_example['oov_list'] = oov_list
+                one2one_example['trg'] = []
+                one2one_example['trg_copy'] = []
+                one2one_example_list.append(one2one_example)
+
             o2m_example = {}
-            keys = examples[0].keys()
+            keys = one2one_example_list[0].keys()
             for key in keys:
                 if key.startswith('src') or key.startswith('oov'):
-                    o2m_example[key] = examples[0][key]
+                    o2m_example[key] = one2one_example_list[0][key]
                 else:
-                    o2m_example[key] = [e[key] for e in examples]
+                    o2m_example[key] = [e[key] for e in one2one_example_list]
+
             if include_original:
                 assert len(o2m_example['src']) == len(o2m_example['src_oov']) == len(o2m_example['src_str'])
                 assert len(o2m_example['oov_dict']) == len(o2m_example['oov_list'])
@@ -697,13 +696,17 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
                 assert len(o2m_example['oov_dict']) == len(o2m_example['oov_list'])
                 assert len(o2m_example['trg']) == len(o2m_example['trg_copy'])
 
-            return_examples.append(o2m_example)
+            return_example_list.append(o2m_example)
+        else:
+            return_example_list.extend(one2one_example_list)
 
-    print('Find #(oov_target)/#(all) = %d/%d' % (oov_target, len(return_examples)))
-    print('Find max_oov_len = %d' % (max_oov_len))
-    print('max_oov sentence: %s' % str(max_oov_sent))
+    print('Find #(doc with oov in targets)/#(all docs) = %d/%d' % (count_oov_in_targets, len(return_example_list)))
+    print('Find max number of oov words in a text = %d' % (max_oov_num_in_src))
+    print('max_oov sentence: %s' % str(max_oov_src))
 
-    return return_examples
+    print('#(input pairs)/#(returned %s examples) = %d / %d' % (mode, len(src_trgs_pairs), len(return_example_list)))
+
+    return return_example_list
 
 
 def extend_vocab_OOV(source_words, word2id, vocab_size, max_oov_words):
@@ -948,3 +951,106 @@ def initialize_fields(opt):
         tokenize=copyseq_tokenize)
 
     return fields
+
+
+def load_src_trgs_pairs(source_json_path, dataset_name, src_fields, trg_fields, opt, valid_check=False):
+    src_trgs_pairs = load_json_data(source_json_path,
+                                    dataset_name,
+                                    src_fields=src_fields,
+                                    trg_fields=trg_fields,
+                                    trg_delimiter=';')
+    tokenized_pairs = tokenize_filter_data(src_trgs_pairs,
+                                           tokenize_fn=copyseq_tokenize,
+                                           opt=opt,
+                                           valid_check=valid_check)
+
+    del src_trgs_pairs
+
+    return tokenized_pairs
+
+
+def generate_one2one_one2many_examples(tokenized_pairs, word2id, id2word, opt, include_original):
+    one2one_examples = process_data_examples(tokenized_pairs,
+                                                     word2id, id2word,
+                                                     opt, mode='one2one',
+                                                     include_original=include_original)
+    one2many_examples = process_data_examples(tokenized_pairs,
+                                                      word2id, id2word,
+                                                      opt, mode='one2many',
+                                                      include_original=include_original)
+
+    print('\t#pairs of one2one = %d' % len(one2one_examples))
+    print('\t#pairs of one2many = %d' % len(one2many_examples))
+
+    return one2one_examples, one2many_examples
+
+
+def process_and_export_dataset(tokenized_src_trg_pairs,
+                               word2id, id2word,
+                               opt, output_path,
+                               dataset_name,
+                               data_type=None):
+    """
+    :param tokenized_src_trg_pairs:
+    :param word2id:
+    :param id2word:
+    :param opt:
+    :param output_path:
+    :param dataset_name:
+    :param data_type: one of train, valid, test
+    :return:
+    """
+    assert data_type is not None
+    assert data_type in ['train', 'valid', 'test']
+
+    print("Processing %s data, #(src_trg_pair)=%d..." % (data_type, len(tokenized_src_trg_pairs)))
+    '''
+    Convert raw data to data examples (strings to tensors)
+    '''
+    if data_type == 'train':
+        include_original = False
+    else:
+        include_original = True
+
+    print("Dumping %s %s to disk: %s" % (dataset_name, data_type, os.path.join(output_path, '%s.%s.*.pt' % (dataset_name, data_type))))
+    one2one_examples = process_data_examples(
+        tokenized_src_trg_pairs, word2id, id2word, opt, mode='one2one', include_original=include_original)
+    print('#pairs of %s %s one2one  = %d' % (dataset_name, data_type, len(one2one_examples)))
+    print("Dumping one2one %s %s to disk: %s" % (dataset_name, data_type, os.path.join(output_path, '%s.%s.one2one.pt' % (dataset_name, data_type))))
+    torch.save(one2one_examples, open(os.path.join(output_path, '%s.%s.one2one.pt' % (dataset_name, data_type)), 'wb'))
+    del one2one_examples
+
+    one2many_exmaples = process_data_examples(
+        tokenized_src_trg_pairs, word2id, id2word, opt, mode='one2many', include_original=include_original)
+    print('#pairs of %s %s one2many = %d' % (dataset_name, data_type, len(one2many_exmaples)))
+    print("Dumping one2many %s %s to disk: %s" % (dataset_name, data_type, os.path.join(output_path, '%s.%s.one2many.pt' % (dataset_name, data_type))))
+    torch.save(one2many_exmaples, open(os.path.join(output_path, '%s.%s.one2many.pt' % (dataset_name, data_type)), 'wb'))
+    del one2many_exmaples
+
+    print("Dumping done!")
+
+    '''
+    Print dataset statistics
+    '''
+
+    print("***************** %s %s : Source Length Statistics ******************" % (dataset_name, data_type.upper()))
+    len_counter = {}
+    for src_tokens, trgs_tokens in tokenized_src_trg_pairs:
+        len_count = len_counter.get(len(src_tokens), 0) + 1
+        len_counter[len(src_tokens)] = len_count
+    sorted_len = sorted(len_counter.items(), key=lambda x: x[0], reverse=True)
+
+    for len_, count in sorted_len:
+        print('%d,%d' % (len_, count))
+
+    print("***************** %s %s : Target Length Statistics ******************" % (dataset_name, data_type.upper()))
+    len_counter = {}
+    for src_tokens, trgs_tokens in tokenized_src_trg_pairs:
+        for trgs_token in trgs_tokens:
+            len_count = len_counter.get(len(trgs_token), 0) + 1
+            len_counter[len(trgs_token)] = len_count
+
+    sorted_len = sorted(len_counter.items(), key=lambda x: x[0], reverse=True)
+
+    for len_, count in sorted_len:
+        print('%d,%d' % (len_, count))

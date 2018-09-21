@@ -674,8 +674,8 @@ def load_data_vocab(opt, load_train=True):
     else:
         train_one2many_loader = None
 
-    valid_one2many = torch.load(opt.data_path_prefix + '.valid.one2many.pt', 'wb')
-    test_one2many = torch.load(opt.data_path_prefix + '.test.one2many.pt', 'wb')
+    valid_one2many = torch.load(opt.data_path_prefix + '.valid.one2many.pt', 'rb')
+    test_one2many = torch.load(opt.data_path_prefix + '.test.one2many.pt', 'rb')
 
     # !important. As it takes too long to do beam search, thus reduce the size of validation and test datasets
     valid_one2many = valid_one2many[:2000]
