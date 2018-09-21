@@ -26,8 +26,8 @@ __email__ = "rui.meng@pitt.edu"
 
 
 def load_vocab_and_testsets(opt):
-    logging.info("Loading vocab from disk: %s" % (opt.vocab_file))
-    word2id, id2word, vocab = torch.load(opt.vocab_file, 'rb')
+    logging.info("Loading vocab from disk: %s" % (opt.vocab_path))
+    word2id, id2word, vocab = torch.load(opt.vocab_path, 'rb')
     opt.word2id = word2id
     opt.id2word = id2word
     opt.vocab = vocab
@@ -38,8 +38,8 @@ def load_vocab_and_testsets(opt):
     test_one2many_loaders = []
 
     for testset_name in opt.test_dataset_names:
-        logging.info("Loading test dataset %s" % opt.testset_name)
-        testset_path = os.path.join(opt.test_dataset_root_path, testset_name + '.test.one2many.pt')
+        logging.info("Loading test dataset %s" % testset_name)
+        testset_path = os.path.join(opt.test_dataset_root_path, testset_name, testset_name + '.test.one2many.pt')
         test_one2many = torch.load(testset_path, 'wb')
         test_one2many_dataset = KeyphraseDataset(test_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
         test_one2many_loader = KeyphraseDataLoader(dataset=test_one2many_dataset,
@@ -58,6 +58,7 @@ def load_vocab_and_testsets(opt):
 
 
 def main():
+    # TODO init_exp()
     # load settings for training
     parser = argparse.ArgumentParser(
         description='predict.py',
@@ -108,7 +109,7 @@ def main():
     if not os.path.exists(opt.plot_path):
         os.makedirs(opt.plot_path)
 
-    logging = config.init_logging(logger_name=None, log_file=opt.log_file, redirect_to_stdout=False)
+    logging = config.init_logging(logger_name=None, log_file=opt.log_file, redirect_to_stdout=True)
 
     logging.info('EXP_PATH : ' + opt.exp_path)
     logging.info('Parameters:')
@@ -116,7 +117,7 @@ def main():
 
 
     try:
-        test_data_loaders, word2id, id2word, vocab = load_vocab_and_testsets(opt, load_train=False)
+        test_data_loaders, word2id, id2word, vocab = load_vocab_and_testsets(opt)
         model = init_model(opt)
         generator = SequenceGenerator(model,
                                       eos_id=opt.word2id[pykp.io.EOS_WORD],
@@ -128,7 +129,7 @@ def main():
             evaluate_beam_search(generator, test_data_loader, opt, title='predict', save_path=opt.pred_path + '/%s_test_result.csv' % (testset_name))
 
     except Exception as e:
-        logging.exception(e)
+        logging.error(e.with_traceback())
 
 if __name__ == '__main__':
     main()

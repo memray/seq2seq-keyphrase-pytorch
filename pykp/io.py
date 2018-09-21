@@ -378,11 +378,6 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
     max_oov_num_in_src = 0
     max_oov_src = ''
 
-    if include_original:
-        print('!' * 50)
-        print('STRING included!')
-        print('!' * 50)
-
     for idx, (source, targets) in enumerate(src_trgs_pairs):
         # if w is not seen in training data vocab (word2id, size could be larger than opt.vocab_size), replace with <unk>
         # src_all = [word2id[w] if w in word2id else word2id[UNK_WORD] for w in source]
@@ -392,32 +387,31 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
         # create a local vocab for the current source text. If there're V words in the vocab of this string, len(itos)=V+2 (including <unk> and <pad>), len(stoi)=V+1 (including <pad>)
         src_copy, oov_dict, oov_list = extend_vocab_OOV(source, word2id, opt.vocab_size, opt.max_unk_words)
         one2one_example_list = []  # for one-to-many
-
-        '''
-        initialize an example and input the shared source information
-        '''
-        base_example = {}
-        if include_original:
-            base_example['src_str'] = source
-            base_example['trg_str'] = targets
-
-        base_example['src'] = src_unk
-        base_example['src_oov'] = src_copy
-        base_example['oov_dict'] = oov_dict
-        base_example['oov_list'] = oov_list
-
-        if len(oov_list) > max_oov_num_in_src:
-            max_oov_num_in_src = len(oov_list)
-            max_oov_src = source
-        '''
-        process each target and add to example
-        '''
         find_oov_in_targets = False
+
         for target in targets:
-            one2one_example = copy.deepcopy(base_example)
+            '''
+            Initialize an example and input the shared source information
+            Note that do not use copy.deepcopy() as it forcibly creates new object and consumes too much disk
+            '''
+            one2one_example = {}
+            if include_original:
+                one2one_example['src_str'] = source
+                one2one_example['trg_str'] = target
+
+            one2one_example['src'] = src_unk
+            one2one_example['src_oov'] = src_copy
+            one2one_example['oov_dict'] = oov_dict
+            one2one_example['oov_list'] = oov_list
+            if len(oov_list) > max_oov_num_in_src:
+                max_oov_num_in_src = len(oov_list)
+                max_oov_src = source
+
+            '''
+            process targets and add into example
+            '''
             trg = [word2id[w] if w in word2id and word2id[w] < opt.vocab_size else word2id[UNK_WORD] for w in target]
             one2one_example['trg'] = trg
-
             # oov words are replaced with new index
             trg_copy = []
             for w in target:
@@ -427,7 +421,6 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
                     trg_copy.append(oov_dict[w])
                 else:
                     trg_copy.append(word2id[UNK_WORD])
-
             one2one_example['trg_copy'] = trg_copy
 
             if any([w >= opt.vocab_size for w in trg_copy]):
@@ -460,7 +453,15 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
         if mode == 'one2many':
             # take care of the cases that no targets in an example
             if len(one2one_example_list) == 0:
-                one2one_example = copy.deepcopy(base_example)
+                one2one_example = {}
+                if include_original:
+                    one2one_example['src_str'] = source
+                    one2one_example['trg_str'] = target
+
+                one2one_example['src'] = src_unk
+                one2one_example['src_oov'] = src_copy
+                one2one_example['oov_dict'] = oov_dict
+                one2one_example['oov_list'] = oov_list
                 one2one_example['trg'] = []
                 one2one_example['trg_copy'] = []
                 one2one_example_list.append(one2one_example)
@@ -472,12 +473,6 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
                     o2m_example[key] = one2one_example_list[0][key]
                 else:
                     o2m_example[key] = [e[key] for e in one2one_example_list]
-
-            if len(one2one_example_list) == 0:
-                print('-' * 50)
-                print('Find no target in examples!')
-                print(o2m_example)
-                print('-' * 50)
 
             if include_original:
                 assert len(o2m_example['src']) == len(o2m_example['src_oov']) == len(o2m_example['src_str'])

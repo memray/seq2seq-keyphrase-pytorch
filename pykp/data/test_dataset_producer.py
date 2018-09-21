@@ -11,6 +11,8 @@ from nltk.internals import find_jars_within_path
 import re
 import six
 
+from pykp.io import copyseq_tokenize
+
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
@@ -270,9 +272,23 @@ def initialize_test_data_loader(identifier, kwargs=None):
     return test_data
 
 
-extra_dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'duc']
-test_dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k', 'stackexchange']
+def load_pos_tagger():
+    path = os.path.dirname(__file__)
+    path =  os.path.join(file_dir[: file_dir.rfind('pykp') + 4], 'stanford-postagger')
+    print(path)
+    # jar = '/Users/memray/Project/stanford/stanford-postagger/stanford-postagger.jar'
+    jar = path + '/stanford-postagger.jar'
+    model = path + '/models/english-bidirectional-distsim.tagger'
+    pos_tagger = StanfordPOSTagger(model, jar)
 
+    stanford_dir = jar.rpartition('/')[0]
+    stanford_jars = find_jars_within_path(stanford_dir)
+    pos_tagger._stanford_jar = ':'.join(stanford_jars)
+
+    return pos_tagger
+
+
+extra_dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'duc']
 def export_extra_dataset_to_json():
     for dataset_name in extra_dataset_names:
         print('-' * 50)
@@ -296,53 +312,41 @@ def export_extra_dataset_to_json():
         # print(dataset_loader.doc_list[20])
 
 
-
-def get_postag_with_record(records, pairs):
-    path = os.path.dirname(__file__)
-    path =  os.path.join(file_dir[: file_dir.rfind('pykp') + 4], 'stanford-postagger')
-    print(path)
-    # jar = '/Users/memray/Project/stanford/stanford-postagger/stanford-postagger.jar'
-    jar = path + '/stanford-postagger.jar'
-    model = path + '/models/english-bidirectional-distsim.tagger'
-    pos_tagger = StanfordPOSTagger(model, jar)
-
-    stanford_dir = jar.rpartition('/')[0]
-    stanford_jars = find_jars_within_path(stanford_dir)
-    pos_tagger._stanford_jar = ':'.join(stanford_jars)
-
-    tagged_source = []
-    # Predict on testing data
-    for idx, (record, pair) in enumerate(zip(records, pairs)):  # len(test_data_plain)
-        print('*' * 100)
-        print('File: '  + record['name'])
-        print('Input: ' + str(pair[0]))
-        text = pos_tagger.tag(pair[0])
-        print('[%d/%d][%d] : %s' % (idx, len(records) , len(pair[0]), str(text)))
-        tagged_source.append(text)
-
-    return tagged_source
-
-
+test_dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k', 'stackexchange']
 def load_testset_from_json_and_add_pos_tag():
+    pos_tagger = load_pos_tagger()
+
     for dataset_name in test_dataset_names:
         print('-' * 50)
         print('Loading %s' % dataset_name)
-        json_path = os.path.join(basedir, dataset_name+'_testing.json')
+        json_path = os.path.join(basedir, dataset_name, dataset_name+'_testing.json')
 
-        tagged_sources = get_postag_with_record(records, pairs)
-        test_set['tagged_source'] = [[t[1] for t in s] for s in tagged_sources]
+        dataset_dict_list = []
+        # load from json file
+        with open(json_path, 'r') as json_file:
+            for line in json_file:
+                dataset_dict_list.append(json.loads(line))
 
-        if hasattr(dataloader, 'text_postag_dir') and dataloader.__getattribute__('text_postag_dir') != None:
-            print('Exporting postagged data to %s' % (dataloader.text_postag_dir))
-            if not os.path.exists(dataloader.text_postag_dir):
-                os.makedirs(dataloader.text_postag_dir)
-            for r_, p_, s_ in zip(records, pairs, tagged_sources):
-                with open(dataloader.text_postag_dir + '/' + r_['name'] + '.txt', 'w') as f:
-                    output_str = ' '.join([w + '_' + t for w, t in s_])
-                    f.write(output_str)
-        else:
-            print('text_postag_dir not found, no export of postagged data')
+        # postag title/abstract and insert into data example
+        postag_dataset_dict_list = []
+        for e_id, example_dict in enumerate(dataset_dict_list):
+            if e_id % 10 == 0:
+                print('Processing %d/%d' % (e_id, len(dataset_dict_list)))
+            title_postag_tokens = pos_tagger.tag(copyseq_tokenize(example_dict['title']))
+            # print('#(title token)=%d : %s' % (len(title_postag_tokens), str(title_postag_tokens)))
+            abstract_postag_tokens = pos_tagger.tag(copyseq_tokenize(example_dict['abstract']))
+            # print('#(abstract token)=%d : %s' % (len(abstract_postag_tokens), str(abstract_postag_tokens)))
+            example_dict['title_postag_tokens'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in title_postag_tokens])
+            example_dict['abstract_postag_tokens'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in abstract_postag_tokens])
+            postag_dataset_dict_list.append(example_dict)
+
+        print('Dumping %s' % dataset_name)
+        # dump back to json
+        with open(json_path, 'w') as json_file:
+            for example_dict in postag_dataset_dict_list:
+                json_file.write(json.dumps(example_dict) + '\n')
 
 
 if __name__ == '__main__':
-    export_extra_dataset_to_json()
+    # export_extra_dataset_to_json()
+    load_testset_from_json_and_add_pos_tag()

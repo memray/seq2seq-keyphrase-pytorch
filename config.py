@@ -169,7 +169,7 @@ def train_opts(parser):
     parser.add_argument('-data_path_prefix', required=True,
                         help="""Path prefix to the ".train.pt" and
                         ".valid.pt" file path from preprocess.py""")
-    parser.add_argument('-vocab_file', required=True,
+    parser.add_argument('-vocab_path', required=True,
                         help="""Path prefix to the ".vocab.pt"
                         file path from preprocess.py""")
 

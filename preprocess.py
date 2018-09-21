@@ -18,11 +18,16 @@ parser.add_argument('-dataset_name', required=True,
                     help="Name of dataset")
 parser.add_argument('-source_dataset_dir', required=True,
                     help="The path to the source data (raw json).")
-parser.add_argument('-output_path_prefix', default='data/',
+parser.add_argument('-output_path_prefix', default='data',
                     help="Output file for the prepared data")
 
 config.preprocess_opts(parser)
 opt = parser.parse_args()
+
+# input path of each json file
+opt.source_train_file = os.path.join(opt.source_dataset_dir, '%s_training.json' % (opt.dataset_name))
+opt.source_valid_file = os.path.join(opt.source_dataset_dir, '%s_validation.json' % (opt.dataset_name))
+opt.source_test_file = os.path.join(opt.source_dataset_dir, '%s_testing.json' % (opt.dataset_name))
 
 # output path for exporting the processed dataset
 opt.output_path = os.path.join(opt.output_path_prefix, opt.dataset_name)
@@ -33,10 +38,6 @@ if not os.path.exists(opt.output_path):
     os.makedirs(opt.output_path)
 if not os.path.exists(opt.subset_output_path):
     os.makedirs(opt.subset_output_path)
-
-opt.source_train_file = os.path.join(opt.source_dataset_dir, '%s_training.json' % (opt.dataset_name))
-opt.source_valid_file = os.path.join(opt.source_dataset_dir, '%s_validation.json' % (opt.dataset_name))
-opt.source_test_file = os.path.join(opt.source_dataset_dir, '%s_testing.json' % (opt.dataset_name))
 
 
 def main():
