@@ -275,7 +275,7 @@ def train_opts(parser):
                         help="""replay buffer lambda""")
     parser.add_argument('-target_encoding_mlp_hidden_dim', default=[32, 32], type=list,
                         help="""target_encoding_mlp_hidden_dim""")
-    parser.add_argument('-n_negative_samples', default=64, type=int,
+    parser.add_argument('-n_negative_samples', default=32, type=int,
                         help="""how many negative samples""")
 
     # GPU
