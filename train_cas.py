@@ -215,6 +215,8 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
 
     te_loss = get_target_encoder_loss(model, source_representations, target_representations, trg_copy_np, replay_memory, criterion, opt)
     penalties = get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt)
+    if opt.orth_reg_mode == 1:
+        penalties = penalties + get_orthogonal_penalty(trg_copy_target_np, target_representations.permute(1, 0, 2), opt)
 
     # simply average losses of all the predicitons
     # IMPORTANT, must use logits instead of probs to compute the loss,
