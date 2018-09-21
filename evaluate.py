@@ -226,12 +226,16 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             print_trg_str_seqs = [" ".join(item) for item in trg_str_seqs]
             print_out += "\n PREDICTION: " + " / ".join(print_processed_strings)
             print_out += "\n GROUND TRUTH: " + " / ".join(print_trg_str_seqs)
-            trg_str_is_present = if_present_duplicate_phrase(
-                src_str, trg_str_seqs)
-            print_out += "\n IS PRESENT: " + " / ".join([str(item) for item in trg_str_is_present])
-            trg_str_seqs = [item for item, _flag in zip(
-                trg_str_seqs, trg_str_is_present) if _flag]
+
+            trg_str_is_present = if_present_duplicate_phrase(src_str, trg_str_seqs)
+            print_out += "\n GT IS PRESENT: " + " / ".join([str(item) for item in trg_str_is_present])
+            trg_str_seqs = [item for item, _flag in zip(trg_str_seqs, trg_str_is_present) if _flag]
             trg_str_seqs = clean_list_of_list(trg_str_seqs)
+            
+            pred_str_is_present = if_present_duplicate_phrase(src_str, processed_strings)
+            print_out += "\n PRED IS PRESENT: " + " / ".join([str(item) for item in pred_str_is_present])
+            processed_strings = [item for item, _flag in zip(processed_strings, pred_str_is_present) if _flag]
+            processed_strings = clean_list_of_list(processed_strings)
 
             if len(trg_str_seqs) > 0:
                 '''
