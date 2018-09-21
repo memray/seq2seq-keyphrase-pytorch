@@ -578,8 +578,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
 def load_data_vocab(opt, load_train=True):
 
-    logging.info("Loading vocab from disk: %s" % (opt.vocab))
-    word2id, id2word, vocab = torch.load(opt.vocab, 'wb')
+    logging.info("Loading vocab from disk: %s" % (opt.vocab_file))
+    word2id, id2word, vocab = torch.load(opt.vocab_file, 'rb')
     pin_memory = torch.cuda.is_available()
 
     # one2one data loader
@@ -588,7 +588,7 @@ def load_data_vocab(opt, load_train=True):
     logging.info('======================  Dataset  =========================')
     # one2many data loader
     if load_train:
-        train_one2many = torch.load(opt.data + '.train.one2many.pt', 'wb')
+        train_one2many = torch.load(opt.data + '.train.one2many.pt', 'rb')
         train_one2many_dataset = KeyphraseDataset(train_one2many, word2id=word2id, id2word=id2word, type='one2many')
         train_one2many_loader = KeyphraseDataLoader(dataset=train_one2many_dataset,
                                                     collate_fn=train_one2many_dataset.collate_fn_one2many,
@@ -602,8 +602,8 @@ def load_data_vocab(opt, load_train=True):
     else:
         train_one2many_loader = None
 
-    valid_one2many = torch.load(opt.data + '.valid.one2many.pt', 'wb')
-    test_one2many = torch.load(opt.data + '.test.one2many.pt', 'wb')
+    valid_one2many = torch.load(opt.data + '.valid.one2many.pt', 'rb')
+    test_one2many = torch.load(opt.data + '.test.one2many.pt', 'rb')
 
     # !important. As it takes too long to do beam search, thus reduce the size of validation and test datasets
     valid_one2many = valid_one2many[:2000]
@@ -703,7 +703,7 @@ def init_model(opt):
         logging.info("loading previous checkpoint from %s" % opt.train_from)
         # load the saved the meta-model and override the current one
         model = torch.load(
-            open(os.path.join(opt.model_path, opt.exp, '.initial.model'), 'wb')
+            open(os.path.join(opt.model_path, opt.exp, '.initial.model'), 'rb')
         )
 
         if torch.cuda.is_available():
@@ -721,9 +721,6 @@ def init_model(opt):
             model.state_dict(),
             open(os.path.join(opt.train_from[: opt.train_from.find('.epoch=')], 'initial.model'), 'wb')
         )
-
-    if torch.cuda.is_available():
-        model = model.cuda()
 
     utils.tally_parameters(model)
 
@@ -746,16 +743,19 @@ def process_opt(opt):
     if hasattr(opt, 'copy_attention') and opt.copy_attention:
         opt.exp += '.copy'
 
-    if hasattr(opt, 'bidirectional') and opt.bidirectional:
-        opt.exp += '.bi-directional'
-    else:
-        opt.exp += '.uni-directional'
-
     # fill time into the name
     if opt.exp_path.find('%s') > 0:
         opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
-        opt.pred_path = opt.pred_path % (opt.exp, opt.timemark)
-        opt.model_path = opt.model_path % (opt.exp, opt.timemark)
+
+    # Path to outputs of predictions.
+    setattr(opt, 'pred_path', os.path.join(opt.exp_path, 'pred/'))
+    # Path to checkpoints.
+    setattr(opt, 'model_path', os.path.join(opt.exp_path, 'model/'))
+    # Path to log output.
+    setattr(opt, 'log_path', os.path.join(opt.exp_path, 'log/'))
+    setattr(opt, 'log_file', os.path.join(opt.log_path, 'output.log'))
+    # Path to plots.
+    setattr(opt, 'plot_path', os.path.join(opt.exp_path, 'plot/'))
 
     if not os.path.exists(opt.exp_path):
         os.makedirs(opt.exp_path)
@@ -763,14 +763,22 @@ def process_opt(opt):
         os.makedirs(opt.pred_path)
     if not os.path.exists(opt.model_path):
         os.makedirs(opt.model_path)
+    if not os.path.exists(opt.log_path):
+        os.makedirs(opt.log_path)
+    if not os.path.exists(opt.plot_path):
+        os.makedirs(opt.plot_path)
 
     logging.info('EXP_PATH : ' + opt.exp_path)
 
     # dump the setting (opt) to disk in order to reuse easily
     if opt.train_from:
-        opt = torch.load(
+        new_opt = torch.load(
             open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'rb')
         )
+        new_opt.train_from = opt.train_from
+        new_opt.save_model_every = opt.save_model_every
+        new_opt.run_valid_every = opt.run_valid_every
+        new_opt.report_every = opt.report_every
     else:
         torch.save(opt,
                    open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'wb')
@@ -794,7 +802,7 @@ def main():
     opt.input_feeding = False
     opt.copy_input_feeding = False
 
-    logging = config.init_logging(logger_name=None, log_file=opt.exp_path + '/output.log', stdout=True)
+    logging = config.init_logging(logger_name=None, log_file=opt.log_file, redirect_to_stdout=False)
 
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]

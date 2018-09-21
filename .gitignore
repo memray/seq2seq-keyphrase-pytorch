@@ -121,3 +121,4 @@ ENV/
 .mypy_cache/
 .DS_Store
 !/pykp/data/
+/pykp/stanford-postagger/

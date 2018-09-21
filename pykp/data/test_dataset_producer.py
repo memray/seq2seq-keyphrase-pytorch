@@ -6,12 +6,16 @@ import codecs
 import json
 import os
 
+from nltk.tag import StanfordPOSTagger
+from nltk.internals import find_jars_within_path
 import re
 import six
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
+file_dir = os.path.dirname(os.path.realpath(__file__))
+basedir = os.path.join(file_dir[: file_dir.rfind('pykp')], 'source_data', '')
 
 class Document(object):
     def __init__(self):
@@ -19,28 +23,26 @@ class Document(object):
         self.title      = ''
         self.abstract       = ''
         self.fulltext       = ''
-        self.keyphrases    = []
+        self.keyword    = []
 
     def __str__(self):
-        return '%s\n\t%s\n\t%s\n\t%s' % (self.name, self.title, self.abstract, str(self.keyphrases))
+        return '%s\n\t%s\n\t%s\n\t%s' % (self.name, self.title, self.abstract, str(self.keyword))
 
     def to_dict(self):
         d = {}
         d['name'] = self.name
-        d['abstract'] = re.sub('[\r\n]', ' ', self.abstract).strip()
         d['title'] = re.sub('[\r\n]', ' ', self.title).strip()
-        d['fulltext'] = re.sub('[\r\n]', ' ', self.fulltext).strip()
-        d['keyword'] = ';'.join(self.keyphrases)
+        d['abstract'] = re.sub('[\r\n]', ' ', self.abstract).strip()
+        d['fulltext'] = self.fulltext
+        d['keyword'] = ';'.join(self.keyword)
         return d
 
 
 class Dataset(object):
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
-        self.name    = self.__class__.__name__
-        dir = os.path.dirname(os.path.realpath(__file__))
-        self.basedir = os.path.join(dir[: dir.rfind('pykp')], 'source_data', '')
-        self.datadir = os.path.join(self.basedir, self.name.lower())
+        self.name    = self.__class__.__name__.lower()
+        self.datadir = os.path.join(basedir, self.name.lower())
         self.textdir = self.datadir + '/all_texts/'
         self.keyphrasedir = self.datadir + '/gold_standard_keyphrases/'
         self.train_test_splitted = False
@@ -100,12 +102,12 @@ class Dataset(object):
 
     def dump_train_test_to_json(self):
         train_data_dicts, test_data_dicts = self.load_train_test_dataset()
-        train_json_path = os.path.join(self.datadir, self.name+'_training.json')
+        train_json_path = os.path.join(self.datadir, self.name.lower() + '_training.json')
         with open(train_json_path, 'w') as train_json:
             for d in train_data_dicts:
                 train_json.write(json.dumps(d) + '\n')
 
-        test_json_path = os.path.join(self.datadir, self.name+'_testing.json')
+        test_json_path = os.path.join(self.datadir, self.name.lower() + '_testing.json')
         with open(test_json_path, 'w') as test_json:
             for d in test_data_dicts:
                 test_json.write(json.dumps(d) + '\n')
@@ -150,7 +152,7 @@ class Dataset(object):
                         # lines between A and B are abstract
                         abstract = ' '.join(lines[A_index + 1: B_index])
                         # lines after B are fulltext
-                        text = '\n'.join(lines[B_index + 1:])
+                        fulltext = '\n'.join(lines[B_index + 1:])
 
                         if T_index is None or A_index is None or B_index is None:
                             print('Wrong format detected : %s' % (filename))
@@ -177,13 +179,13 @@ class Dataset(object):
                         # rest lines are abstract
                         abstract = (' '.join([''.join(line).strip() for line in lines[1:]]))
                         # no fulltext is given, ignore it
-                        text = ''
+                        fulltext = ''
 
                     doc = Document()
                     doc.name = filename[:filename.find('.txt')]
                     doc.title = title
                     doc.abstract = abstract
-                    doc.text = text
+                    doc.fulltext = fulltext
                     self.doc_list.append(doc)
 
                 except UnicodeDecodeError as e:
@@ -203,7 +205,7 @@ class Dataset(object):
                 with open(keyphrasedir + doc.name + '.keywords') as keyphrasefile:
                     phrase_set.update([phrase.strip() for phrase in keyphrasefile.readlines()])
 
-            doc.keyphrases = list(phrase_set)
+            doc.keyword = list(phrase_set)
 
 
 class INSPEC(Dataset):
@@ -222,8 +224,7 @@ class SemEval(Dataset):
     def __init__(self, **kwargs):
         super(SemEval, self).__init__(**kwargs)
         self.train_test_splitted = True
-        # self.title_abstract_body_separated = True
-        self.title_abstract_body_separated = False
+        self.title_abstract_body_separated = True
 
 
 class KRAPIVIN(Dataset):
@@ -243,9 +244,6 @@ nus = NUS
 semeval = SemEval
 krapivin = KRAPIVIN
 duc = DUC
-
-dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'duc']
-# dataset_names = ['nus', 'semeval', 'krapivin', 'duc']
 
 
 def get_from_module(identifier, module_params, module_name, instantiate=False, kwargs=None):
@@ -272,8 +270,11 @@ def initialize_test_data_loader(identifier, kwargs=None):
     return test_data
 
 
-if __name__ == '__main__':
-    for dataset_name in dataset_names:
+extra_dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'duc']
+test_dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k', 'stackexchange']
+
+def export_extra_dataset_to_json():
+    for dataset_name in extra_dataset_names:
         print('-' * 50)
         print('Loading %s' % dataset_name)
 
@@ -284,14 +285,64 @@ if __name__ == '__main__':
         dataset_loader.dump_train_test_to_json()
 
         print('#(doc) = %d' % (len(dataset_dict)))
-        print('#(keyphrase) = %.3f' % (sum([len(d.keyphrases) for d in dataset_loader.doc_list]) / len(dataset_dict)))
+        print('#(keyphrase) = %.3f' % (sum([len(d.keyword) for d in dataset_loader.doc_list]) / len(dataset_dict)))
         print('#(train) = %d, #(test)=%d' % (len(train_data_dicts), len(test_data_dicts)))
 
         print('\nlen(title) = %.3f' % (sum([len(d.title.split()) for d in dataset_loader.doc_list]) / len(dataset_dict)))
         print('len(abstract) = %.3f' % (sum([len(d.abstract.split()) for d in dataset_loader.doc_list]) / len(dataset_dict)))
-        print('len(text) = %.3f' % (sum([len(d.text.split()) for d in dataset_loader.doc_list]) / len(dataset_dict)))
+        print('len(fulltext) = %.3f' % (sum([len(d.fulltext.split()) for d in dataset_loader.doc_list]) / len(dataset_dict)))
 
         # print(dataset_loader.doc_list[10])
         # print(dataset_loader.doc_list[20])
 
+
+
+def get_postag_with_record(records, pairs):
+    path = os.path.dirname(__file__)
+    path =  os.path.join(file_dir[: file_dir.rfind('pykp') + 4], 'stanford-postagger')
+    print(path)
+    # jar = '/Users/memray/Project/stanford/stanford-postagger/stanford-postagger.jar'
+    jar = path + '/stanford-postagger.jar'
+    model = path + '/models/english-bidirectional-distsim.tagger'
+    pos_tagger = StanfordPOSTagger(model, jar)
+
+    stanford_dir = jar.rpartition('/')[0]
+    stanford_jars = find_jars_within_path(stanford_dir)
+    pos_tagger._stanford_jar = ':'.join(stanford_jars)
+
+    tagged_source = []
+    # Predict on testing data
+    for idx, (record, pair) in enumerate(zip(records, pairs)):  # len(test_data_plain)
+        print('*' * 100)
+        print('File: '  + record['name'])
+        print('Input: ' + str(pair[0]))
+        text = pos_tagger.tag(pair[0])
+        print('[%d/%d][%d] : %s' % (idx, len(records) , len(pair[0]), str(text)))
+        tagged_source.append(text)
+
+    return tagged_source
+
+
+def load_testset_from_json_and_add_pos_tag():
+    for dataset_name in test_dataset_names:
         print('-' * 50)
+        print('Loading %s' % dataset_name)
+        json_path = os.path.join(basedir, dataset_name+'_testing.json')
+
+        tagged_sources = get_postag_with_record(records, pairs)
+        test_set['tagged_source'] = [[t[1] for t in s] for s in tagged_sources]
+
+        if hasattr(dataloader, 'text_postag_dir') and dataloader.__getattribute__('text_postag_dir') != None:
+            print('Exporting postagged data to %s' % (dataloader.text_postag_dir))
+            if not os.path.exists(dataloader.text_postag_dir):
+                os.makedirs(dataloader.text_postag_dir)
+            for r_, p_, s_ in zip(records, pairs, tagged_sources):
+                with open(dataloader.text_postag_dir + '/' + r_['name'] + '.txt', 'w') as f:
+                    output_str = ' '.join([w + '_' + t for w, t in s_])
+                    f.write(output_str)
+        else:
+            print('text_postag_dir not found, no export of postagged data')
+
+
+if __name__ == '__main__':
+    export_extra_dataset_to_json()
