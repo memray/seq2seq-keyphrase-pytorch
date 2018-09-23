@@ -8,6 +8,7 @@ model/*
 
 data/
 /exp/
+/prev_exp/
 /data.zip
 /pred/
 

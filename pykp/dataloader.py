@@ -51,6 +51,7 @@ def _worker_loop(dataset, index_queue, data_queue, collate_fn):
             data_queue.put(None)
             break
         idx, batch_indices = r
+
         try:
             samples = collate_fn([dataset[i] for i in batch_indices])
         except Exception:

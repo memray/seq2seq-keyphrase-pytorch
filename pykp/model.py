@@ -2,6 +2,7 @@
 """
 Python File Template 
 """
+import gc
 import logging
 import torch
 import torch.nn as nn
@@ -11,6 +12,7 @@ import numpy as np
 import random
 
 import pykp
+import utils
 from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense
 
 __author__ = "Rui Meng"
@@ -370,8 +372,8 @@ class Seq2SeqLSTMAttention(nn.Module):
 
 
         src_h, (src_h_t, src_c_t) = self.encode(src, src_len, max_src_len)
-
         src_mask = self.get_mask(src_len, max_src_len)
+        del src, src_len
 
         decoder_probs, decoder_hiddens, attn_weights, copy_attn_weights \
             = self.decode(trg, trg_len,
@@ -854,7 +856,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                 copy_weights = torch.cat(copy_weights, 0).permute(1, 0, 2)  # (batch_size, 1, src_max_len)
                 return log_probs, dec_hidden, (attn_weights, copy_weights)
         else:
-            return log_probs, dec_hidden
+            return log_probs, dec_hidden, None
 
     def greedy_predict(self, input_src, input_trg, ctx_mask=None):
         src_h, (src_h_t, src_c_t) = self.encode(input_src)
@@ -883,7 +885,7 @@ class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
         '''
         :param
                 trgs: (batch_size, max_num_trg, trg_max_len) multiple phrases corresponding to one source text
-                trg_lens: (batch_size, max_num_trg) the real length of each target sequence
+                trg_lens: (batch_size, max_num_trg) each value is an integer indicating the real length of each target sequence
                 src_copy  : (batch_size, src_len), almost the same with src but oov words are replaced with temporary oov index, for copy mechanism to map the probs of pointed words to vocab words. The word index can be beyond vocab_size, e.g. 50000, 50001, 50002 etc, depends on how many oov words appear in the source text
                 oov_number: (batch_size, num_oov) a list showing what OOV words each text contains
                 enc_context:  (batch_size, src_len, hidden_size * num_direction) the outputs (hidden vectors) of encoder
@@ -898,7 +900,9 @@ class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
         '''
         batch_size = trgs.size(0)
         src_len = enc_context.size(1)
+        # max number of phrases in current batch
         max_trg_num = trgs.size(1)
+        # max length of phrase (number of words) in current batch
         max_trg_len = trgs.size(2)
         context_dim = enc_context.size(2)
         trg_hidden_dim = self.trg_hidden_dim
@@ -941,6 +945,7 @@ class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
                 h_tilde = h_tilde.cuda()
                 copy_h_tilde = copy_h_tilde.cuda()
 
+        del enc_hidden
         '''
         iterate over each phrase (sequence of words)
         '''
@@ -956,12 +961,12 @@ class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
             copy_weight_trg = []
 
             '''
-            iterate each word
+            iterate each word in current phrase
             '''
             # take the first word (should be BOS <s>) of each target sequence (batch_size, 1)
             trg_word = trg[:, 0].unsqueeze(1)
 
-            # iterate trg_max_len-1 times as we don't predict BOS
+            # iterate (trg_max_len - 1) times as we don't predict BOS
             for word_idx in range(max_step):
                 # initialize target embedding and reshape the targets to be time step first
                 trg_emb = self.embedding(trg_word)  # (batch_size, 1, embed_dim)
@@ -1030,25 +1035,27 @@ class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
                 '''
                 (5) Save results of current step. Permute to trg_len first, otherwise the cat operation would mess things up
                 '''
-                # shape = (trg_len, batch_size, *)
+                # decoder_log_prob_trg.shape = (trg_max_len, batch_size, vocab_size), decoder_log_prob.permute(1, 0, 2).shape = (1, batch_size, vocab_size)
                 decoder_log_prob_trg.append(decoder_log_prob.permute(1, 0, 2))
-                decoder_output_trg.append(decoder_output)
-                attn_weight_trg.append(attn_weight.permute(1, 0, 2))
-                if self.copy_attention_layer:
-                    copy_weight_trg.append(copy_weight.permute(1, 0, 2))
+                # decoder_output_trg.append(decoder_output)
+                # attn_weight_trg.append(attn_weight.permute(1, 0, 2))
+                # if self.copy_attention_layer:
+                #     copy_weight_trg.append(copy_weight.permute(1, 0, 2))
 
-            # convert outputs to batch first and append to the final return lists
-            # (batch_size, trg_max_len-1, vocab_size + max_oov_number)
-            # decoder_log_prob_trgs.append(torch.cat(decoder_log_prob_trg, 0).permute(1, 0, 2))
-            # (batch_size, trg_max_len-1, hidden_size)
-            # decoder_output_trgs.append(torch.cat(decoder_output_trg, 0).permute(1, 0, 2))
-            # (batch_size, trg_max_len-1, src_max_len)
-            # attn_weight_trgs.append(torch.cat(attn_weight_trg, 0).permute(1, 0, 2))
+            '''
+            after iterating each word in current phrase, convert outputs to batch first and append to the final return lists 
+            '''
+            # (each of decoder_log_prob_trgs).shape = (trg_max_len-1, batch_size, vocab_size + max_oov_number)
+            decoder_log_prob_trgs.append(torch.cat(decoder_log_prob_trg, 0))
+            # (trg_max_len-1, batch_size, hidden_size)
+            # decoder_output_trgs.append(torch.cat(decoder_output_trg, 0))
+            # (trg_max_len-1, batch_size, src_max_len)
+            # attn_weight_trgs.append(torch.cat(attn_weight_trg, 0))
             # if self.copy_attention_layer:
-                # (batch_size, trg_max_len-1, src_max_len)
-                # copy_weight_trgs.append(torch.cat(copy_weight_trg, 0).permute(1, 0, 2))
+                # (trg_max_len-1, batch_size, src_max_len)
+                # copy_weight_trgs.append(torch.cat(copy_weight_trg, 0))
 
-            # prepare for the hidden state, get the last relevant one (after feeding EOS)
+            # prepare for the next step, get the last relevant hidden state (after feeding EOS)
             if isinstance(dec_hidden_trg[0], tuple):
                 # trg_len shape = (batch_size, 1)
                 trg_len = trg_lens[trg_idx]
@@ -1063,10 +1070,11 @@ class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
                 dec_hidden = (h_state, c_state)
             else:
                 raise NotImplementedError
+
             # TODO, generate history vectors
 
-        # concatenate final outputs (batch_size * trg_num, trg_max_len - 1, *)
-        # decoder_log_prob_trgs = torch.cat(decoder_log_prob_trgs, 0)
+        # concatenate the output of each phrase, only 2nd dim is different from one2one generation (batch_size, trg_num * (trg_max_len - 1), vocab+num_oov)
+        decoder_log_prob_trgs = torch.cat(decoder_log_prob_trgs, 0).permute(1, 0, 2)
         # decoder_output_trgs = torch.cat(decoder_output_trgs, 0)
         # attn_weight_trgs = torch.cat(attn_weight_trgs, 0)
         # if self.copy_attention_layer:

@@ -58,63 +58,8 @@ def load_vocab_and_testsets(opt):
 
 
 def main():
-    # TODO init_exp()
-    # load settings for training
-    parser = argparse.ArgumentParser(
-        description='predict.py',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    config.preprocess_opts(parser)
-    config.model_opts(parser)
-    config.train_opts(parser)
-    config.predict_opts(parser)
-    opt = parser.parse_args()
-
-    if opt.seed > 0:
-        torch.manual_seed(opt.seed)
-
-    if torch.cuda.is_available() and not opt.gpuid:
-        opt.gpuid = 0
-
-    if hasattr(opt, 'train_ml') and opt.train_ml:
-        opt.exp += '.ml'
-
-    if hasattr(opt, 'train_rl') and opt.train_rl:
-        opt.exp += '.rl'
-
-    if hasattr(opt, 'copy_attention') and opt.copy_attention:
-        opt.exp += '.copy'
-
-    # fill time into the name
-    if opt.exp_path.find('%s') > 0:
-        opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
-
-    # Path to outputs of predictions.
-    setattr(opt, 'pred_path', os.path.join(opt.exp_path, 'pred/'))
-    # Path to checkpoints.
-    setattr(opt, 'model_path', os.path.join(opt.exp_path, 'model/'))
-    # Path to log output.
-    setattr(opt, 'log_path', os.path.join(opt.exp_path, 'log/'))
-    setattr(opt, 'log_file', os.path.join(opt.log_path, 'output.log'))
-    # Path to plots.
-    setattr(opt, 'plot_path', os.path.join(opt.exp_path, 'plot/'))
-
-    if not os.path.exists(opt.exp_path):
-        os.makedirs(opt.exp_path)
-    if not os.path.exists(opt.pred_path):
-        os.makedirs(opt.pred_path)
-    if not os.path.exists(opt.model_path):
-        os.makedirs(opt.model_path)
-    if not os.path.exists(opt.log_path):
-        os.makedirs(opt.log_path)
-    if not os.path.exists(opt.plot_path):
-        os.makedirs(opt.plot_path)
-
-    logging = config.init_logging(logger_name=None, log_file=opt.log_file, redirect_to_stdout=True)
-
-    logging.info('EXP_PATH : ' + opt.exp_path)
-    logging.info('Parameters:')
-    [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
-
+    opt = config.init_opt(description='predict.py')
+    logging = config.init_logging('predict', opt.exp_path + '/output.log')
 
     try:
         test_data_loaders, word2id, id2word, vocab = load_vocab_and_testsets(opt)

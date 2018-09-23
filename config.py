@@ -1,9 +1,98 @@
+import json
 import logging
 import os
 
 import sys
 
 import time
+import torch
+import argparse
+
+
+def init_opt(description):
+    parser = argparse.ArgumentParser(
+        description=description,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    preprocess_opts(parser)
+    model_opts(parser)
+    train_opts(parser)
+    predict_opts(parser)
+    opt = parser.parse_args()
+
+    if opt.seed > 0:
+        torch.manual_seed(opt.seed)
+
+    if torch.cuda.is_available() and not opt.device_ids:
+        opt.device_ids = 0
+
+    if hasattr(opt, 'train_ml') and opt.train_ml:
+        opt.exp += '.ml'
+
+    if hasattr(opt, 'train_rl') and opt.train_rl:
+        opt.exp += '.rl'
+
+    if hasattr(opt, 'copy_attention_mode') and opt.copy_attention_mode:
+        opt.exp += '.copy'
+
+    # if hasattr(opt, 'bidirectional') and opt.bidirectional:
+    #     opt.exp += '.bi-directional'
+    # else:
+    #     opt.exp += '.uni-directional'
+
+    # fill time into the name
+    if opt.exp_path.find('%s') > 0:
+        opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
+
+    # Path to outputs of predictions.
+    setattr(opt, 'pred_path', os.path.join(opt.exp_path, 'pred/'))
+    # Path to checkpoints.
+    setattr(opt, 'model_path', os.path.join(opt.exp_path, 'model/'))
+    # Path to log output.
+    setattr(opt, 'log_path', os.path.join(opt.exp_path, 'log/'))
+    setattr(opt, 'log_file', os.path.join(opt.log_path, 'output.log'))
+    # Path to plots.
+    setattr(opt, 'plot_path', os.path.join(opt.exp_path, 'plot/'))
+
+    if not os.path.exists(opt.exp_path):
+        os.makedirs(opt.exp_path)
+    if not os.path.exists(opt.pred_path):
+        os.makedirs(opt.pred_path)
+    if not os.path.exists(opt.model_path):
+        os.makedirs(opt.model_path)
+    if not os.path.exists(opt.log_path):
+        os.makedirs(opt.log_path)
+    if not os.path.exists(opt.plot_path):
+        os.makedirs(opt.plot_path)
+
+    logging.info('EXP_PATH : ' + opt.exp_path)
+
+    logging.info('Parameters:')
+    [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
+
+    logging.info('======================  Checking GPU Availability  =========================')
+    if torch.cuda.is_available():
+        if isinstance(opt.device_ids, int):
+            opt.device_ids = [opt.device_ids]
+        logging.info('Running on %s! devices=%s' % ('MULTIPLE GPUs' if len(opt.device_ids) > 1 else '1 GPU', str(opt.device_ids)))
+    else:
+        logging.info('Running on CPU!')
+
+    # dump the setting (opt) to disk in order to reuse easily
+    if opt.train_from:
+        new_opt = torch.load(
+            open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'rb')
+        )
+        new_opt.train_from = opt.train_from
+        new_opt.save_model_every = opt.save_model_every
+        new_opt.run_valid_every = opt.run_valid_every
+        new_opt.report_every = opt.report_every
+    else:
+        torch.save(opt,
+                   open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'wb')
+                   )
+        json.dump(vars(opt), open(os.path.join(opt.model_path, opt.exp + '.initial.json'), 'w'))
+
+    return opt
 
 
 def init_logging(logger_name, log_file, redirect_to_stdout=False, level=logging.INFO):
@@ -144,7 +233,7 @@ def preprocess_opts(parser):
                         help="Maximum source sequence length")
     parser.add_argument('-min_src_seq_length', type=int, default=20,
                         help="Minimum source sequence length")
-    parser.add_argument('-max_trg_seq_length', type=int, default=8,
+    parser.add_argument('-max_trg_seq_length', type=int, default=6,
                         help="Maximum target sequence length to keep.")
     parser.add_argument('-min_trg_seq_length', type=int, default=None,
                         help="Minimun target sequence length to keep.")

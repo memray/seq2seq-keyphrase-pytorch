@@ -6,6 +6,9 @@ import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import time
+import gc
+import torch
+
 
 def time_usage(func):
     def wrapper(*args, **kwargs):
@@ -24,6 +27,16 @@ MODEL_NAME = ("{:s}_model.{:s}.{:s}_contextsize.{:d}_numnoisewords.{:d}"
 
 def current_milli_time():
     return int(round(time.time() * 1000))
+
+
+def memReport():
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                print(type(obj), obj.device, obj.size())
+        except Exception as e:
+            print('Error in memReport(): ' + str(e))
+
 
 class LoggerWriter:
     def __init__(self, level):

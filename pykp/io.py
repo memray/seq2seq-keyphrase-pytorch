@@ -9,6 +9,7 @@ import json
 import re
 import random
 import traceback
+import warnings
 import os
 import copy
 from collections import Counter
@@ -49,6 +50,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
                  include_original=False,
                  shuffle_targets=False,
                  trg_num_trunc = None,
+                 trg_len_trunc = None,
                  batch_size=64):
         """
         :param examples:
@@ -69,7 +71,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             # remove empty lists in trg, trg_copy, trg_str
             for key in [k for k in keys if k.startswith('trg')]:
                 e[key] = [p for p in e[key] if len(p) > 0]
-            if len(e['trg']) == 0:
+            if len(e['trg']) == 0 or len(e['trg_copy']) == 0:
                 continue
 
             # ignore some unnecessary data fields and empty blank trgs
@@ -92,6 +94,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         self.include_original_string = include_original
         self.shuffle_targets = shuffle_targets
         self.trg_num_trunc = trg_num_trunc
+        self.trg_len_trunc = trg_len_trunc
         self.batch_size = batch_size
 
     def __getitem__(self, index):
@@ -109,8 +112,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         :param output_dim: a tuple specifying the desired output dimension
         :return: padded sequences
         """
-        sequences = np.asarray(sequences)
-        x_lens = [len(x_) for x_ in sequences]
+        x_lens = np.asarray([len(x_) for x_ in sequences], dtype=np.int32)
         num_seq = len(x_lens)
         max_len_seq = max(x_lens)
 
@@ -119,20 +121,26 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             max_len_seq = output_dim[1]
 
         # pad each sequence by concatenating extra PAD
-        x = [np.concatenate((x_, [self.pad_id] * (max_len_seq - len(x_)))) for x_ in sequences]
-        x_mask = [[1] * x_len + [0] * (max_len_seq - x_len) for x_len in x_lens]
+        x = [np.concatenate((np.asarray(x_, dtype=np.int32),
+                             np.asarray([self.pad_id] * (max_len_seq - len(x_)), dtype=np.int32)))
+             for x_ in sequences]
+
+        x_mask = np.asarray([[1] * x_len +
+                             [0] * (max_len_seq - x_len)
+                             for x_len in x_lens],
+                            dtype=np.int32)
 
         # pad extra sequences if output_dim is specified
         if output_dim and output_dim[0] > num_seq:
-            x.extend([[self.pad_id] * max_len_seq] * (output_dim[0] - num_seq))
-            x_mask.extend([[0] * max_len_seq] * (output_dim[0] - num_seq))
-            x_lens.extend([0] * (output_dim[0] - num_seq))
+            x = np.concatenate((x, np.asarray([[self.pad_id] * max_len_seq] * (output_dim[0] - num_seq), dtype=np.int32)), axis=0)
+            x_mask = np.concatenate((x_mask, np.asarray([[0] * max_len_seq] * (output_dim[0] - num_seq), dtype=np.int32)), axis=0)
+            x_lens = np.concatenate((x_lens, np.asarray([0] * (output_dim[0] - num_seq), dtype=np.int32)), axis=0)
             num_seq = output_dim[0]
 
-        x = np.asarray(x, dtype=np.int64)
-        x_mask = np.array(x_mask, dtype=np.int64)
+        x = np.asarray(x, dtype=np.int32)
+        x_mask = np.array(x_mask, dtype=np.int32)
         x = Variable(torch.stack([torch.from_numpy(x_) for x_ in x], 0)).long()
-        x_mask = Variable(torch.stack([torch.from_numpy(m_) for m_ in x_mask], 0)).float()
+        x_mask = Variable(torch.stack([torch.from_numpy(m_) for m_ in x_mask], 0)).long()
 
         assert x.size(0) == num_seq
         assert x.size(1) == max_len_seq
@@ -149,7 +157,8 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             seqs_len_list: A list showing the real length of each sequence (batch_size, max_num_seq)
         """
         max_num_seq = max([len(l) for l in list_of_sequences])
-        max_len_seq = max(np.concatenate([[len(seq) for seq in l] for l in list_of_sequences]))
+        max_len_seq = int(max(np.concatenate([np.asarray([len(seq) for seq in l], dtype=np.int32)
+                                          for l in list_of_sequences])))
 
         padded_seqs_list = []
         seqs_len_list = []
@@ -171,6 +180,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
 
     def collate_fn_one2one(self, batches):
         '''
+        Deprecated, generating one2one pairs is part of collate_fn_one2many()
         Puts each data field into a tensor with outer dimension batch size"
         '''
         src = [[self.word2id[BOS_WORD]] + b['src'] + [self.word2id[EOS_WORD]] for b in batches]
@@ -207,12 +217,23 @@ class KeyphraseDataset(torch.utils.data.Dataset):
                 for trg_key, shuffuled_target in zip(trg_keys, shuffuled_targets):
                     b[trg_key] = shuffuled_target
 
-        # truncate some long outliers to maximize the utility of GPU memory
+        # truncate some long outliers to maximize the utility of GPU memory.
+        # shuffle_targets should be on to ensure every example will be used
         if self.trg_num_trunc:
+            if not self.shuffle_targets:
+                warnings.warn('Warning: trg_num_trunc is on but shuffle_targets is off, '
+                              'some targets may be never used in training')
             trg_keys = [k for k in batches[0].keys() if k.startswith('trg')]
             for b in batches:
                 for trg_key in trg_keys:
                     b[trg_key] = b[trg_key][: self.trg_num_trunc]
+
+        # Should not put length filter here, as it may result in empty targets and correspondent errors
+        # if self.trg_len_trunc:
+        #     trg_keys = [k for k in batches[0].keys() if k.startswith('trg')]
+        #     for b in batches:
+        #         for trg_key in trg_keys:
+        #             b[trg_key] = list(filter(lambda x: len(x) <= self.trg_len_trunc, b[trg_key]))
 
         # target_input: input to decoder, starts with BOS and oovs are replaced with <unk>
         trg_unk = [[[self.word2id[BOS_WORD]] + t + [self.word2id[EOS_WORD]] for t in b['trg']] for b in batches]
@@ -262,6 +283,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
                 == len(unfolded_trg_for_loss) == len(unfolded_trg_copy_for_loss)\
                 == len(unfolded_oov_lists))
 
+        # if number of one2one examples exceeds the batch_size, truncate it
         if len(unfolded_src) > self.batch_size:
             unfolded_src        = unfolded_src[: self.batch_size]
             unfolded_src_copy   = unfolded_src_copy[: self.batch_size]

@@ -5,8 +5,6 @@ Python File Template
 import json
 import os
 import sys
-import argparse
-
 import logging
 import numpy as np
 import time
@@ -81,24 +79,29 @@ def train_mle(batch_data_dict, model, optimizer, criterion, opt):
         trg_unk_for_loss = trg_unk_for_loss.cuda(device=opt.device_ids[0])
         trg_copy_for_loss = trg_copy_for_loss.cuda(device=opt.device_ids[0])
 
+    # print('trg.shape=%s' % str(trg.shape))
+    # print('trg_copy_for_loss.shape=%s' % str(trg_copy_for_loss.shape))
+    # print('trg_unk_for_loss.shape=%s' % str(trg_unk_for_loss.shape))
+
     start_time = time.time()
     optimizer.zero_grad()
     decoder_log_probs, decoder_hiddens, (attn_weights, copy_attn_weights) \
         = model.forward(src, src_len, max_src_len, trg, trg_len, src_copy, oov_numbers, max_oov_number)
 
-    del src, trg, src_copy, src_len, oov_numbers, decoder_hiddens, attn_weights, copy_attn_weights
-    torch.cuda.empty_cache()
-
-    if not opt.copy_attention_mode:
-        loss = criterion(
-            decoder_log_probs.contiguous().view(-1, opt.vocab_size),
-            trg_unk_for_loss.contiguous().view(-1)
-        )
+    if opt.copy_attention_mode:
+        trg_vocab_size = opt.vocab_size + max_oov_number
+        trg_for_loss = trg_copy_for_loss
     else:
-        loss = criterion(
-            decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
-            trg_copy_for_loss.contiguous().view(-1)
-        )
+        trg_vocab_size =opt.vocab_size
+        trg_for_loss = trg_unk_for_loss
+
+    # print('decoder_log_probs.shape=%s' % str(decoder_log_probs.shape))
+    # print('trg_for_loss.shape=%s' % str(trg_for_loss.shape))
+
+    loss = criterion(
+        decoder_log_probs.contiguous().view(-1, trg_vocab_size),
+        trg_for_loss.contiguous().view(-1)
+    )
 
     if opt.train_rl:
         loss = loss * (1 - opt.loss_scale)
@@ -334,16 +337,16 @@ def brief_report(epoch, batch_i, one2many_batch, one2one_batch, loss_ml, decoder
     :param opt:
     :return:
     """
-    logging.info('======================  %d  =========================' % (batch_i))
-
-    logging.info('Epoch : %d Minibatch : %d, Loss=%.5f' % (epoch, batch_i, np.mean(loss_ml)))
+    # logging.info('======================  %d  =========================' % (batch_i))
+    #
+    # logging.info('Epoch : %d Minibatch : %d, Loss=%.5f' % (epoch, batch_i, np.mean(loss_ml)))
+    # logging.info('Printing predictions on sampled examples by greedy search')
     sampled_size = 2
-    logging.info('Printing predictions on %d sampled examples by greedy search' % sampled_size)
 
     if opt.cascading_model:
-        src_num = one2many_batch['src_unk'].shape[0]
-        trg_max_num = one2many_batch['trg_unk_for_loss'].shape[1]
+        batch_size = one2many_batch['src_unk'].shape[0]
         trg_max_len = one2many_batch['trg_unk_for_loss'].shape[2]
+
         src = one2many_batch['src_unk']
         trg_unk_for_loss = one2many_batch['trg_unk_for_loss']
         trg_copy_for_loss = one2many_batch['trg_copy_for_loss']
@@ -355,31 +358,38 @@ def brief_report(epoch, batch_i, one2many_batch, one2one_batch, loss_ml, decoder
             trg_unk_for_loss = trg_unk_for_loss.cpu()
             trg_copy_for_loss = trg_copy_for_loss.cpu()
 
-        src = src.data.numpy()
-        # (batch_size, trg_max_len, voc_size)
-        decoder_log_probs = decoder_log_probs.data.numpy()
-        # Greedily get the top-1 word at each step as prediction (batch_size * trg_num, trg_max_len)
-        argmax_pred_trgs = decoder_log_probs.argmax(axis=-1)
-        trg_unk_for_loss = trg_unk_for_loss.view(-1, trg_max_len).data.numpy()
-        trg_copy_for_loss = trg_copy_for_loss.view(-1, trg_max_len).data.numpy()
-
-        # sample a few indices of examples and print the first prediction of each
-        sampled_src_idx = np.random.permutation(src_num - 1)[:sampled_size]
-        # sampled_src_idx = np.random.random_integers(low=0, high=src_num - 1, size=sampled_size)
-        src = src[sampled_src_idx]
-        oov_lists = [oov_lists[i] for i in sampled_src_idx]
-        argmax_pred_trgs = [argmax_pred_trgs[i * trg_max_num] for i in sampled_src_idx]
-        decoder_log_probs = [decoder_log_probs[i * trg_max_num] for i in sampled_src_idx]
-
         if not opt.copy_attention_mode:
             # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
-            trgs = [trg_unk_for_loss[i * trg_max_num] for i in sampled_src_idx]
+            trgs = trg_copy_for_loss.view(batch_size, -1).data.numpy()
         else:
-            trgs = [trg_copy_for_loss[i * trg_max_num] for i in sampled_src_idx]
+            trgs = trg_unk_for_loss.view(batch_size, -1).data.numpy()
+        # src = src.data.numpy()
+        # # (batch_size, trg_max_len, voc_size)
+        # decoder_log_probs = decoder_log_probs.data.numpy()
+        # # Greedily get the top-1 word at each step as prediction (batch_size * trg_num, trg_max_len)
+        # argmax_pred_trgs = decoder_log_probs.argmax(axis=-1)
+        # trg_unk_for_loss = trg_unk_for_loss.view(batch_size, -1).data.numpy()
+        # trg_copy_for_loss = trg_copy_for_loss.view(batch_size, -1).data.numpy()
+        #
+        # # sample a few indices of examples and print the first prediction of each
+        # sampled_idx_in_batch = np.random.permutation(batch_size - 1)[:sampled_size]
+        # # sampled_src_idx = np.random.random_integers(low=0, high=src_num - 1, size=sampled_size)
+        # sampled_src = src[sampled_idx_in_batch]
+        # oov_lists = [oov_lists[i] for i in sampled_idx_in_batch]
+        # argmax_pred_trgs = [argmax_pred_trgs[i] for i in sampled_idx_in_batch]
+        # decoder_log_probs = [decoder_log_probs[i] for i in sampled_idx_in_batch]
+        #
+        # if opt.copy_attention_mode:
+        #     # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
+        #     trgs = [trg_copy_for_loss[i] for i in sampled_idx_in_batch]
+        # else:
+        #     trgs = [trg_unk_for_loss[i] for i in sampled_idx_in_batch]
     else:
+        batch_size = one2one_batch['trg_unk_for_loss'].shape[0]
+        trg_max_len = one2one_batch['trg_unk_for_loss'].shape[1]
+
         src = one2one_batch['src_unk']
         trg_unk_for_loss = one2one_batch['trg_unk_for_loss']
-        example_num = one2one_batch['trg_unk_for_loss'].shape[0]
         trg_copy_for_loss = one2one_batch['trg_copy_for_loss']
         oov_lists = one2one_batch['oov_lists']
 
@@ -389,60 +399,63 @@ def brief_report(epoch, batch_i, one2many_batch, one2one_batch, loss_ml, decoder
             trg_unk_for_loss = trg_unk_for_loss.cpu()
             trg_copy_for_loss = trg_copy_for_loss.cpu()
 
-        src = src.data.numpy()
-        # (batch_size, trg_max_len, voc_size)
-        decoder_log_probs = decoder_log_probs.data.numpy()
-        # Greedily get the top-1 word at each step as prediction (batch_size, trg_max_len)
-        argmax_pred_trgs = decoder_log_probs.argmax(axis=-1)
-        trg_unk_for_loss = trg_unk_for_loss.data.numpy()
-        trg_copy_for_loss = trg_copy_for_loss.data.numpy()
-
-        # sample a few indices of targets to print
-        sampled_trg_idx = np.random.permutation(example_num - 1)[:sampled_size]
-        # sampled_trg_idx = np.random.random_integers(low=0, high=len(trg_unk_for_loss) - 1, size=sampled_size)
-        src = src[sampled_trg_idx]
-        oov_lists = [oov_lists[i] for i in sampled_trg_idx]
-        argmax_pred_trgs = [argmax_pred_trgs[i] for i in sampled_trg_idx]
-        decoder_log_probs = decoder_log_probs[sampled_trg_idx]
-
         if not opt.copy_attention_mode:
             # use the real target trg_loss (the starting <BOS> has been removed and contains oov ground-truth)
-            trgs = [trg_unk_for_loss[i] for i in sampled_trg_idx]
+            trgs = trg_copy_for_loss.data.numpy()
         else:
-            trgs = [trg_copy_for_loss[i] for i in sampled_trg_idx]
+            trgs = trg_unk_for_loss.data.numpy()
+
+    src = src.data.numpy()
+    # (batch_size, trg_max_len, voc_size)
+    decoder_log_probs = decoder_log_probs.data.numpy()
+    # Greedily get the top-1 word at each step as prediction (batch_size, trg_max_len)
+    argmax_pred_trgs = decoder_log_probs.argmax(axis=-1)
+
+    # sample a few indices of targets to print
+    sampled_trg_idx = np.random.permutation(batch_size - 1)[:sampled_size]
+    # sampled_trg_idx = np.random.random_integers(low=0, high=len(trg_unk_for_loss) - 1, size=sampled_size)
+    sampled_src = src[sampled_trg_idx]
+    oov_lists = [oov_lists[i] for i in sampled_trg_idx]
+    argmax_pred_trgs = [argmax_pred_trgs[i] for i in sampled_trg_idx]
+    decoder_log_probs = decoder_log_probs[sampled_trg_idx]
+    trgs = [trgs[i] for i in sampled_trg_idx]
 
     try:
-        for i, (src_i, pred_i, trg_i, oov_i) in enumerate(
-                zip(src, argmax_pred_trgs, trgs, oov_lists)):
-            nll_prob = -np.sum([decoder_log_probs[i][l][pred_i[l]] for l in range(len(trg_i))])
-            find_copy = np.any([x >= opt.vocab_size for x in src_i])
-            has_copy = np.any([x >= opt.vocab_size for x in trg_i])
+        for i, (src_i, pred_trg_idx, real_trg_idx, oov_list) in enumerate(
+                zip(sampled_src, argmax_pred_trgs, trgs, oov_lists)):
+            logging.info('=' * 25 + '  Example %d  ' % (i + 1) + '=' * 25)
 
-            sentence_source = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
-                               for x in src_i]
-            logging.info('oov list: %s' % str(oov_i))
-            logging.info('greedy pred_wi: %s' % str(pred_i))
-            sentence_pred = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
-                             for x in pred_i]
-            sentence_real = [opt.id2word[x] if x < opt.vocab_size else oov_i[x - opt.vocab_size]
-                             for x in trg_i]
+            sentence_source = [opt.id2word[x] if x < opt.vocab_size else oov_list[x - opt.vocab_size] for x in src_i]
+            sentence_source = sentence_source[:sentence_source.index('<pad>')] if '<pad>' in sentence_source else sentence_source
+            logging.info('Source:\n\t\t %s' % (' '.join(sentence_source)))
+            logging.info('oov list:\n\t\t %s' % str(oov_list))
 
-            sentence_source = sentence_source[:sentence_source.index(
-                '<pad>')] if '<pad>' in sentence_source else sentence_source
-            sentence_pred = sentence_pred[
-                :sentence_pred.index('<pad>')] if '<pad>' in sentence_pred else sentence_pred
-            sentence_real = sentence_real[
-                :sentence_real.index('<pad>')] if '<pad>' in sentence_real else sentence_real
+            pred_trg_str = [opt.id2word[x] if x < opt.vocab_size else oov_list[x - opt.vocab_size] for x in pred_trg_idx]
+            real_trg_str = [opt.id2word[x] if x < opt.vocab_size else oov_list[x - opt.vocab_size] for x in real_trg_idx]
 
-            logging.info('==================================================')
-            logging.info('Source: %s ' % (' '.join(sentence_source)))
-            logging.info('\t\tPred : %s (%.4f)' % (' '.join(sentence_pred), nll_prob) + (
-                ' [FIND COPY]' if find_copy else ''))
-            logging.info('\t\tReal : %s ' % (' '.join(sentence_real)) + (
-                ' [HAS COPY]' + str(trg_i) if has_copy else ''))
-    except Exception:
+            real_trg_idx_slices = np.asarray(real_trg_idx).reshape((-1, trg_max_len))
+            real_trg_str_slices = np.asarray(real_trg_str).reshape((-1, trg_max_len)).tolist()
+            pred_trg_idx_slices = np.asarray(pred_trg_idx).reshape((-1, trg_max_len))
+            pred_trg_str_slices = np.asarray(pred_trg_str).reshape((-1, trg_max_len)).tolist()
+
+            logging.info('Groundtruth Targets :')
+            for real_trg_str, real_trg_idx in zip(real_trg_str_slices, real_trg_idx_slices):
+                has_copy = np.any([x >= opt.vocab_size for x in real_trg_idx])
+                real_trg = real_trg_str[ :real_trg_str.index('<pad>')] if '<pad>' in real_trg_str else real_trg_str
+                logging.info('\t\t' + ' '.join(real_trg) + (' [FIND COPY]' if has_copy else ''))
+
+            nll_prob = -np.sum([decoder_log_probs[i][l][pred_trg_idx[l]] for l in range(len(real_trg_idx))])
+            logging.info('\nPredicted Targets : Prob = %4f' % (nll_prob))
+            for pred_trg_str, pred_trg_idx in zip(pred_trg_str_slices, pred_trg_idx_slices):
+                has_copy = np.any([x >= opt.vocab_size for x in pred_trg_idx])
+                pred_trg = pred_trg_str[ :pred_trg_str.index('<pad>')] if '<pad>' in pred_trg_str else pred_trg_str
+                logging.info('\t\t' + ' '.join(pred_trg) + (' [FIND COPY]' if has_copy else ''))
+
+    except Exception as e:
         logging.error('Encountered an error when generating brief report.')
-        pass
+        logging.error(e, exc_info=True)
+        raise e
+
 
 def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt):
     generator = SequenceGenerator(model,
@@ -642,18 +655,36 @@ def load_data_vocab(opt, load_train=True):
         fill_up_batch = True
 
     logging.info('======================  Dataset  =========================')
+
     # one2many data loader
     if load_train:
-        train_one2many = torch.load(opt.data_path_prefix + '.train.one2many.pt', 'wb')
-        # sort by number of targets to speed up training
+        train_one2many_examples = torch.load(opt.data_path_prefix + '.train.one2many.pt', 'wb')
+        # filter out extremely long targets
         if opt.cascading_model:
-            train_one2many = list(filter(lambda x: len(x['trg']) < 10, train_one2many))
-            train_one2many = sorted(train_one2many, key=lambda x: len(x['trg']))
-        train_one2many_dataset = KeyphraseDataset(train_one2many,
+            print('Before filtering extremely long targets, #(keyword) = %d, max_len(keyword) = %d' %
+                  (sum([len(e['trg']) for e in train_one2many_examples]),
+                   max([max([len(t) for t in e['trg']]) for e in train_one2many_examples])))
+
+            tmp_examples = []
+            trg_keys = [k for k in train_one2many_examples[0].keys() if k.startswith('trg')]
+            for example in train_one2many_examples:
+                for trg_key in trg_keys:
+                    example[trg_key] = list(filter(lambda x: len(x) <= opt.max_trg_seq_length, example[trg_key]))
+                if len(example['trg']) > 0:
+                    tmp_examples.append(example)
+
+            train_one2many_examples = tmp_examples
+
+            print('After filtering extremely long targets, #(keyword) = %d, max_len(keyword) = %d' %
+                  (sum([len(e['trg']) for e in train_one2many_examples]),
+                   max([max([len(t) for t in e['trg']]) for e in train_one2many_examples])))
+
+        train_one2many_dataset = KeyphraseDataset(train_one2many_examples,
                                                   word2id=word2id, id2word=id2word,
                                                   type='one2many',
                                                   shuffle_targets=True,
                                                   trg_num_trunc=opt.trg_num_trunc,
+                                                  trg_len_trunc=opt.max_trg_seq_length,
                                                   batch_size=opt.batch_size)
         train_one2many_loader = KeyphraseDataLoader(dataset=train_one2many_dataset,
                                                     collate_fn=train_one2many_dataset.collate_fn_one2many,
@@ -813,98 +844,10 @@ def init_model(opt):
     return model
 
 
-def process_opt(opt):
-    if opt.seed > 0:
-        torch.manual_seed(opt.seed)
-
-    if torch.cuda.is_available() and not opt.device_ids:
-        opt.device_ids = 0
-
-    if hasattr(opt, 'train_ml') and opt.train_ml:
-        opt.exp += '.ml'
-
-    if hasattr(opt, 'train_rl') and opt.train_rl:
-        opt.exp += '.rl'
-
-    if hasattr(opt, 'copy_attention_mode') and opt.copy_attention_mode:
-        opt.exp += '.copy'
-
-    # if hasattr(opt, 'bidirectional') and opt.bidirectional:
-    #     opt.exp += '.bi-directional'
-    # else:
-    #     opt.exp += '.uni-directional'
-
-    # fill time into the name
-    if opt.exp_path.find('%s') > 0:
-        opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
-
-    # Path to outputs of predictions.
-    setattr(opt, 'pred_path', os.path.join(opt.exp_path, 'pred/'))
-    # Path to checkpoints.
-    setattr(opt, 'model_path', os.path.join(opt.exp_path, 'model/'))
-    # Path to log output.
-    setattr(opt, 'log_path', os.path.join(opt.exp_path, 'log/'))
-    setattr(opt, 'log_file', os.path.join(opt.log_path, 'output.log'))
-    # Path to plots.
-    setattr(opt, 'plot_path', os.path.join(opt.exp_path, 'plot/'))
-
-    if not os.path.exists(opt.exp_path):
-        os.makedirs(opt.exp_path)
-    if not os.path.exists(opt.pred_path):
-        os.makedirs(opt.pred_path)
-    if not os.path.exists(opt.model_path):
-        os.makedirs(opt.model_path)
-    if not os.path.exists(opt.log_path):
-        os.makedirs(opt.log_path)
-    if not os.path.exists(opt.plot_path):
-        os.makedirs(opt.plot_path)
-
-    logging.info('EXP_PATH : ' + opt.exp_path)
-
-    # dump the setting (opt) to disk in order to reuse easily
-    if opt.train_from:
-        new_opt = torch.load(
-            open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'rb')
-        )
-        new_opt.train_from = opt.train_from
-        new_opt.save_model_every = opt.save_model_every
-        new_opt.run_valid_every = opt.run_valid_every
-        new_opt.report_every = opt.report_every
-    else:
-        torch.save(opt,
-                   open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'wb')
-                   )
-        json.dump(vars(opt), open(os.path.join(opt.model_path, opt.exp + '.initial.json'), 'w'))
-
-    return opt
-
-
 def main():
     # load settings for training
-    parser = argparse.ArgumentParser(
-        description='train.py',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    config.preprocess_opts(parser)
-    config.model_opts(parser)
-    config.train_opts(parser)
-    config.predict_opts(parser)
-    opt = parser.parse_args()
-    opt = process_opt(opt)
-    opt.input_feeding = False
-    opt.copy_input_feeding = False
-
+    opt = config.init_opt(description='train.py')
     logging = config.init_logging(logger_name=None, log_file=opt.log_file, redirect_to_stdout=False)
-
-    logging.info('Parameters:')
-    [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
-
-    logging.info('======================  Checking GPU Availability  =========================')
-    if torch.cuda.is_available():
-        if isinstance(opt.device_ids, int):
-            opt.device_ids = [opt.device_ids]
-        logging.info('Running on %s! devices=%s' % ('MULTIPLE GPUs' if len(opt.device_ids) > 1 else '1 GPU', str(opt.device_ids)))
-    else:
-        logging.info('Running on CPU!')
 
     try:
         train_data_loader, valid_data_loader, test_data_loader, word2id, id2word, vocab = load_data_vocab(opt)
