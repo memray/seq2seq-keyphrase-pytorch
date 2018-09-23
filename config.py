@@ -122,6 +122,9 @@ def model_opts(parser):
     #                     help="""Type of context gate to use.
     #                     Do not select for no context gate by Tu:2017:TACL.""")
 
+    # group.add_argument('-lambda_coverage', type=float, default=1,
+    #                    help='Lambda value for coverage.')
+
     # Cascading model options
     parser.add_argument('-cascading_model', action="store_true",
                         help='Train a copy model.')
@@ -169,7 +172,7 @@ def train_opts(parser):
     parser.add_argument('-data_path_prefix', required=True,
                         help="""Path prefix to the ".train.pt" and
                         ".valid.pt" file path from preprocess.py""")
-    parser.add_argument('-vocab_file', required=True,
+    parser.add_argument('-vocab_path', required=True,
                         help="""Path prefix to the ".vocab.pt"
                         file path from preprocess.py""")
 
@@ -322,7 +325,56 @@ def train_opts(parser):
 def predict_opts(parser):
     parser.add_argument('-must_appear_in_src', action="store_true", default="True",
                         help="""whether the predicted sequences must appear in the source text""")
+
     parser.add_argument('-num_oneword_seq', type=int, default=10000,
-                        help="""Source sequence to decode (one line per
-                        sequence)""")
-    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5_exact', 'f_score@10_exact'], help="""Default measure to report""")
+                        help="""Source sequence to decode (one line per sequence)""")
+
+    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5_exact', 'f_score@10_exact'],
+                        help='whether the predicted sequences must appear in the source text')
+
+    parser.add_argument('-report_score_names', type=str, nargs='+',
+                        default=['f_score@5_exact', 'f_score@5_soft', 'f_score@10_exact', 'f_score@10_soft'],
+                        help="""Default measure to report""")
+
+    parser.add_argument('-test_dataset_root_path', type=str, default="data/")
+
+    parser.add_argument('-test_dataset_names', type=str, nargs='+',
+                        default=['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k'],
+                        help='Name of each test dataset, also the name of folder from which we load processed test dataset.')
+
+    # parser.add_argument('-num_oneword_seq', type=int, default=10000,
+    #                     help='Source sequence to decode (one line per sequence)')
+    # parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5#oneword=-1', 'f_score@10#oneword=-1', 'f_score@5#oneword=1', 'f_score@10#oneword=1'], help="""Default measure to report""")
+    # parser.add_argument('-save_data', required=True,
+    #                     help="Output file for the prepared test data")
+    # parser.add_argument('-model_path', required=True,
+    #                     help='Path to model .pt file')
+    # parser.add_argument('-vocab', required=True,
+    #                     help="""Path prefix to the ".vocab.pt"
+    #                     file path from preprocess.py""")
+    # parser.add_argument('-output', default='pred.txt',
+    #                     help="""Path to output the predictions (each line will
+    #                     be the decoded sequence""")
+    # parser.add_argument('-replace_unk', action="store_true",
+    #                     help="""Replace the generated UNK tokens with the
+    #                     source token that had highest attention weight. If
+    #                     phrase_table is provided, it will lookup the
+    #                     identified source token and give the corresponding
+    #                     target token. If it is not provided(or the identified
+    #                     source token does not exist in the table) then it
+    #                     will copy the source token""")
+    # parser.add_argument('-verbose', action="store_true",
+    #                     help='Print scores and predictions for each sentence')
+    # parser.add_argument('-attn_debug', action="store_true",
+    #                     help='Print best attn for each word')
+    # parser.add_argument('-dump_beam', type=str, default="",
+    #                     help='File to dump beam information to.')
+    # parser.add_argument('-n_best', type=int, default=1,
+    #                     help="""If verbose is set, will output the n_best
+    #                     decoded sentences""")
+    # GPU
+    # parser.add_argument('-gpuid', default=[0], nargs='+', type=int,
+    #                     help="Use CUDA on the listed devices.")
+    # parser.add_argument('-seed', type=int, default=9527,
+    #                     help="""Random seed used for the experiments
+    #                     reproducibility.""")
