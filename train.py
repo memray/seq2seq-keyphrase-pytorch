@@ -499,8 +499,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
                 # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
                 # valid_history_losses.append(valid_losses)
-                valid_score_dict = evaluate_beam_search(generator, valid_data_loader, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
-                test_score_dict = evaluate_beam_search(generator, test_data_loader, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                valid_score_dict = evaluate_beam_search(generator, valid_data_loader, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                test_score_dict = evaluate_beam_search(generator, test_data_loader, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
 
                 checkpoint_names.append('epoch=%d-batch=%d-total_batch=%d' % (epoch, batch_i, total_batch))
 
@@ -727,85 +727,24 @@ def init_model(opt):
     return model
 
 
-def process_opt(opt):
-    if opt.seed > 0:
-        torch.manual_seed(opt.seed)
+def main():
+    # load settings for training
+    opt = config.init_opt(description='train.py')
+    logging = config.init_logging(logger_name=None, log_file=opt.log_file, redirect_to_stdout=False)
 
-    if torch.cuda.is_available() and not opt.gpuid:
-        opt.gpuid = 0
-
-    if hasattr(opt, 'train_ml') and opt.train_ml:
-        opt.exp += '.ml'
-
-    if hasattr(opt, 'train_rl') and opt.train_rl:
-        opt.exp += '.rl'
-
-    if hasattr(opt, 'copy_attention') and opt.copy_attention:
-        opt.exp += '.copy'
-
-    # fill time into the name
-    if opt.exp_path.find('%s') > 0:
-        opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
-
-    # Path to outputs of predictions.
-    setattr(opt, 'pred_path', os.path.join(opt.exp_path, 'pred/'))
-    # Path to checkpoints.
-    setattr(opt, 'model_path', os.path.join(opt.exp_path, 'model/'))
-    # Path to log output.
-    setattr(opt, 'log_path', os.path.join(opt.exp_path, 'log/'))
-    setattr(opt, 'log_file', os.path.join(opt.log_path, 'output.log'))
-    # Path to plots.
-    setattr(opt, 'plot_path', os.path.join(opt.exp_path, 'plot/'))
-
-    if not os.path.exists(opt.exp_path):
-        os.makedirs(opt.exp_path)
-    if not os.path.exists(opt.pred_path):
-        os.makedirs(opt.pred_path)
-    if not os.path.exists(opt.model_path):
-        os.makedirs(opt.model_path)
-    if not os.path.exists(opt.log_path):
-        os.makedirs(opt.log_path)
-    if not os.path.exists(opt.plot_path):
-        os.makedirs(opt.plot_path)
 
     logging.info('EXP_PATH : ' + opt.exp_path)
 
-    # dump the setting (opt) to disk in order to reuse easily
-    if opt.train_from:
-        new_opt = torch.load(
-            open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'rb')
-        )
-        new_opt.train_from = opt.train_from
-        new_opt.save_model_every = opt.save_model_every
-        new_opt.run_valid_every = opt.run_valid_every
-        new_opt.report_every = opt.report_every
-    else:
-        torch.save(opt,
-                   open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'wb')
-                   )
-        json.dump(vars(opt), open(os.path.join(opt.model_path, opt.exp + '.initial.json'), 'w'))
-
-    return opt
-
-
-def main():
-    # load settings for training
-    parser = argparse.ArgumentParser(
-        description='train.py',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    config.preprocess_opts(parser)
-    config.model_opts(parser)
-    config.train_opts(parser)
-    config.predict_opts(parser)
-    opt = parser.parse_args()
-    opt = process_opt(opt)
-    opt.input_feeding = False
-    opt.copy_input_feeding = False
-
-    logging = config.init_logging(logger_name=None, log_file=opt.log_file, redirect_to_stdout=False)
-
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
+
+    logging.info('======================  Checking GPU Availability  =========================')
+    if torch.cuda.is_available():
+        if isinstance(opt.device_ids, int):
+            opt.device_ids = [opt.device_ids]
+        logging.info('Running on %s! devices=%s' % ('MULTIPLE GPUs' if len(opt.device_ids) > 1 else '1 GPU', str(opt.device_ids)))
+    else:
+        logging.info('Running on CPU!')
 
     try:
         train_data_loader, valid_data_loader, test_data_loader, word2id, id2word, vocab = load_data_vocab(opt)

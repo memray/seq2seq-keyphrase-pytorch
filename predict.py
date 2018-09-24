@@ -16,7 +16,7 @@ from torch import cuda
 from beam_search import SequenceGenerator
 from pykp.dataloader import KeyphraseDataLoader
 from train import load_data_vocab, init_model, init_optimizer_criterion
-from utils import Progbar, plot_learning_curve
+from utils import Progbar, plot_learning_curve_and_write_csv
 
 import pykp
 from pykp.io import KeyphraseDatasetTorchText, KeyphraseDataset
@@ -58,63 +58,21 @@ def load_vocab_and_testsets(opt):
 
 
 def main():
-    # TODO init_exp()
-    # load settings for training
-    parser = argparse.ArgumentParser(
-        description='predict.py',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    config.preprocess_opts(parser)
-    config.model_opts(parser)
-    config.train_opts(parser)
-    config.predict_opts(parser)
-    opt = parser.parse_args()
-
-    if opt.seed > 0:
-        torch.manual_seed(opt.seed)
-
-    if torch.cuda.is_available() and not opt.gpuid:
-        opt.gpuid = 0
-
-    if hasattr(opt, 'train_ml') and opt.train_ml:
-        opt.exp += '.ml'
-
-    if hasattr(opt, 'train_rl') and opt.train_rl:
-        opt.exp += '.rl'
-
-    if hasattr(opt, 'copy_attention') and opt.copy_attention:
-        opt.exp += '.copy'
-
-    # fill time into the name
-    if opt.exp_path.find('%s') > 0:
-        opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
-
-    # Path to outputs of predictions.
-    setattr(opt, 'pred_path', os.path.join(opt.exp_path, 'pred/'))
-    # Path to checkpoints.
-    setattr(opt, 'model_path', os.path.join(opt.exp_path, 'model/'))
-    # Path to log output.
-    setattr(opt, 'log_path', os.path.join(opt.exp_path, 'log/'))
-    setattr(opt, 'log_file', os.path.join(opt.log_path, 'output.log'))
-    # Path to plots.
-    setattr(opt, 'plot_path', os.path.join(opt.exp_path, 'plot/'))
-
-    if not os.path.exists(opt.exp_path):
-        os.makedirs(opt.exp_path)
-    if not os.path.exists(opt.pred_path):
-        os.makedirs(opt.pred_path)
-    if not os.path.exists(opt.model_path):
-        os.makedirs(opt.model_path)
-    if not os.path.exists(opt.log_path):
-        os.makedirs(opt.log_path)
-    if not os.path.exists(opt.plot_path):
-        os.makedirs(opt.plot_path)
-
-    logging = config.init_logging(logger_name=None, log_file=opt.log_file, redirect_to_stdout=True)
+    opt = config.init_opt(description='predict.py')
+    logging = config.init_logging('predict', opt.exp_path + '/output.log')
 
     logging.info('EXP_PATH : ' + opt.exp_path)
+
     logging.info('Parameters:')
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
 
+    logging.info('======================  Checking GPU Availability  =========================')
+    if torch.cuda.is_available():
+        if isinstance(opt.device_ids, int):
+            opt.device_ids = [opt.device_ids]
+        logging.info('Running on %s! devices=%s' % ('MULTIPLE GPUs' if len(opt.device_ids) > 1 else '1 GPU', str(opt.device_ids)))
+    else:
+        logging.info('Running on CPU!')
 
     try:
         test_data_loaders, word2id, id2word, vocab = load_vocab_and_testsets(opt)
@@ -126,7 +84,7 @@ def main():
                                       )
 
         for testset_name, test_data_loader in zip(opt.test_dataset_names, test_data_loaders):
-            evaluate_beam_search(generator, test_data_loader, opt, title='predict', save_path=opt.pred_path + '/%s_test_result.csv' % (testset_name))
+            evaluate_beam_search(generator, test_data_loader, opt, title='predict', predict_save_path=opt.pred_path + '/%s_test_result.csv' % (testset_name))
 
     except Exception as e:
         logging.error(e.with_traceback())

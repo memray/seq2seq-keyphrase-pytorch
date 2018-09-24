@@ -6,6 +6,7 @@ import codecs
 import inspect
 import itertools
 import json
+import pickle
 import re
 import os
 import copy
@@ -14,6 +15,7 @@ from collections import defaultdict
 import numpy as np
 from torch.autograd import Variable
 
+from evaluate import if_present_duplicate_phrases, if_present_phrase
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -386,7 +388,8 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
 
         # create a local vocab for the current source text. If there're V words in the vocab of this string, len(itos)=V+2 (including <unk> and <pad>), len(stoi)=V+1 (including <pad>)
         src_copy, oov_dict, oov_list = extend_vocab_OOV(source, word2id, opt.vocab_size, opt.max_unk_words)
-        one2one_example_list = []  # for one-to-many
+
+        one2one_example_list = []
         find_oov_in_targets = False
 
         for target in targets:
@@ -410,17 +413,18 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
             '''
             process targets and add into example
             '''
-            trg = [word2id[w] if w in word2id and word2id[w] < opt.vocab_size else word2id[UNK_WORD] for w in target]
+            trg = [word2id[w] if (w in word2id and word2id[w] < opt.vocab_size) else word2id[UNK_WORD] for w in target]
             one2one_example['trg'] = trg
-            # oov words are replaced with new index
+
+            # oov words are replaced with indices in oov_dict
             trg_copy = []
             for w in target:
+                w_id = word2id[UNK_WORD]
                 if w in word2id and word2id[w] < opt.vocab_size:
-                    trg_copy.append(word2id[w])
+                    w_id = word2id[w]
                 elif w in oov_dict:
-                    trg_copy.append(oov_dict[w])
-                else:
-                    trg_copy.append(word2id[UNK_WORD])
+                    w_id = oov_dict[w]
+                trg_copy.append(w_id)
             one2one_example['trg_copy'] = trg_copy
 
             if any([w >= opt.vocab_size for w in trg_copy]):
@@ -451,39 +455,61 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
 
         # if it is one2many mode, merge multiple one2one examples to one
         if mode == 'one2many':
-            # take care of the cases that no targets in an example
-            if len(one2one_example_list) == 0:
-                one2one_example = {}
-                if include_original:
-                    one2one_example['src_str'] = source
-                    one2one_example['trg_str'] = target
+            one2many_example = {}
+            if include_original:
+                one2many_example['src_str'] = source
+                one2many_example['trg_str'] = targets
 
-                one2one_example['src'] = src_unk
-                one2one_example['src_oov'] = src_copy
-                one2one_example['oov_dict'] = oov_dict
-                one2one_example['oov_list'] = oov_list
-                one2one_example['trg'] = []
-                one2one_example['trg_copy'] = []
-                one2one_example_list.append(one2one_example)
+            one2many_example['src'] = src_unk
+            one2many_example['src_oov'] = src_copy
+            one2many_example['oov_dict'] = oov_dict
+            one2many_example['oov_list'] = oov_list
+            one2many_example['trg'] = [e['trg'] for e in one2one_example_list]
+            one2many_example['trg_copy'] = [e['trg_copy'] for e in one2one_example_list]
 
-            o2m_example = {}
-            keys = one2one_example_list[0].keys()
-            for key in keys:
-                if key.startswith('src') or key.startswith('oov'):
-                    o2m_example[key] = one2one_example_list[0][key]
-                else:
-                    o2m_example[key] = [e[key] for e in one2one_example_list]
+            # store the location of each target in source text if present. if it's absent, return -1
+            one2many_example['trg_present_flag'], one2many_example['trg_present_pos_index'] \
+                = if_present_duplicate_phrases(source, targets,
+                                               do_stemming=False,
+                                               check_duplicate=False)
+
+            one2many_example['trg_stemmed_present_flag'], one2many_example['trg_stemmed_present_pos_index'] \
+                = if_present_duplicate_phrases(source, targets,
+                                               do_stemming=True,
+                                               check_duplicate=True)
+
+            if len(targets) > 0:
+                max_target_len = max([len(t) for t in targets])
+                tmp_targets = []
+                tmp_trgs = []
+                for tmp_target, tmp_trg in zip(targets, one2many_example['trg']):
+                    if len(tmp_target) < max_target_len:
+                        tmp_targets.append(tmp_target + [''] * (max_target_len-len(tmp_target)))
+                        tmp_trgs.append(tmp_trg + [0] * (max_target_len-len(tmp_target)))
+                    else:
+                        tmp_targets.append(tmp_target)
+                        tmp_trgs.append(tmp_trg)
+
+                # store the order sorted by strings and vocab indices alphabetically
+                one2many_example['trg_alpha_order_index'] = np.lexsort(np.transpose(np.asarray(tmp_targets)), axis=0)
+                one2many_example['trg_vocab_order_index'] = np.lexsort(np.transpose(np.asarray(tmp_trgs)), axis=0)
+            else:
+                one2many_example['trg_alpha_order_index'] = []
+                one2many_example['trg_vocab_order_index'] = []
 
             if include_original:
-                assert len(o2m_example['src']) == len(o2m_example['src_oov']) == len(o2m_example['src_str'])
-                assert len(o2m_example['oov_dict']) == len(o2m_example['oov_list'])
-                assert len(o2m_example['trg']) == len(o2m_example['trg_copy']) == len(o2m_example['trg_str'])
+                assert len(one2many_example['src']) == len(one2many_example['src_oov']) == len(one2many_example['src_str'])
+                assert len(one2many_example['oov_dict']) == len(one2many_example['oov_list'])
+                assert len(one2many_example['trg']) == len(one2many_example['trg_copy']) == len(one2many_example['trg_str'])
             else:
-                assert len(o2m_example['src']) == len(o2m_example['src_oov'])
-                assert len(o2m_example['oov_dict']) == len(o2m_example['oov_list'])
-                assert len(o2m_example['trg']) == len(o2m_example['trg_copy'])
+                assert len(one2many_example['src']) == len(one2many_example['src_oov'])
+                assert len(one2many_example['oov_dict']) == len(one2many_example['oov_list'])
+                assert len(one2many_example['trg']) == len(one2many_example['trg_copy'])
 
-            return_example_list.append(o2m_example)
+            for t, tc in zip(one2many_example['trg'], one2many_example['trg_copy']):
+                assert len(t) == len(tc)
+
+            return_example_list.append(one2many_example)
         else:
             return_example_list.extend(one2one_example_list)
 
@@ -741,17 +767,27 @@ def initialize_fields(opt):
 
 
 def load_src_trgs_pairs(source_json_path, dataset_name, src_fields, trg_fields, opt, valid_check=False):
-    src_trgs_pairs = load_json_data(source_json_path,
-                                    dataset_name,
-                                    src_fields=src_fields,
-                                    trg_fields=trg_fields,
-                                    trg_delimiter=';')
-    tokenized_pairs = tokenize_filter_data(src_trgs_pairs,
-                                           tokenize_fn=copyseq_tokenize,
-                                           opt=opt,
-                                           valid_check=valid_check)
+    tokenized_pairs_cache_path = source_json_path + '_tokenized.tmp'
+    if os.path.exists(tokenized_pairs_cache_path):
+        print('Loading tokenized_pairs from ' + tokenized_pairs_cache_path)
+        with open(tokenized_pairs_cache_path, 'rb') as cache_file:
+            tokenized_pairs = pickle.load(cache_file)
+    else:
+        print('Generating tokenized_pairs and dumping to ' + tokenized_pairs_cache_path)
+        src_trgs_pairs = load_json_data(source_json_path,
+                                        dataset_name,
+                                        src_fields=src_fields,
+                                        trg_fields=trg_fields,
+                                        trg_delimiter=';')
 
-    del src_trgs_pairs
+        tokenized_pairs = tokenize_filter_data(src_trgs_pairs,
+                                               tokenize_fn=copyseq_tokenize,
+                                               opt=opt,
+                                               valid_check=valid_check)
+        del src_trgs_pairs
+
+        with open(tokenized_pairs_cache_path, 'wb') as cache_file:
+            pickle.dump(tokenized_pairs, cache_file)
 
     return tokenized_pairs
 
@@ -819,7 +855,6 @@ def process_and_export_dataset(tokenized_src_trg_pairs,
     '''
     Print dataset statistics
     '''
-
     print("***************** %s %s : Source Length Statistics ******************" % (dataset_name, data_type.upper()))
     len_counter = {}
     for src_tokens, trgs_tokens in tokenized_src_trg_pairs:
