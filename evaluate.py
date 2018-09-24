@@ -190,7 +190,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         # print("target size - %s" % len(trg_copy_target_list))
 
         # list(batch) of list(beam size) of Sequence
-        if opt.eval_method == "beam_search":
+        if opt.eval_method in ["beam_search", "beam_first"]:
             pred_seq_list = generator.beam_search(
                 src_list, src_len, src_oov_map_list, oov_list, opt.word2id)
             best_pred_seq = pred_seq_list
@@ -214,8 +214,10 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             # 1st filtering
             if opt.eval_method == "beam_search":
                 pred_seq = [extract_to_list(seq) for seq in pred_seq]
-                pred_seq = keyphrase_ranking(
-                    pred_seq, sep_ids=[opt.word2id[pykp.io.SEP_WORD]])
+                pred_seq = keyphrase_ranking(pred_seq, sep_ids=[opt.word2id[pykp.io.SEP_WORD]])
+            elif opt.eval_method == "beam_first":
+                pred_seq = [extract_to_list(pred_seq[0])]
+                pred_seq = keyphrase_ranking(pred_seq, sep_ids=[opt.word2id[pykp.io.SEP_WORD]])
             else:
                 pred_seq = extract_to_list(pred_seq)
             processed_strings = process_predseqs(

@@ -352,7 +352,7 @@ def train_opts(parser):
     parser.add_argument('-max_sent_length', type=int, default=20,
                         help='Maximum sentence length.')
     parser.add_argument('-eval_method', type=str, default="greedy",
-                        help="sampling, greedy, beam search, or hybrid, which sample 1st word after <sep> and <s>, otherwise greedy")
+                        help="sampling, greedy, beam search, beam_first, or hybrid, which sample 1st word after <sep> and <s>, otherwise greedy")
 
 
 def predict_opts(parser):
