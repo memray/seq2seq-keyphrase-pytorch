@@ -431,7 +431,7 @@ def predict_opts(parser):
     parser.add_argument('-test_dataset_root_path', type=str, default="data/")
 
     parser.add_argument('-test_dataset_names', type=str, nargs='+',
-                        default=['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k'],
+                        default=['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k', 'stackexchange'],
                         help='Name of each test dataset, also the name of folder from which we load processed test dataset.')
 
     # parser.add_argument('-num_oneword_seq', type=int, default=10000,
