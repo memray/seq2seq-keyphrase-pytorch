@@ -31,7 +31,7 @@ def init_opt(description):
     if hasattr(opt, 'train_rl') and opt.train_rl:
         opt.exp += '.rl'
 
-    if hasattr(opt, 'copy_attention_mode') and opt.copy_attention_mode:
+    if hasattr(opt, 'copy_attention') and opt.copy_attention:
         opt.exp += '.copy'
 
     # if hasattr(opt, 'bidirectional') and opt.bidirectional:
@@ -66,13 +66,31 @@ def init_opt(description):
 
     # dump the setting (opt) to disk in order to reuse easily
     if opt.train_from:
-        new_opt = torch.load(
-            open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'rb')
+        train_from_model_dir = opt.train_from[:opt.train_from.rfind('model/') + 6]
+        prev_opt = torch.load(
+            open(os.path.join(train_from_model_dir, opt.exp + '.initial.config'), 'rb')
         )
-        new_opt.train_from = opt.train_from
-        new_opt.save_model_every = opt.save_model_every
-        new_opt.run_valid_every = opt.run_valid_every
-        new_opt.report_every = opt.report_every
+        prev_opt.seed = opt.seed
+        prev_opt.train_from = opt.train_from
+        prev_opt.save_model_every = opt.save_model_every
+        prev_opt.run_valid_every = opt.run_valid_every
+        prev_opt.report_every = opt.report_every
+        prev_opt.test_dataset_names = opt.test_dataset_names
+
+        prev_opt.exp = opt.exp
+        prev_opt.vocab = opt.vocab
+        prev_opt.exp_path = opt.exp_path
+        prev_opt.pred_path = opt.pred_path
+        prev_opt.model_path = opt.model_path
+        prev_opt.log_path = opt.log_path
+        prev_opt.log_file = opt.log_file
+        prev_opt.plot_path = opt.plot_path
+
+        for k,v in vars(opt).items():
+            if not hasattr(prev_opt, k):
+                setattr(prev_opt, k, v)
+
+        opt = prev_opt
     else:
         torch.save(opt,
                    open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'wb')
@@ -97,16 +115,18 @@ def init_logging(logger_name, log_file, redirect_to_stdout=False, level=logging.
     logger.addHandler(fh)
     logger.setLevel(level)
 
-    logger.info('Making log output file: %s' % log_file)
-    logger.info(log_file[: log_file.rfind(os.sep)])
-
     if redirect_to_stdout:
         ch = logging.StreamHandler(sys.stdout)
         ch.setFormatter(formatter)
         ch.setLevel(level)
         logger.addHandler(ch)
 
+    logger.info('Initializing logger: %s' % logger_name)
+    logger.info('Making log output file: %s' % log_file)
+    logger.info(log_file[: log_file.rfind(os.sep)])
+
     return logger
+
 
 def model_opts(parser):
     """
@@ -168,6 +188,10 @@ def model_opts(parser):
                         help="""The attention type to use:
                         dot or general (Luong) or concat (Bahdanau)""")
 
+    parser.add_argument('-target_attention_mode', type=str, default='general',
+                        choices=['dot', 'general', 'concat', None],
+                        help="""The attention type to use: dot or general (Luong) or concat (Bahdanau)""")
+
     # Genenerator and loss options.
     parser.add_argument('-copy_attention', action="store_true",
                         help='Train a copy model.')
@@ -219,7 +243,7 @@ def preprocess_opts(parser):
                         help="Maximum source sequence length")
     parser.add_argument('-min_src_seq_length', type=int, default=20,
                         help="Minimum source sequence length")
-    parser.add_argument('-max_trg_seq_length', type=int, default=8,
+    parser.add_argument('-max_trg_seq_length', type=int, default=6,
                         help="Maximum target sequence length to keep.")
     parser.add_argument('-min_trg_seq_length', type=int, default=None,
                         help="Minimun target sequence length to keep.")
@@ -244,10 +268,10 @@ def preprocess_opts(parser):
 
 def train_opts(parser):
     # Model loading/saving options
-    parser.add_argument('-data_path_prefix', required=True,
+    parser.add_argument('-data', required=True,
                         help="""Path prefix to the ".train.pt" and
                         ".valid.pt" file path from preprocess.py""")
-    parser.add_argument('-vocab_path', required=True,
+    parser.add_argument('-vocab', required=True,
                         help="""Path prefix to the ".vocab.pt"
                         file path from preprocess.py""")
 
@@ -300,13 +324,13 @@ def train_opts(parser):
     parser.add_argument('-optim', default='adam',
                         choices=['sgd', 'adagrad', 'adadelta', 'adam'],
                         help="""Optimization method.""")
-    parser.add_argument('-max_grad_norm', type=float, default=5,
+    parser.add_argument('-max_grad_norm', type=float, default=2,
                         help="""If the norm of the gradient vector exceeds this,
                         renormalize it to have the norm equal to
                         max_grad_norm""")
     parser.add_argument('-truncated_decoder', type=int, default=0,
                         help="""Truncated bptt.""")
-    parser.add_argument('-dropout', type=float, default=0.5,
+    parser.add_argument('-dropout', type=float, default=0.0,
                         help="Dropout probability; applied in LSTM stacks.")
 
     # Learning options
@@ -376,7 +400,7 @@ def train_opts(parser):
 
     parser.add_argument('-report_every', type=int, default=10,
                         help="Print stats at this interval.")
-    parser.add_argument('-exp', type=str, default="stackexchange",
+    parser.add_argument('-exp', type=str, default="kp20k",
                         help="Name of the experiment for logging.")
     parser.add_argument('-exp_path', type=str, default="exp/%s.%s",
                         help="Path of experiment log/plot.")

@@ -380,27 +380,30 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
     max_oov_num_in_src = 0
     max_oov_src = ''
 
-    for idx, (source, targets) in enumerate(src_trgs_pairs):
+    for idx, (source_str, target_strs) in enumerate(src_trgs_pairs):
         # if w is not seen in training data vocab (word2id, size could be larger than opt.vocab_size), replace with <unk>
         # src_all = [word2id[w] if w in word2id else word2id[UNK_WORD] for w in source]
         # if w's id is larger than opt.vocab_size, replace with <unk>
-        src_unk = [word2id[w] if w in word2id and word2id[w] < opt.vocab_size else word2id[UNK_WORD] for w in source]
+        src_unk = [word2id[w] if w in word2id and word2id[w] < opt.vocab_size else word2id[UNK_WORD] for w in source_str]
 
         # create a local vocab for the current source text. If there're V words in the vocab of this string, len(itos)=V+2 (including <unk> and <pad>), len(stoi)=V+1 (including <pad>)
-        src_copy, oov_dict, oov_list = extend_vocab_OOV(source, word2id, opt.vocab_size, opt.max_unk_words)
+        src_copy, oov_dict, oov_list = extend_vocab_OOV(source_str, word2id, opt.vocab_size, opt.max_unk_words)
 
         one2one_example_list = []
         find_oov_in_targets = False
 
-        for target in targets:
+        if len(target_strs) == 0 or sum([len(target_str) for target_str in target_strs]) == 0:
+            continue
+
+        for target_str in target_strs:
             '''
             Initialize an example and input the shared source information
             Note that do not use copy.deepcopy() as it forcibly creates new object and consumes too much disk
             '''
             one2one_example = {}
             if include_original:
-                one2one_example['src_str'] = source
-                one2one_example['trg_str'] = target
+                one2one_example['src_str'] = source_str
+                one2one_example['trg_str'] = target_str
 
             one2one_example['src'] = src_unk
             one2one_example['src_oov'] = src_copy
@@ -408,17 +411,17 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
             one2one_example['oov_list'] = oov_list
             if len(oov_list) > max_oov_num_in_src:
                 max_oov_num_in_src = len(oov_list)
-                max_oov_src = source
+                max_oov_src = source_str
 
             '''
             process targets and add into example
             '''
-            trg = [word2id[w] if (w in word2id and word2id[w] < opt.vocab_size) else word2id[UNK_WORD] for w in target]
+            trg = [word2id[w] if (w in word2id and word2id[w] < opt.vocab_size) else word2id[UNK_WORD] for w in target_str]
             one2one_example['trg'] = trg
 
             # oov words are replaced with indices in oov_dict
             trg_copy = []
-            for w in target:
+            for w in target_str:
                 w_id = word2id[UNK_WORD]
                 if w in word2id and word2id[w] < opt.vocab_size:
                     w_id = word2id[w]
@@ -431,9 +434,10 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
                 find_oov_in_targets= True
 
             if idx % 20000 == 0:
-                print('-------------------- %s: %d ---------------------------' % (inspect.getframeinfo(inspect.currentframe()).function, idx))
-                print('source    \n\t\t[len=%d]: %s' % (len(source), source))
-                print('target    \n\t\t[len=%d]: %s' % (len(target), target))
+                print('-------------------- %s: %d/%d ---------------------------' %
+                      (inspect.getframeinfo(inspect.currentframe()).function, idx, len(src_trgs_pairs)))
+                print('source    \n\t\t[len=%d]: %s' % (len(source_str), source_str))
+                print('target    \n\t\t[len=%d]: %s' % (len(target_str), target_str))
                 print('src       \n\t\t[len=%d]: %s' % (len(one2one_example['src']), one2one_example['src']))
                 print('trg       \n\t\t[len=%d]: %s' % (len(one2one_example['trg']), one2one_example['trg']))
 
@@ -457,8 +461,8 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
         if mode == 'one2many':
             one2many_example = {}
             if include_original:
-                one2many_example['src_str'] = source
-                one2many_example['trg_str'] = targets
+                one2many_example['src_str'] = source_str
+                one2many_example['trg_str'] = target_strs
 
             one2many_example['src'] = src_unk
             one2many_example['src_oov'] = src_copy
@@ -469,20 +473,20 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
 
             # store the location of each target in source text if present. if it's absent, return -1
             one2many_example['trg_present_flag'], one2many_example['trg_present_pos_index'] \
-                = if_present_duplicate_phrases(source, targets,
+                = if_present_duplicate_phrases(source_str, target_strs,
                                                do_stemming=False,
                                                check_duplicate=False)
 
             one2many_example['trg_stemmed_present_flag'], one2many_example['trg_stemmed_present_pos_index'] \
-                = if_present_duplicate_phrases(source, targets,
+                = if_present_duplicate_phrases(source_str, target_strs,
                                                do_stemming=True,
                                                check_duplicate=True)
 
-            if len(targets) > 0:
-                max_target_len = max([len(t) for t in targets])
+            if len(target_strs) > 0:
+                max_target_len = max([len(t) for t in target_strs])
                 tmp_targets = []
                 tmp_trgs = []
-                for tmp_target, tmp_trg in zip(targets, one2many_example['trg']):
+                for tmp_target, tmp_trg in zip(target_strs, one2many_example['trg']):
                     if len(tmp_target) < max_target_len:
                         tmp_targets.append(tmp_target + [''] * (max_target_len-len(tmp_target)))
                         tmp_trgs.append(tmp_trg + [0] * (max_target_len-len(tmp_target)))
@@ -490,6 +494,11 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
                         tmp_targets.append(tmp_target)
                         tmp_trgs.append(tmp_trg)
 
+                # print('=' * 50)
+                # print(source_str)
+                # print(target_strs)
+                # print(tmp_targets)
+                # print(tmp_trgs)
                 # store the order sorted by strings and vocab indices alphabetically
                 one2many_example['trg_alpha_order_index'] = np.lexsort(np.transpose(np.asarray(tmp_targets)), axis=0)
                 one2many_example['trg_vocab_order_index'] = np.lexsort(np.transpose(np.asarray(tmp_trgs)), axis=0)

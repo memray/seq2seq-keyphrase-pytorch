@@ -4,37 +4,30 @@ Python File Template
 """
 import json
 import os
-import sys
-import argparse
 
 import logging
 import numpy as np
-import time
-import torchtext
-from torch.autograd import Variable
 from torch.optim import Adam
-from torch.utils.data import DataLoader
-
-import config
 import evaluate
 import utils
 import copy
-
 import torch
-import torch.nn as nn
-from torch import cuda
 
 from beam_search import SequenceGenerator
 from evaluate import evaluate_beam_search, get_match_result, self_redundancy
 from pykp.dataloader import KeyphraseDataLoader
-from utils import Progbar, plot_learning_curve
+from utils import Progbar, plot_learning_curve_and_write_csv
 
+from config import init_logging, init_opt
 import pykp
 from pykp.io import KeyphraseDataset
 from pykp.model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionCascading
 
 import time
 
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger()
 
 def to_cpu_list(input):
     assert isinstance(input, list)
@@ -58,7 +51,6 @@ def time_usage(func):
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
-
 
 @time_usage
 def _valid_error(data_loader, model, criterion, epoch, opt):
@@ -144,7 +136,7 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
     print("--backward- %s seconds ---" % (time.time() - start_time))
 
     if opt.max_grad_norm > 0:
-        pre_norm = torch.nn.utils.clip_grad_norm(model.parameters(), opt.max_grad_norm)
+        pre_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), opt.max_grad_norm)
         after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
         # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
 
@@ -528,11 +520,11 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
                 scores = [np.asarray(s) for s in scores]
                 # Plot the learning curve
-                plot_learning_curve(scores=scores,
-                                    curve_names=curve_names,
-                                    checkpoint_names=checkpoint_names,
-                                    title='Training Validation & Test',
-                                    save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve.png' % (epoch, batch_i, total_batch))
+                plot_learning_curve_and_write_csv(scores=scores,
+                                                  curve_names=curve_names,
+                                                  checkpoint_names=checkpoint_names,
+                                                  title='Training Validation & Test',
+                                                  save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve.png' % (epoch, batch_i, total_batch))
 
                 '''
                 determine if early stop training (whether f-score increased, before is if valid error decreased)
@@ -578,8 +570,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
 def load_data_vocab(opt, load_train=True):
 
-    logging.info("Loading vocab from disk: %s" % (opt.vocab_file))
-    word2id, id2word, vocab = torch.load(opt.vocab_file, 'rb')
+    logging.info("Loading vocab from disk: %s" % (opt.vocab))
+    word2id, id2word, vocab = torch.load(opt.vocab, 'rb')
     pin_memory = torch.cuda.is_available()
 
     # one2one data loader
@@ -701,10 +693,11 @@ def init_model(opt):
 
     if opt.train_from:
         logging.info("loading previous checkpoint from %s" % opt.train_from)
+        # train_from_model_dir = opt.train_from[:opt.train_from.rfind('model/') + 6]
         # load the saved the meta-model and override the current one
-        model = torch.load(
-            open(os.path.join(opt.model_path, opt.exp, '.initial.model'), 'rb')
-        )
+        # model = torch.load(
+        #     open(os.path.join(opt.model_path, opt.exp + '.initial.model'), 'rb')
+        # )
 
         if torch.cuda.is_available():
             checkpoint = torch.load(open(opt.train_from, 'rb'))
@@ -713,7 +706,7 @@ def init_model(opt):
                 open(opt.train_from, 'rb'), map_location=lambda storage, loc: storage
             )
         # some compatible problems, keys are started with 'module.'
-        checkpoint = dict([(k[7:], v) if k.startswith('module.') else (k, v) for k, v in checkpoint.items()])
+        # checkpoint = dict([(k[7:], v) if k.startswith('module.') else (k, v) for k, v in checkpoint.items()])
         model.load_state_dict(checkpoint)
     else:
         # dump the meta-model
@@ -729,9 +722,8 @@ def init_model(opt):
 
 def main():
     # load settings for training
-    opt = config.init_opt(description='train.py')
-    logging = config.init_logging(logger_name=None, log_file=opt.log_file, redirect_to_stdout=False)
-
+    opt = init_opt(description='train.py')
+    logging = init_logging(logger_name='train.py', log_file=opt.log_file, redirect_to_stdout=False)
 
     logging.info('EXP_PATH : ' + opt.exp_path)
 
@@ -752,7 +744,8 @@ def main():
         optimizer_ml, optimizer_rl, criterion = init_optimizer_criterion(model, opt)
         train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt)
     except Exception as e:
-        logging.exception("message")
+        logging.error(e, exc_info=True)
+        raise
 
 
 if __name__ == '__main__':

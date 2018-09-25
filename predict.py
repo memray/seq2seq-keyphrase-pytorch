@@ -24,21 +24,22 @@ from pykp.io import KeyphraseDatasetTorchText, KeyphraseDataset
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
+logger = logging.getLogger()
 
 def load_vocab_and_testsets(opt):
-    logging.info("Loading vocab from disk: %s" % (opt.vocab_path))
-    word2id, id2word, vocab = torch.load(opt.vocab_path, 'rb')
+    logger.info("Loading vocab from disk: %s" % (opt.vocab))
+    word2id, id2word, vocab = torch.load(opt.vocab, 'rb')
     opt.word2id = word2id
     opt.id2word = id2word
     opt.vocab = vocab
-    logging.info('#(vocab)=%d' % len(vocab))
-    logging.info('#(vocab used)=%d' % opt.vocab_size)
+    logger.info('#(vocab)=%d' % len(vocab))
+    logger.info('#(vocab used)=%d' % opt.vocab_size)
 
     pin_memory = torch.cuda.is_available()
     test_one2many_loaders = []
 
     for testset_name in opt.test_dataset_names:
-        logging.info("Loading test dataset %s" % testset_name)
+        logger.info("Loading test dataset %s" % testset_name)
         testset_path = os.path.join(opt.test_dataset_root_path, testset_name, testset_name + '.test.one2many.pt')
         test_one2many = torch.load(testset_path, 'wb')
         test_one2many_dataset = KeyphraseDataset(test_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
@@ -51,28 +52,28 @@ def load_vocab_and_testsets(opt):
                                                    shuffle=False)
 
         test_one2many_loaders.append(test_one2many_loader)
-        logging.info('#(test data size:  #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d' % (len(test_one2many_loader.dataset), test_one2many_loader.one2one_number(), len(test_one2many_loader)))
-        logging.info('*' * 50)
+        logger.info('#(test data size:  #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d' % (len(test_one2many_loader.dataset), test_one2many_loader.one2one_number(), len(test_one2many_loader)))
+        logger.info('*' * 50)
 
     return test_one2many_loaders, word2id, id2word, vocab
 
 
 def main():
     opt = config.init_opt(description='predict.py')
-    logging = config.init_logging('predict', opt.exp_path + '/output.log')
+    logger = config.init_logging('predict', opt.exp_path + '/output.log', redirect_to_stdout=False)
 
-    logging.info('EXP_PATH : ' + opt.exp_path)
+    logger.info('EXP_PATH : ' + opt.exp_path)
 
-    logging.info('Parameters:')
-    [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
+    logger.info('Parameters:')
+    [logger.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
 
-    logging.info('======================  Checking GPU Availability  =========================')
+    logger.info('======================  Checking GPU Availability  =========================')
     if torch.cuda.is_available():
         if isinstance(opt.device_ids, int):
             opt.device_ids = [opt.device_ids]
-        logging.info('Running on %s! devices=%s' % ('MULTIPLE GPUs' if len(opt.device_ids) > 1 else '1 GPU', str(opt.device_ids)))
+        logger.info('Running on %s! devices=%s' % ('MULTIPLE GPUs' if len(opt.device_ids) > 1 else '1 GPU', str(opt.device_ids)))
     else:
-        logging.info('Running on CPU!')
+        logger.info('Running on CPU!')
 
     try:
         test_data_loaders, word2id, id2word, vocab = load_vocab_and_testsets(opt)
@@ -84,10 +85,13 @@ def main():
                                       )
 
         for testset_name, test_data_loader in zip(opt.test_dataset_names, test_data_loaders):
-            evaluate_beam_search(generator, test_data_loader, opt, title='predict', predict_save_path=opt.pred_path + '/%s_test_result.csv' % (testset_name))
+            logger.info('Evaluating %s' % testset_name)
+            evaluate_beam_search(generator, test_data_loader, opt,
+                                 title='test_%s' % testset_name,
+                                 predict_save_path=opt.pred_path + '/%s_test_result/' % (testset_name))
 
     except Exception as e:
-        logging.error(e.with_traceback())
+        logger.error(e, exc_info=True)
 
 if __name__ == '__main__':
     main()

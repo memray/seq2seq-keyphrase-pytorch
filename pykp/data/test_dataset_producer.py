@@ -316,7 +316,12 @@ test_dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k', 's
 def load_testset_from_json_and_add_pos_tag():
     pos_tagger = load_pos_tagger()
 
+
     for dataset_name in test_dataset_names:
+        abstract_key = 'abstract'
+        if dataset_name =='stackexchange':
+            abstract_key = 'question'
+
         print('-' * 50)
         print('Loading %s' % dataset_name)
         json_path = os.path.join(basedir, dataset_name, dataset_name+'_testing.json')
@@ -334,10 +339,10 @@ def load_testset_from_json_and_add_pos_tag():
                 print('Processing %d/%d' % (e_id, len(dataset_dict_list)))
             title_postag_tokens = pos_tagger.tag(copyseq_tokenize(example_dict['title']))
             # print('#(title token)=%d : %s' % (len(title_postag_tokens), str(title_postag_tokens)))
-            abstract_postag_tokens = pos_tagger.tag(copyseq_tokenize(example_dict['abstract']))
+            abstract_postag_tokens = pos_tagger.tag(copyseq_tokenize(example_dict[abstract_key]))
             # print('#(abstract token)=%d : %s' % (len(abstract_postag_tokens), str(abstract_postag_tokens)))
-            example_dict['title_postag_tokens'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in title_postag_tokens])
-            example_dict['abstract_postag_tokens'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in abstract_postag_tokens])
+            example_dict['title_postag'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in title_postag_tokens])
+            example_dict['abstract_postag'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in abstract_postag_tokens])
             postag_dataset_dict_list.append(example_dict)
 
         print('Dumping %s' % dataset_name)
@@ -348,5 +353,5 @@ def load_testset_from_json_and_add_pos_tag():
 
 
 if __name__ == '__main__':
-    # export_extra_dataset_to_json()
-    load_testset_from_json_and_add_pos_tag()
+    export_extra_dataset_to_json()
+    # load_testset_from_json_and_add_pos_tag()
