@@ -27,8 +27,8 @@ __email__ = "rui.meng@pitt.edu"
 logger = logging.getLogger()
 
 def load_vocab_and_testsets(opt):
-    logger.info("Loading vocab from disk: %s" % (opt.vocab))
-    word2id, id2word, vocab = torch.load(opt.vocab, 'rb')
+    logger.info("Loading vocab from disk: %s" % (opt.vocab_path))
+    word2id, id2word, vocab = torch.load(opt.vocab_path, 'rb')
     opt.word2id = word2id
     opt.id2word = id2word
     opt.vocab = vocab
