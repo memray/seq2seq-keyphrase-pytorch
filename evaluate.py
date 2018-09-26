@@ -88,14 +88,12 @@ def if_present_duplicate_phrase(src_str, phrase_seqs):
             continue
 
         # check if it appears in source text
-        for src_start_idx in range(len(stemmed_src_str) - len(stemmed_pred_seq) + 1):
-            match = True
-            for seq_idx, seq_w in enumerate(stemmed_pred_seq):
-                src_w = stemmed_src_str[src_start_idx + seq_idx]
-                if src_w != seq_w:
-                    match = False
-                    break
-            if match:
+        match = False
+        for start_idx in range(len(stemmed_src_str)):
+            if stemmed_src_str[start_idx] != stemmed_pred_seq:
+                continue
+            if stemmed_src_str[start_idx: start_idx + len(stemmed_pred_seq)] == stemmed_pred_seq:
+                match = True
                 break
 
         # if it reaches the end of source and no match, means it doesn't appear
