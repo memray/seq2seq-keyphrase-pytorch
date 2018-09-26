@@ -312,7 +312,7 @@ def export_extra_dataset_to_json():
         # print(dataset_loader.doc_list[20])
 
 
-test_dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k', 'stackexchange']
+test_dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'stackexchange', 'kp20k']
 def load_testset_from_json_and_add_pos_tag():
     pos_tagger = load_pos_tagger()
 
@@ -347,6 +347,7 @@ def load_testset_from_json_and_add_pos_tag():
 
         print('Dumping %s' % dataset_name)
         # dump back to json
+        json_path = os.path.join(basedir, dataset_name, dataset_name+'_testing_postag.json')
         with open(json_path, 'w') as json_file:
             for example_dict in postag_dataset_dict_list:
                 json_file.write(json.dumps(example_dict) + '\n')
@@ -354,4 +355,4 @@ def load_testset_from_json_and_add_pos_tag():
 
 if __name__ == '__main__':
     export_extra_dataset_to_json()
-    # load_testset_from_json_and_add_pos_tag()
+    load_testset_from_json_and_add_pos_tag()
