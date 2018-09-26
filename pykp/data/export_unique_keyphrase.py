@@ -16,7 +16,7 @@ if __name__ == '__main__':
     Note that the targets processed here contain many noises, which may have been removed during preprocessing
     '''
     dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k', 'stackexchange']
-    dataset_names = ['stackexchange']
+    # dataset_names = ['stackexchange']
     for dataset_name in dataset_names:
         kw_key_name = 'keyword'
         if dataset_name == 'stackexchange':
@@ -32,6 +32,7 @@ if __name__ == '__main__':
 
             source_files_name = '%s_%s.json' % (dataset_name, data_type)
             source_file_path = os.path.join(source_dir, source_files_name)
+            print(source_files_name)
 
             if os.path.exists(source_file_path):
                 print('=' * 50)
