@@ -182,7 +182,11 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
         print("src size - %s" % str(src_list.size()))
         print("target size - %s" % len(trg_copy_target_list))
 
-        pred_seq_list = generator.beam_search(src_list, src_len, src_oov_map_list, oov_list, opt.word2id)
+        try:
+            pred_seq_list = generator.beam_search(src_list, src_len, src_oov_map_list, oov_list, opt.word2id)
+        except RuntimeError as re:
+            logging.exception('Encountered OOM RuntimeError, now trying to predict one by one')
+            raise re
 
         '''
         process each example in current batch

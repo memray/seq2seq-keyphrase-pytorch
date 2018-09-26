@@ -9,6 +9,7 @@ import logging
 import numpy as np
 from torch.optim import Adam
 import evaluate
+import predict
 import utils
 import copy
 import torch
@@ -110,42 +111,48 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
 
     optimizer.zero_grad()
 
-    decoder_log_probs, _, _ = model.forward(src, src_len, trg, src_oov, oov_lists)
+    try:
+        decoder_log_probs, _, _ = model.forward(src, src_len, trg, src_oov, oov_lists)
 
 
-    # simply average losses of all the predicitons
-    # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
-    start_time = time.time()
+        # simply average losses of all the predicitons
+        # IMPORTANT, must use logits instead of probs to compute the loss, otherwise it's super super slow at the beginning (grads of probs are small)!
+        start_time = time.time()
 
-    if not opt.copy_attention:
-        loss = criterion(
-            decoder_log_probs.contiguous().view(-1, opt.vocab_size),
-            trg_target.contiguous().view(-1)
-        )
-    else:
-        loss = criterion(
-            decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
-            trg_copy_target.contiguous().view(-1)
-        )
-    if opt.train_rl:
-        loss = loss * (1 - opt.loss_scale)
-    print("--loss calculation- %s seconds ---" % (time.time() - start_time))
+        if not opt.copy_attention:
+            loss = criterion(
+                decoder_log_probs.contiguous().view(-1, opt.vocab_size),
+                trg_target.contiguous().view(-1)
+            )
+        else:
+            loss = criterion(
+                decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
+                trg_copy_target.contiguous().view(-1)
+            )
+        if opt.train_rl:
+            loss = loss * (1 - opt.loss_scale)
+        print("--loss calculation- %s seconds ---" % (time.time() - start_time))
 
-    start_time = time.time()
-    loss.backward()
-    print("--backward- %s seconds ---" % (time.time() - start_time))
+        start_time = time.time()
+        loss.backward()
+        print("--backward- %s seconds ---" % (time.time() - start_time))
 
-    if opt.max_grad_norm > 0:
-        pre_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), opt.max_grad_norm)
-        after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
-        # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
+        if opt.max_grad_norm > 0:
+            pre_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), opt.max_grad_norm)
+            after_norm = (sum([p.grad.data.norm(2) ** 2 for p in model.parameters() if p.grad is not None])) ** (1.0 / 2)
+            # logging.info('clip grad (%f -> %f)' % (pre_norm, after_norm))
 
-    optimizer.step()
+        optimizer.step()
 
-    if torch.cuda.is_available():
-        loss_value = loss.cpu().data.numpy()
-    else:
-        loss_value = loss.data.numpy()
+        if torch.cuda.is_available():
+            loss_value = loss.cpu().data.numpy()
+        else:
+            loss_value = loss.data.numpy()
+
+    except RuntimeError as re:
+        logging.exception("Encountered a RuntimeError")
+        loss_value = 0.0
+        decoder_log_probs = []
 
     return loss_value, decoder_log_probs
 
@@ -407,7 +414,7 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
             ' [HAS COPY]' + str(trg_i) if has_copy else ''))
 
 
-def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt):
+def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loaders, opt):
     generator = SequenceGenerator(model,
                                   eos_id=opt.word2id[pykp.io.EOS_WORD],
                                   beam_size=opt.beam_size,
@@ -420,6 +427,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
             opt.gpuid = [opt.gpuid]
         logging.info('Running on GPU! devices=%s' % str(opt.gpuid))
         # model = nn.DataParallel(model, device_ids=opt.gpuid)
+        model = model.cuda()
     else:
         logging.info('Running on CPU!')
 
@@ -465,6 +473,11 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
             # Training
             if opt.train_ml:
                 loss_ml, decoder_log_probs = train_ml(one2one_batch, model, optimizer_ml, criterion, opt)
+
+                # len(decoder_log_probs) == 0 if encountered OOM
+                if len(decoder_log_probs) == 0:
+                    continue
+
                 train_ml_losses.append(loss_ml)
                 report_loss.append(('train_ml_loss', loss_ml))
                 report_loss.append(('PPL', loss_ml))
@@ -492,7 +505,17 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
                 # valid_history_losses.append(valid_losses)
                 valid_score_dict = evaluate_beam_search(generator, valid_data_loader, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
-                test_score_dict = evaluate_beam_search(generator, test_data_loader, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+
+                test_score_dict_list = []
+                for testset_name, test_data_loader in zip(opt.test_dataset_names, test_data_loaders):
+                    logger.info('Evaluating %s' % testset_name)
+                    test_score_dict = evaluate_beam_search(generator, test_data_loader, opt, title='Testing@%s, epoch=%d, batch=%d, total_batch=%d' % (testset_name, epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d/%s/' % (epoch, batch_i, total_batch, testset_name))
+                    test_score_dict_list.append(test_score_dict)
+
+                # concatenate the scores of all examples in multiple datasets
+                test_score_dict = {}
+                for k in test_score_dict_list[0].keys():
+                    test_score_dict[k] = np.concatenate([d[k] for d in test_score_dict_list])
 
                 checkpoint_names.append('epoch=%d-batch=%d-total_batch=%d' % (epoch, batch_i, total_batch))
 
@@ -524,7 +547,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                                                   curve_names=curve_names,
                                                   checkpoint_names=checkpoint_names,
                                                   title='Training Validation & Test',
-                                                  save_path=opt.exp_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve.png' % (epoch, batch_i, total_batch))
+                                                  save_path=opt.plot_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve' % (epoch, batch_i, total_batch))
 
                 '''
                 determine if early stop training (whether f-score increased, before is if valid error decreased)
@@ -545,6 +568,11 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 else:
                     logging.info('Validation: best loss is not updated for %d times (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
                         stop_increasing, best_loss, valid_loss, rate_of_change * 100))
+
+                logging.info('Current test loss (over %d datasets): %s\n' % (len(opt.test_dataset_names), str(opt.test_dataset_names)))
+                for report_score_name in opt.report_score_names:
+                    test_loss = np.average(test_history_losses[-1][report_score_name])
+                    logging.info('\t\t %s = %.4f' % (report_score_name, test_loss))
 
                 best_loss = max(valid_loss, best_loss)
 
@@ -570,17 +598,17 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
 def load_data_vocab(opt, load_train=True):
 
-    logging.info("Loading vocab from disk: %s" % (opt.vocab))
-    word2id, id2word, vocab = torch.load(opt.vocab, 'rb')
+    logging.info("Loading vocab from disk: %s" % (opt.vocab_path))
+    word2id, id2word, vocab = torch.load(opt.vocab_path, 'rb')
     pin_memory = torch.cuda.is_available()
 
     # one2one data loader
-    logging.info("Loading train and validate data from '%s'" % opt.data)
+    logging.info("Loading train and validate data from '%s'" % opt.data_path_prefix)
 
     logging.info('======================  Dataset  =========================')
     # one2many data loader
     if load_train:
-        train_one2many = torch.load(opt.data + '.train.one2many.pt', 'rb')
+        train_one2many = torch.load(opt.data_path_prefix + '.train.one2many.pt', 'rb')
         train_one2many_dataset = KeyphraseDataset(train_one2many, word2id=word2id, id2word=id2word, type='one2many')
         train_one2many_loader = KeyphraseDataLoader(dataset=train_one2many_dataset,
                                                     collate_fn=train_one2many_dataset.collate_fn_one2many,
@@ -594,8 +622,8 @@ def load_data_vocab(opt, load_train=True):
     else:
         train_one2many_loader = None
 
-    valid_one2many = torch.load(opt.data + '.valid.one2many.pt', 'rb')
-    test_one2many = torch.load(opt.data + '.test.one2many.pt', 'rb')
+    valid_one2many = torch.load(opt.data_path_prefix + '.valid.one2many.pt', 'rb')
+    test_one2many = torch.load(opt.data_path_prefix + '.test.one2many.pt', 'rb')
 
     # !important. As it takes too long to do beam search, thus reduce the size of validation and test datasets
     valid_one2many = valid_one2many[:2000]
@@ -732,17 +760,19 @@ def main():
 
     logging.info('======================  Checking GPU Availability  =========================')
     if torch.cuda.is_available():
-        if isinstance(opt.device_ids, int):
-            opt.device_ids = [opt.device_ids]
-        logging.info('Running on %s! devices=%s' % ('MULTIPLE GPUs' if len(opt.device_ids) > 1 else '1 GPU', str(opt.device_ids)))
+        if isinstance(opt.gpuid, int):
+            opt.gpuid = [opt.gpuid]
+        logging.info('Running on %s! devices=%s' % ('MULTIPLE GPUs' if len(opt.gpuid) > 1 else '1 GPU', str(opt.gpuid)))
     else:
         logging.info('Running on CPU!')
 
     try:
-        train_data_loader, valid_data_loader, test_data_loader, word2id, id2word, vocab = load_data_vocab(opt)
+        train_data_loader, valid_data_loader, _, word2id, id2word, vocab = load_data_vocab(opt)
+        # ignore the previous test_data_loader
+        test_data_loaders, _, _, _ = predict.load_vocab_and_testsets(opt)
         model = init_model(opt)
         optimizer_ml, optimizer_rl, criterion = init_optimizer_criterion(model, opt)
-        train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt)
+        train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loaders, opt)
     except Exception as e:
         logging.error(e, exc_info=True)
         raise
