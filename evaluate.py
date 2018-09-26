@@ -81,6 +81,9 @@ def if_present_duplicate_phrase(src_str, phrase_seqs):
 
     for phrase_seq in phrase_seqs:
         stemmed_pred_seq = stem_word_list(phrase_seq)
+        if len(stemmed_pred_seq) == 0:
+            present_index.append(False)
+            continue
 
         # check if it is duplicate
         if '_'.join(stemmed_pred_seq) in phrase_set:
@@ -90,7 +93,7 @@ def if_present_duplicate_phrase(src_str, phrase_seqs):
         # check if it appears in source text
         match = False
         for start_idx in range(len(stemmed_src_str)):
-            if stemmed_src_str[start_idx] != stemmed_pred_seq:
+            if stemmed_src_str[start_idx] != stemmed_pred_seq[0]:
                 continue
             if stemmed_src_str[start_idx: start_idx + len(stemmed_pred_seq)] == stemmed_pred_seq:
                 match = True
@@ -218,8 +221,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 pred_seq = keyphrase_ranking(pred_seq, sep_ids=[opt.word2id[pykp.io.SEP_WORD]])
             else:
                 pred_seq = extract_to_list(pred_seq)
-            processed_strings = process_predseqs(
-                pred_seq, oov, opt.id2word, opt)
+            processed_strings = process_predseqs(pred_seq, oov, opt.id2word, opt)
 
             print_out += "\n ======================================================="
             print_processed_strings = [" ".join(item) for item in processed_strings]
