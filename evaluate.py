@@ -15,7 +15,12 @@ from torch.autograd import Variable
 
 import config
 import pykp
-from pykp.io import EOS_WORD, SEP_WORD, UNK_WORD
+PAD_WORD = '<pad>'
+UNK_WORD = '<unk>'
+BOS_WORD = '<s>'
+EOS_WORD = '</s>'
+DIGIT = '<digit>'
+SEP_WORD = '<sep>'
 from utils import Progbar
 from pykp.metric.bleu import bleu
 
