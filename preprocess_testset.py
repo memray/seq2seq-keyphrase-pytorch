@@ -7,7 +7,6 @@ import os
 import torch
 
 import config
-import pykp
 import pykp.io
 
 

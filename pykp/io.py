@@ -16,7 +16,7 @@ from collections import defaultdict
 import numpy as np
 import sys
 from torch.autograd import Variable
-from evaluate import if_present_duplicate_phrase
+from evaluate import if_present_duplicate_phrases
 
 import torch.multiprocessing as multiprocessing
 import queue
@@ -973,12 +973,12 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
 
             # store the location of each target in source text if present. if it's absent, return -1
             one2many_example['trg_present_flag'], one2many_example['trg_present_pos_index'] \
-                = if_present_duplicate_phrase(source_str, target_strs,
+                = if_present_duplicate_phrases(source_str, target_strs,
                                                do_stemming=False,
                                                check_duplicate=False)
 
             one2many_example['trg_stemmed_present_flag'], one2many_example['trg_stemmed_present_pos_index'] \
-                = if_present_duplicate_phrase(source_str, target_strs,
+                = if_present_duplicate_phrases(source_str, target_strs,
                                                do_stemming=True,
                                                check_duplicate=True)
 
