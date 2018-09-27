@@ -392,9 +392,9 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (
                     epoch, total_batch))
                 valid_score_dict = evaluate_beam_search(generator, valid_data_loader, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (
-                    epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                    epoch, batch_i, total_batch), epoch=epoch, save_path=None)
                 test_score_dict = evaluate_beam_search(generator, test_data_loader, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (
-                    epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                    epoch, batch_i, total_batch), epoch=epoch, save_path=None)
 
                 checkpoint_names.append(
                     'epoch=%d-batch=%d-total_batch=%d' % (epoch, batch_i, total_batch))
