@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=128GB
+#SBATCH --mem=64GB
 #SBATCH --time=6-00:00:00 # 6 days walltime in dd-hh:mm format
 #SBATCH --qos=long
 
