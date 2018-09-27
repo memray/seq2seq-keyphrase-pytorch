@@ -97,14 +97,16 @@ def main():
                                        opt,
                                        opt.subset_output_path,
                                        dataset_name=opt.dataset_name,
-                                       data_type='valid')
+                                       data_type='valid',
+                                       include_original=True)
 
     pykp.io.process_and_export_dataset(tokenized_test_pairs,
                                        word2id, id2word,
                                        opt,
                                        opt.subset_output_path,
                                        dataset_name=opt.dataset_name,
-                                       data_type='test')
+                                       data_type='test',
+                                       include_original=True)
 
 
     print("Exporting complete dataset to %s" % opt.output_path)
@@ -120,14 +122,16 @@ def main():
                                        opt,
                                        opt.output_path,
                                        dataset_name=opt.dataset_name,
-                                       data_type='valid')
+                                       data_type='valid',
+                                       include_original=True)
 
     pykp.io.process_and_export_dataset(tokenized_test_pairs,
                                        word2id, id2word,
                                        opt,
                                        opt.output_path,
                                        dataset_name=opt.dataset_name,
-                                       data_type='test')
+                                       data_type='test',
+                                       include_original=True)
 
 
 if __name__ == "__main__":

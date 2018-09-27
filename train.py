@@ -414,7 +414,7 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
             ' [HAS COPY]' + str(trg_i) if has_copy else ''))
 
 
-def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loaders, opt):
+def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loaders, test_data_loaders, opt):
     generator = SequenceGenerator(model,
                                   eos_id=opt.word2id[pykp.io.EOS_WORD],
                                   beam_size=opt.beam_size,
@@ -502,20 +502,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                (opt.run_valid_every > -1 and total_batch > 1 and total_batch % opt.run_valid_every == 0):
                 logging.info('*' * 50)
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
-                # valid_losses    = _valid_error(valid_data_loader, model, criterion, epoch, opt)
-                # valid_history_losses.append(valid_losses)
-                valid_score_dict = evaluate_beam_search(generator, valid_data_loader, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
-
-                test_score_dict_list = []
-                for testset_name, test_data_loader in zip(opt.test_dataset_names, test_data_loaders):
-                    logger.info('Evaluating %s' % testset_name)
-                    test_score_dict = evaluate_beam_search(generator, test_data_loader, opt, title='Testing@%s, epoch=%d, batch=%d, total_batch=%d' % (testset_name, epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d/%s/' % (epoch, batch_i, total_batch, testset_name))
-                    test_score_dict_list.append(test_score_dict)
-
-                # concatenate the scores of all examples in multiple datasets
-                test_score_dict = {}
-                for k in test_score_dict_list[0].keys():
-                    test_score_dict[k] = np.concatenate([d[k] for d in test_score_dict_list])
+                valid_score_dict =  evaluate.evaluate_multiple_datasets(generator, valid_data_loaders, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d/valid/' % (epoch, batch_i, total_batch))
+                test_score_dict = evaluate.evaluate_multiple_datasets(generator, valid_data_loaders, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d/test/' % (epoch, batch_i, total_batch))
 
                 checkpoint_names.append('epoch=%d-batch=%d-total_batch=%d' % (epoch, batch_i, total_batch))
 
@@ -769,10 +757,11 @@ def main():
     try:
         train_data_loader, valid_data_loader, _, word2id, id2word, vocab = load_data_vocab(opt)
         # ignore the previous test_data_loader
-        test_data_loaders, _, _, _ = predict.load_vocab_and_testsets(opt)
+        valid_data_loaders, _, _, _ = predict.load_vocab_and_datasets(dataset_names=opt.test_dataset_names, type='valid', opt=opt)
+        test_data_loaders, _, _, _ = predict.load_vocab_and_datasets(dataset_names=opt.test_dataset_names, type='test', opt=opt)
         model = init_model(opt)
         optimizer_ml, optimizer_rl, criterion = init_optimizer_criterion(model, opt)
-        train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loaders, opt)
+        train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loaders, test_data_loaders, opt)
     except Exception as e:
         logging.error(e, exc_info=True)
         raise

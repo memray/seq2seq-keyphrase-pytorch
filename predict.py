@@ -26,36 +26,55 @@ __email__ = "rui.meng@pitt.edu"
 
 logger = logging.getLogger()
 
-def load_vocab_and_testsets(opt):
+def load_vocab_and_datasets(dataset_names, type, opt):
+    '''
+    Load additional datasets from disk
+    For now seven datasets are included: 'inspec', 'nus', 'semeval', 'krapivin', 'kp20k', 'duc', 'stackexchange'
+     Only 'kp20k', 'stackexchange' provide train/valid/test data.
+     The others have only train/test, and the train is mostly used for validation.
+    :param type:
+    :param opt:
+    :return:
+    '''
+    assert type == 'test' or type == 'valid'
+
     logger.info("Loading vocab from disk: %s" % (opt.vocab_path))
     word2id, id2word, vocab = torch.load(opt.vocab_path, 'rb')
-    opt.word2id = word2id
-    opt.id2word = id2word
-    opt.vocab = vocab
     logger.info('#(vocab)=%d' % len(vocab))
-    logger.info('#(vocab used)=%d' % opt.vocab_size)
 
     pin_memory = torch.cuda.is_available()
-    test_one2many_loaders = []
+    one2many_loaders = []
 
-    for testset_name in opt.test_dataset_names:
-        logger.info("Loading test dataset %s" % testset_name)
-        testset_path = os.path.join(opt.test_dataset_root_path, testset_name, testset_name + '.test.one2many.pt')
-        test_one2many = torch.load(testset_path, 'wb')
-        test_one2many_dataset = KeyphraseDataset(test_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
-        test_one2many_loader = KeyphraseDataLoader(dataset=test_one2many_dataset,
-                                                   collate_fn=test_one2many_dataset.collate_fn_one2many,
+    for dataset_name in dataset_names:
+        logger.info("Loading test dataset %s" % dataset_name)
+        if type == 'test':
+            dataset_path = os.path.join(opt.test_dataset_root_path, dataset_name, dataset_name + '.test.one2many.pt')
+        elif type == 'valid' and dataset_name in ['kp20k', 'stackexchange']:
+            dataset_path = os.path.join(opt.test_dataset_root_path, dataset_name, dataset_name + '.valid.one2many.pt')
+        elif type == 'valid' and dataset_name in ['inspec', 'nus', 'semeval', 'krapivin', 'duc']:
+            dataset_path = os.path.join(opt.test_dataset_root_path, dataset_name, dataset_name + '.train.one2many.pt')
+        else:
+            raise Exception('Unsupported dataset: %s, type=%s' % (dataset_name, type))
+
+        one2many = torch.load(dataset_path, 'wb')
+        one2many_dataset = KeyphraseDataset(one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
+        one2many_loader = KeyphraseDataLoader(dataset=one2many_dataset,
+                                                   collate_fn=one2many_dataset.collate_fn_one2many,
                                                    num_workers=opt.batch_workers,
                                                    max_batch_example=opt.beam_search_batch_example,
                                                    max_batch_pair=opt.beam_search_batch_size,
                                                    pin_memory=pin_memory,
                                                    shuffle=False)
 
-        test_one2many_loaders.append(test_one2many_loader)
-        logger.info('#(test data size:  #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d' % (len(test_one2many_loader.dataset), test_one2many_loader.one2one_number(), len(test_one2many_loader)))
+        one2many_loaders.append(one2many_loader)
+
+        logger.info('#(%s data size:  #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d' %
+                    (type, len(one2many_loader.dataset),
+                     one2many_loader.one2one_number(),
+                     len(one2many_loader)))
         logger.info('*' * 50)
 
-    return test_one2many_loaders, word2id, id2word, vocab
+    return one2many_loaders, word2id, id2word, vocab
 
 
 def main():
@@ -76,7 +95,7 @@ def main():
         logger.info('Running on CPU!')
 
     try:
-        test_data_loaders, word2id, id2word, vocab = load_vocab_and_testsets(opt)
+        test_data_loaders, word2id, id2word, vocab = load_vocab_and_datasets(opt)
         model = init_model(opt)
         generator = SequenceGenerator(model,
                                       eos_id=opt.word2id[pykp.io.EOS_WORD],

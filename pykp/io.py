@@ -821,7 +821,8 @@ def process_and_export_dataset(tokenized_src_trg_pairs,
                                word2id, id2word,
                                opt, output_path,
                                dataset_name,
-                               data_type=None):
+                               data_type=None,
+                               include_original=False):
     """
     :param tokenized_src_trg_pairs:
     :param word2id:
@@ -839,10 +840,10 @@ def process_and_export_dataset(tokenized_src_trg_pairs,
     '''
     Convert raw data to data examples (strings to tensors)
     '''
-    if data_type == 'train':
-        include_original = False
-    else:
-        include_original = True
+    # if data_type == 'train':
+    #     include_original = False
+    # else:
+    #     include_original = True
 
     print("Dumping %s %s to disk: %s" % (dataset_name, data_type, os.path.join(output_path, '%s.%s.*.pt' % (dataset_name, data_type))))
     one2one_examples = process_data_examples(

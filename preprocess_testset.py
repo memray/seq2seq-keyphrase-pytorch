@@ -67,14 +67,16 @@ def main():
                                            opt,
                                            opt.output_path,
                                            dataset_name=test_dataset_name,
-                                           data_type='train')
+                                           data_type='train',
+                                           include_original=True)
 
         pykp.io.process_and_export_dataset(tokenized_test_pairs,
                                            word2id, id2word,
                                            opt,
                                            opt.output_path,
                                            dataset_name=test_dataset_name,
-                                           data_type='test')
+                                           data_type='test',
+                                           include_original=True)
 
 
 if __name__ == "__main__":

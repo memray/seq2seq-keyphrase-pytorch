@@ -156,6 +156,23 @@ def if_present_duplicate_phrases(src_str, trgs_str, do_stemming=True, check_dupl
     return present_flags, present_indices
 
 
+def evaluate_multiple_datasets(generator, data_loaders, opt, title='', epoch=1, predict_save_path=None):
+    score_dict_list = []
+    for dataset_name, data_loader in zip(opt.test_dataset_names, data_loaders):
+        logging.getLogger().info('Evaluating %s' % dataset_name)
+        score_dict = evaluate_beam_search(generator, data_loader, opt,
+                                               title=title + '_' + dataset_name, epoch=epoch,
+                                               predict_save_path=os.path.join(predict_save_path, dataset_name))
+        score_dict_list.append(score_dict)
+
+    # concatenate the scores of all examples in multiple datasets
+    merged_score_dict = {}
+    for k in score_dict_list[0].keys():
+        merged_score_dict[k] = np.concatenate([d[k] for d in score_dict_list])
+
+    return merged_score_dict
+
+
 def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict_save_path=None):
     logger = config.init_logging(title, predict_save_path + '/%s.log' % title, redirect_to_stdout=False)
     progbar = Progbar(logger=logger, title=title, target=len(data_loader.dataset.examples), batch_size=data_loader.batch_size,
@@ -168,8 +185,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
     score_dict = {}  # {'precision@5':[],'recall@5':[],'f1score@5':[], 'precision@10':[],'recall@10':[],'f1score@10':[]}
 
     for i, batch in enumerate(data_loader):
-        # if i > 5:
-        #     break
+        if i > 5:
+            break
 
         one2many_batch, one2one_batch = batch
         src_list, src_len, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
