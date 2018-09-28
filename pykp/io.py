@@ -56,6 +56,8 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             filtered_example = {}
             for k in keys:
                 filtered_example[k] = e[k]
+            if len(e['src']) > 1000:
+                e['src'] = e['src'][:1000]
             if 'oov_list' in filtered_example:
                 if type == 'one2one':
                     filtered_example['oov_number'] = len(filtered_example['oov_list'])

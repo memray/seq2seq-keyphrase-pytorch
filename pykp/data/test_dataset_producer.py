@@ -312,10 +312,10 @@ def export_extra_dataset_to_json():
         # print(dataset_loader.doc_list[20])
 
 
-test_dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'stackexchange', 'kp20k']
+test_dataset_names = ['stackexchange', 'inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k']
+
 def load_testset_from_json_and_add_pos_tag():
     pos_tagger = load_pos_tagger()
-
 
     for dataset_name in test_dataset_names:
         abstract_key = 'abstract'
@@ -332,24 +332,35 @@ def load_testset_from_json_and_add_pos_tag():
             for line in json_file:
                 dataset_dict_list.append(json.loads(line))
 
-        # postag title/abstract and insert into data example
-        postag_dataset_dict_list = []
-        for e_id, example_dict in enumerate(dataset_dict_list):
-            if e_id % 10 == 0:
-                print('Processing %d/%d' % (e_id, len(dataset_dict_list)))
-            title_postag_tokens = pos_tagger.tag(copyseq_tokenize(example_dict['title']))
-            # print('#(title token)=%d : %s' % (len(title_postag_tokens), str(title_postag_tokens)))
-            abstract_postag_tokens = pos_tagger.tag(copyseq_tokenize(example_dict[abstract_key]))
-            # print('#(abstract token)=%d : %s' % (len(abstract_postag_tokens), str(abstract_postag_tokens)))
-            example_dict['title_postag'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in title_postag_tokens])
-            example_dict['abstract_postag'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in abstract_postag_tokens])
-            postag_dataset_dict_list.append(example_dict)
-
-        print('Dumping %s' % dataset_name)
+        print('Processing and dumping to %s' % dataset_name)
         # dump back to json
-        json_path = os.path.join(basedir, dataset_name, dataset_name+'_testing_postag.json')
+        json_path = os.path.join(basedir, dataset_name, dataset_name + '_testing_postag.json')
         with open(json_path, 'w') as json_file:
-            for example_dict in postag_dataset_dict_list:
+            # postag title/abstract and insert into data example
+            postag_dataset_dict_list = []
+            for e_id, example_dict in enumerate(dataset_dict_list):
+                print('=' * 50)
+                print(e_id)
+                print(example_dict['title'])
+                print('len(title)=%d' % len(example_dict['title']))
+                print('len(abstract)=%d' % len(example_dict[abstract_key]))
+
+                if len(example_dict[abstract_key]) > 1000:
+                    print('truncate to 1000 words')
+                    example_dict[abstract_key] = example_dict[abstract_key][:1000]
+
+                if e_id % 10 == 0:
+                    print('Processing %d/%d' % (e_id, len(dataset_dict_list)))
+
+                title_postag_tokens = pos_tagger.tag(copyseq_tokenize(example_dict['title']))
+                # print('#(title token)=%d : %s' % (len(title_postag_tokens), str(title_postag_tokens)))
+                abstract_postag_tokens = pos_tagger.tag(copyseq_tokenize(example_dict[abstract_key]))
+                # print('#(abstract token)=%d : %s' % (len(abstract_postag_tokens), str(abstract_postag_tokens)))
+                example_dict['title_postag'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in title_postag_tokens])
+                example_dict['abstract_postag'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in abstract_postag_tokens])
+                postag_dataset_dict_list.append(example_dict)
+
+                # for example_dict in postag_dataset_dict_list:
                 json_file.write(json.dumps(example_dict) + '\n')
 
 

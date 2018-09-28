@@ -420,18 +420,18 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                                   beam_size=opt.beam_size,
                                   max_sequence_length=opt.max_sent_length
                                   )
-
-    logging.info('======================  Checking GPU Availability  =========================')
+    logger = logging.getLogger('train.py')
+    logger.info('======================  Checking GPU Availability  =========================')
     if torch.cuda.is_available():
         if isinstance(opt.gpuid, int):
             opt.gpuid = [opt.gpuid]
-        logging.info('Running on GPU! devices=%s' % str(opt.gpuid))
+            logger.info('Running on GPU! devices=%s' % str(opt.gpuid))
         # model = nn.DataParallel(model, device_ids=opt.gpuid)
         model = model.cuda()
     else:
-        logging.info('Running on CPU!')
+        logger.info('Running on CPU!')
 
-    logging.info('======================  Start Training  =========================')
+        logger.info('======================  Start Training  =========================')
 
     checkpoint_names = []
     train_ml_history_losses = []
@@ -451,7 +451,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
     if False:  # opt.train_from:
         state_path = opt.train_from.replace('.model', '.state')
-        logging.info('Loading training state from: %s' % state_path)
+        logger.info('Loading training state from: %s' % state_path)
         if os.path.exists(state_path):
             (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_ml_history_losses, train_rl_history_losses, valid_history_losses,
              test_history_losses) = torch.load(open(state_path, 'rb'))
@@ -461,7 +461,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
         if early_stop_flag:
             break
 
-        progbar = Progbar(logger=logging, title='Training', target=len(train_data_loader), batch_size=train_data_loader.batch_size,
+        progbar = Progbar(logger=logger, title='Training', target=len(train_data_loader), batch_size=train_data_loader.batch_size,
                           total_examples=len(train_data_loader.dataset.examples))
 
         for batch_i, batch in enumerate(train_data_loader):
@@ -500,10 +500,10 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
             # Validate and save checkpoint
             if (opt.run_valid_every == -1 and batch_i == len(train_data_loader) - 1) or\
                (opt.run_valid_every > -1 and total_batch > 1 and total_batch % opt.run_valid_every == 0):
-                logging.info('*' * 50)
-                logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
-                valid_score_dict =  evaluate.evaluate_multiple_datasets(generator, valid_data_loaders, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d/valid/' % (epoch, batch_i, total_batch))
-                test_score_dict = evaluate.evaluate_multiple_datasets(generator, valid_data_loaders, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d/test/' % (epoch, batch_i, total_batch))
+                logger.info('*' * 50)
+                logger.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
+                valid_score_dict =  evaluate.evaluate_multiple_datasets(generator, valid_data_loaders, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d-valid/' % (epoch, batch_i, total_batch))
+                test_score_dict = evaluate.evaluate_multiple_datasets(generator, valid_data_loaders, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d-test/' % (epoch, batch_i, total_batch))
 
                 checkpoint_names.append('epoch=%d-batch=%d-total_batch=%d' % (epoch, batch_i, total_batch))
 

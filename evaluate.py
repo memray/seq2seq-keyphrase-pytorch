@@ -185,8 +185,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
     score_dict = {}  # {'precision@5':[],'recall@5':[],'f1score@5':[], 'precision@10':[],'recall@10':[],'f1score@10':[]}
 
     for i, batch in enumerate(data_loader):
-        if i > 5:
-            break
+        # if i > 5:
+        #     break
 
         one2many_batch, one2one_batch = batch
         src_list, src_len, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
@@ -362,10 +362,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
 
             example_idx += 1
 
-    # print('#(f_score@5#oneword=-1)=%d, sum=%f' % (len(score_dict['f_score@5#oneword=-1']), sum(score_dict['f_score@5#oneword=-1'])))
-    # print('#(f_score@10#oneword=-1)=%d, sum=%f' % (len(score_dict['f_score@10#oneword=-1']), sum(score_dict['f_score@10#oneword=-1'])))
-    # print('#(f_score@5#oneword=1)=%d, sum=%f' % (len(score_dict['f_score@5#oneword=1']), sum(score_dict['f_score@5#oneword=1'])))
-    # print('#(f_score@10#oneword=1)=%d, sum=%f' % (len(score_dict['f_score@10#oneword=1']), sum(score_dict['f_score@10#oneword=1'])))
+    logger.info('#(f_score@5_exact)=%d, sum=%f' % (len(score_dict['f_score@5_exact']), sum(score_dict['f_score@5_exact'])))
+    logger.info('#(f_score@10_exact)=%d, sum=%f' % (len(score_dict['f_score@10_exact']), sum(score_dict['f_score@10_exact'])))
 
     if predict_save_path:
         # export scores. Each row is scores (precision, recall and f-score) of different way of filtering predictions (how many one-word predictions to keep)
@@ -387,7 +385,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
     # logging.info("micro precision %.4f , micro recall %.4f, micro fscore %.4f " % (precision, recall, f_score))
 
     for k,v in score_dict.items():
-        print('#(%s) = %d' % (k, len(v)))
+        logger.info('#(%s) = %d' % (k, len(v)))
 
     return score_dict
 

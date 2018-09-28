@@ -1,0 +1,4 @@
+1. Locate root folder of stanford-corenlp-full-3.8.0
+2. Start web service by:
+java -mx8g -cp "*" edu.stanford.nlp.pipeline.StanfordCoreNLPServer -port 9000 -timeout 15000
+3. But it accepts text only, so not useful here.
