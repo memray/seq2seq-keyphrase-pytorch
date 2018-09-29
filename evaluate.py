@@ -292,6 +292,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 example_idx += 1
             logging.info(print_out)
 
+    logging.info("NOW TEST...")
     if save_path:
         # export scores. Each row is scores (precision, recall and f-score) of
         # different way of filtering predictions (how many one-word predictions
