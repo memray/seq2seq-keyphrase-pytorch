@@ -280,11 +280,11 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 print_out += "\n --- total precision, recall, fscore: " + str(np.average(score_dict['precision_soft'])) + " , " +\
                             str(np.average(score_dict['recall_soft'])) + " , " +\
                             str(np.average(score_dict['f_score_soft']))
-                if save_path:
-                    if not os.path.exists(os.path.join(save_path, title + '_detail')):
-                        os.makedirs(os.path.join(save_path, title + '_detail'))
-                    with open(os.path.join(save_path, title + '_detail', str(example_idx) + '_print.txt'), 'w') as f_:
-                        f_.write(print_out)
+                # if save_path:
+                #     if not os.path.exists(os.path.join(save_path, title + '_detail')):
+                #         os.makedirs(os.path.join(save_path, title + '_detail'))
+                #     with open(os.path.join(save_path, title + '_detail', str(example_idx) + '_print.txt'), 'w') as f_:
+                #         f_.write(print_out)
 
                 progbar.update(epoch, example_idx, [('f_score_exact', np.average(score_dict['f_score_exact'])),
                                                     ('f_score_soft', np.average(score_dict['f_score_soft']))])
