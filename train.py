@@ -102,6 +102,8 @@ def train_ml(one2one_batch, model, optimizer, criterion, opt):
     print("target size - ", trg.size())
 
     if torch.cuda.is_available():
+        print('max(src)=%d' % max(src))
+        print(src)
         src = src.cuda()
         trg = trg.cuda()
         trg_target = trg_target.cuda()
