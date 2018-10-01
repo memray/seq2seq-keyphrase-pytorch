@@ -68,7 +68,7 @@ def load_data_vocab(opt):
     logging.info("Loading train and validate data from '%s'" % opt.data)
 
     logging.info('======================  Dataset  =========================')
-    valid_one2seq = torch.load(opt.data + '.valid.one2many.pt', 'wb')
+    valid_one2seq = torch.load(opt.data + '.train.one2many.pt', 'wb')
     test_one2seq = torch.load(opt.data + '.test.one2many.pt', 'wb')
 
     valid_one2seq_dataset = KeyphraseDataset(
