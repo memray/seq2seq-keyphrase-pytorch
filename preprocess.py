@@ -81,6 +81,9 @@ def main():
     print("Building Vocab...")
     word2id, id2word, vocab = pykp.io.build_vocab(tokenized_train_pairs, opt)
     print('Vocab size = %d' % len(vocab))
+    if opt.vocab_size > len(vocab):
+        opt.vocab_size = len(vocab)
+        print('Reset vocab size to %d' % opt.vocab_size)
 
     print("Dumping dict to disk")
     opt.vocab_path = os.path.join(opt.subset_output_path, opt.dataset_name + '.vocab.pt')
