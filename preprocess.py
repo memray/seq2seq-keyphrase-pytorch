@@ -44,9 +44,15 @@ def main():
     if opt.dataset_name == 'kp20k':
         src_fields = ['title', 'abstract']
         trg_fields = ['keyword']
+        valid_check=True
     elif opt.dataset_name == 'stackexchange':
         src_fields = ['title', 'question']
         trg_fields = ['tags']
+        valid_check=True
+    elif opt.dataset_name == 'twacg':
+        src_fields = ['observation']
+        trg_fields = ['admissible_commands']
+        valid_check=False
     else:
         raise Exception('Unsupported dataset name=%s' % opt.dataset_name)
 
@@ -56,21 +62,21 @@ def main():
                                                         src_fields=src_fields,
                                                         trg_fields=trg_fields,
                                                         opt=opt,
-                                                        valid_check=True)
+                                                        valid_check=valid_check)
 
     tokenized_valid_pairs = pykp.io.load_src_trgs_pairs(source_json_path=opt.source_valid_file,
                                                         dataset_name=opt.dataset_name,
                                                         src_fields=src_fields,
                                                         trg_fields=trg_fields,
                                                         opt=opt,
-                                                        valid_check=False)
+                                                        valid_check=valid_check)
 
     tokenized_test_pairs = pykp.io.load_src_trgs_pairs(source_json_path=opt.source_test_file,
                                                        dataset_name=opt.dataset_name,
                                                        src_fields=src_fields,
                                                        trg_fields=trg_fields,
                                                        opt=opt,
-                                                       valid_check=False)
+                                                       valid_check=valid_check)
 
     print("Building Vocab...")
     word2id, id2word, vocab = pykp.io.build_vocab(tokenized_train_pairs, opt)
@@ -107,7 +113,6 @@ def main():
                                        dataset_name=opt.dataset_name,
                                        data_type='test',
                                        include_original=True)
-
 
     print("Exporting complete dataset to %s" % opt.output_path)
     pykp.io.process_and_export_dataset(tokenized_train_pairs,

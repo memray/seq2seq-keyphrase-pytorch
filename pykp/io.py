@@ -45,17 +45,42 @@ torchtext.vocab.Vocab.__setstate__ = __setstate__
 
 
 class KeyphraseDataset(torch.utils.data.Dataset):
-    def __init__(self, examples, word2id, id2word, type='one2many', include_original=False):
+    def __init__(self, data_path, word2id, id2word,
+                 type='one2many',
+                 include_original=False,
+                 lazy_load = False):
+        self.data_path = data_path
+        self.lazy_load = lazy_load
+        self.word2id = word2id
+        self.id2word = id2word
+        self.pad_id = word2id[PAD_WORD]
+        self.type = type
+        self.include_original = include_original
+
+        self._examples = None
+        if self.lazy_load:
+            print('Data will be loaded while needed from %s' % data_path)
+        else:
+            print('Loading data from %s' % data_path)
+            self._load_examples()
+
+    def _load_examples(self):
+        print(self.data_path)
+        one2many_examples = torch.load(self.data_path, 'rb')
         # keys of matter. `src_oov_map` is for mapping pointed word to dict, `oov_dict` is for determining the dim of predicted logit: dim=vocab_size+max_oov_dict_in_batch
         keys = ['src', 'trg', 'trg_copy', 'src_oov', 'oov_dict', 'oov_list']
-        if include_original:
+
+        if self.include_original:
             keys = keys + ['src_str', 'trg_str']
+
         filtered_examples = []
 
-        for e in examples:
+        for e in one2many_examples:
             filtered_example = {}
             for k in keys:
                 filtered_example[k] = e[k]
+
+            # truncate long source text
             if len(e['src']) > 1000:
                 e['src'] = e['src'][:1000]
             if 'oov_list' in filtered_example:
@@ -66,18 +91,23 @@ class KeyphraseDataset(torch.utils.data.Dataset):
 
             filtered_examples.append(filtered_example)
 
-        self.examples = filtered_examples
-        self.word2id = word2id
-        self.id2word = id2word
-        self.pad_id = word2id[PAD_WORD]
-        self.type = type
-        self.include_original = include_original
+        self._examples = filtered_examples
+
+
+    def get_examples(self):
+        if self._examples == None:
+            self._load_examples()
+        return self._examples
+
+    def offload_dataset(self):
+        # print('Offloading dataset %s:' % self.data_path)
+        self._examples = None
 
     def __getitem__(self, index):
-        return self.examples[index]
+        return self.get_examples()[index]
 
     def __len__(self):
-        return len(self.examples)
+        return len(self.get_examples())
 
     def _pad(self, x_raw):
         x_raw = np.asarray(x_raw)
@@ -439,6 +469,7 @@ def process_data_examples(src_trgs_pairs, word2id, id2word, opt, mode='one2one',
                 print('-------------------- %s: %d/%d ---------------------------' %
                       (inspect.getframeinfo(inspect.currentframe()).function, idx, len(src_trgs_pairs)))
                 print('source    \n\t\t[len=%d]: %s' % (len(source_str), source_str))
+                print('targets    \n\t\t[len=%d]: %s' % (len(target_strs), target_strs))
                 print('target    \n\t\t[len=%d]: %s' % (len(target_str), target_str))
                 print('src       \n\t\t[len=%d]: %s' % (len(one2one_example['src']), one2one_example['src']))
                 print('trg       \n\t\t[len=%d]: %s' % (len(one2one_example['trg']), one2one_example['trg']))

@@ -68,6 +68,8 @@ def init_opt(description):
         opt.test_dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'kp20k', 'duc']
     elif opt.exp.startswith('stackexchange'):
         opt.test_dataset_names = ['stackexchange']
+    elif opt.exp.startswith('twacg'):
+        opt.test_dataset_names = ['twacg']
     else:
         raise Exception('Unsupported training data')
 
@@ -430,10 +432,13 @@ def train_opts(parser):
                         help='Maximum sentence length.')
 
 def predict_opts(parser):
-    parser.add_argument('-must_appear_in_src', action="store_true", default="True",
+    parser.add_argument('-must_appear_in_src', action='store_true', default=False,
                         help='whether the predicted sequences must appear in the source text')
 
-    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5_exact', 'f_score@5_soft', 'f_score@10_exact', 'f_score@10_soft'], help="""Default measure to report""")
+    parser.add_argument('-report_score_names', type=str, nargs='+',
+                        # default=['f_score@5_exact', 'f_score@10_exact', 'f_score@5_soft', 'f_score@10_soft'],
+                        default=['f_score@5_exact', 'f_score@10_exact'],
+                        help="""Default measure to report""")
 
     parser.add_argument('-test_dataset_root_path', type=str, default="data/")
 

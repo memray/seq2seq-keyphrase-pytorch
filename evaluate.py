@@ -157,26 +157,41 @@ def if_present_duplicate_phrases(src_str, trgs_str, do_stemming=True, check_dupl
 
 
 def evaluate_multiple_datasets(generator, data_loaders, opt, title='', epoch=1, predict_save_path=None):
-    score_dict_list = []
+    # return the scores of all examples in multiple datasets
+    datasets_score_dict = {}
     for dataset_name, data_loader in zip(opt.test_dataset_names, data_loaders):
         logging.getLogger().info('Evaluating %s' % dataset_name)
         score_dict = evaluate_beam_search(generator, data_loader, opt,
-                                               title=title + '_' + dataset_name, epoch=epoch,
+                                               title=dataset_name + '.' + title, epoch=epoch,
                                                predict_save_path=os.path.join(predict_save_path, dataset_name))
-        score_dict_list.append(score_dict)
 
-    # concatenate the scores of all examples in multiple datasets
+        # write the scores into file
+        score_json_path = os.path.join(predict_save_path, dataset_name, '%s.%s.detailed_score.json' % (dataset_name, title))
+        with open(score_json_path, 'w') as score_json:
+            score_json.write(json.dumps(score_dict))
+
+        # return a dict, key is dataset name and value is another dict of scores
+        datasets_score_dict[dataset_name] = score_dict
+
+        # empty dataset to free memory
+        data_loader.dataset.offload_dataset()
+
+    # create a new tuple (key='all_datasets') by merging all results
     merged_score_dict = {}
-    for k in score_dict_list[0].keys():
-        merged_score_dict[k] = np.concatenate([d[k] for d in score_dict_list])
+    for dataset_name, score_dict in datasets_score_dict.items():
+        for score_name, score_values in score_dict.items():
+            merged_score_values = merged_score_dict.get(score_name, [])
+            merged_score_values.extend(score_values)
+            merged_score_dict[score_name] = merged_score_values
+    datasets_score_dict['all_datasets'] = merged_score_dict
 
-    return merged_score_dict
+    return datasets_score_dict
 
 
 def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict_save_path=None):
     logger = config.init_logging(title, predict_save_path + '/%s.log' % title, redirect_to_stdout=False)
-    progbar = Progbar(logger=logger, title=title, target=len(data_loader.dataset.examples), batch_size=data_loader.batch_size,
-                      total_examples=len(data_loader.dataset.examples))
+    progbar = Progbar(logger=logger, title=title, target=len(data_loader), batch_size=data_loader.batch_size,
+                      total_examples=len(data_loader.dataset))
 
     topk_range = [5, 10]
     score_names = ['precision', 'recall', 'f_score']
@@ -236,20 +251,21 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
                 filtered_trg_str_seqs = np.asarray(trg_str_seqs)[trg_str_is_present_flags]
             else:
                 pred_is_present_flags = [True] * len(processed_pred_str_seqs)
+                filtered_trg_str_seqs = trg_str_seqs
 
             valid_and_present = np.asarray(pred_is_valid_flags) * np.asarray(pred_is_present_flags)
             match_list = get_match_result(true_seqs=filtered_trg_str_seqs, pred_seqs=processed_pred_str_seqs)
             print_out += '[PREDICTION] #(valid)=%d, #(present)=%d, #(retained&present)=%d, #(all)=%d\n' % (sum(pred_is_valid_flags), sum(pred_is_present_flags), sum(valid_and_present), len(pred_seq))
             print_out += ''
+
             '''
-            Print and export predictions
+            Iterate every prediction, print and export predictions
             '''
             preds_out = ''
             for p_id, (seq, word, score, match, is_valid, is_present) in enumerate(
                     zip(processed_pred_seqs, processed_pred_str_seqs, processed_pred_score, match_list, pred_is_valid_flags, pred_is_present_flags)):
                 # if p_id > 5:
                 #     break
-
                 preds_out += '%s\n' % (' '.join(word))
                 if is_present:
                     print_phrase = '[%s]' % ' '.join(word)
@@ -327,8 +343,10 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
             if predict_save_path:
                 if not os.path.exists(os.path.join(predict_save_path, title + '_detail')):
                     os.makedirs(os.path.join(predict_save_path, title + '_detail'))
+                # write print-out
                 with open(os.path.join(predict_save_path, title + '_detail', str(example_idx) + '_print.txt'), 'w') as f_:
                     f_.write(print_out)
+                # write original predictions
                 with open(os.path.join(predict_save_path, title + '_detail', str(example_idx) + '_prediction.txt'), 'w') as f_:
                     f_.write(preds_out)
 
@@ -365,8 +383,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
     logger.info('#(f_score@5_exact)=%d, sum=%f' % (len(score_dict['f_score@5_exact']), sum(score_dict['f_score@5_exact'])))
     logger.info('#(f_score@10_exact)=%d, sum=%f' % (len(score_dict['f_score@10_exact']), sum(score_dict['f_score@10_exact'])))
 
+    # Write score summary to disk. Each row is scores (precision, recall and f-score)
     if predict_save_path:
-        # export scores. Each row is scores (precision, recall and f-score) of different way of filtering predictions (how many one-word predictions to keep)
         with open(predict_save_path + os.path.sep + title + '_result.csv', 'w') as result_csv:
             csv_lines = []
             for mode in ["exact", "soft"]:

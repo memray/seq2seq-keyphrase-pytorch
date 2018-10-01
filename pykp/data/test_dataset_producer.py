@@ -337,7 +337,6 @@ def load_testset_from_json_and_add_pos_tag():
         json_path = os.path.join(basedir, dataset_name, dataset_name + '_testing_postag.json')
         with open(json_path, 'w') as json_file:
             # postag title/abstract and insert into data example
-            postag_dataset_dict_list = []
             for e_id, example_dict in enumerate(dataset_dict_list):
                 print('=' * 50)
                 print(e_id)
@@ -358,7 +357,6 @@ def load_testset_from_json_and_add_pos_tag():
                 # print('#(abstract token)=%d : %s' % (len(abstract_postag_tokens), str(abstract_postag_tokens)))
                 example_dict['title_postag'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in title_postag_tokens])
                 example_dict['abstract_postag'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in abstract_postag_tokens])
-                postag_dataset_dict_list.append(example_dict)
 
                 # for example_dict in postag_dataset_dict_list:
                 json_file.write(json.dumps(example_dict) + '\n')

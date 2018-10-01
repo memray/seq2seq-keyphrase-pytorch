@@ -9,7 +9,6 @@ import logging
 import numpy as np
 from torch.optim import Adam
 import evaluate
-import predict
 import utils
 import copy
 import torch
@@ -436,8 +435,8 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     checkpoint_names = []
     train_ml_history_losses = []
     train_rl_history_losses = []
-    valid_history_losses = []
-    test_history_losses = []
+    valid_history_scores = {}
+    test_history_scores = {}
     # best_loss = sys.float_info.max # for normal training/testing loss (likelihood)
     best_loss = 0.0  # for f-score
     stop_increasing = 0
@@ -449,20 +448,20 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
     if opt.train_rl:
         reward_cache = RewardCache(2000)
 
-    if False:  # opt.train_from:
-        state_path = opt.train_from.replace('.model', '.state')
-        logger.info('Loading training state from: %s' % state_path)
-        if os.path.exists(state_path):
-            (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_ml_history_losses, train_rl_history_losses, valid_history_losses,
-             test_history_losses) = torch.load(open(state_path, 'rb'))
-            opt.start_epoch = epoch
+    # if False:  # opt.train_from:
+    #     state_path = opt.train_from.replace('.model', '.state')
+    #     logger.info('Loading training state from: %s' % state_path)
+    #     if os.path.exists(state_path):
+    #         (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_ml_history_losses, train_rl_history_losses, valid_history_scores,
+    #          test_history_losses) = torch.load(open(state_path, 'rb'))
+    #         opt.start_epoch = epoch
 
     for epoch in range(opt.start_epoch, opt.epochs):
         if early_stop_flag:
             break
 
         progbar = Progbar(logger=logger, title='Training', target=len(train_data_loader), batch_size=train_data_loader.batch_size,
-                          total_examples=len(train_data_loader.dataset.examples))
+                          total_examples=len(train_data_loader.dataset))
 
         for batch_i, batch in enumerate(train_data_loader):
             model.train()
@@ -497,50 +496,87 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
             progbar.update(epoch, batch_i, report_loss)
 
-            # Validate and save checkpoint
+            '''
+            Validate and save checkpoint
+            '''
             if (opt.run_valid_every == -1 and batch_i == len(train_data_loader) - 1) or\
                (opt.run_valid_every > -1 and total_batch > 1 and total_batch % opt.run_valid_every == 0):
                 logger.info('*' * 50)
                 logger.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (epoch, total_batch))
-                valid_score_dict =  evaluate.evaluate_multiple_datasets(generator, valid_data_loaders, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d-valid/' % (epoch, batch_i, total_batch))
-                test_score_dict = evaluate.evaluate_multiple_datasets(generator, valid_data_loaders, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (epoch, batch_i, total_batch), epoch=epoch, predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d-test/' % (epoch, batch_i, total_batch))
 
-                checkpoint_names.append('epoch=%d-batch=%d-total_batch=%d' % (epoch, batch_i, total_batch))
+                # return a dict, key is the dataset name and value is a score dict
+                valid_score_dict =  evaluate.evaluate_multiple_datasets(generator, valid_data_loaders, opt,
+                                                                        epoch=epoch,
+                                                                        title='valid.epoch=%d.total_batch=%d' % (epoch, total_batch),
+                                                                        predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d/' % (epoch, batch_i, total_batch))
+                test_score_dict = evaluate.evaluate_multiple_datasets(generator, test_data_loaders, opt,
+                                                                      epoch=epoch,
+                                                                      title='test.epoch=%d.total_batch=%d' % (epoch, total_batch),
+                                                                      predict_save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d/' % (epoch, batch_i, total_batch))
 
-                curve_names = []
-                scores = []
+                '''
+                Merge scores of current round into history_score
+                '''
+                for dataset_name, score_dict in valid_score_dict.items():
+                    # each history_loss is a dict, specific to a dataset
+                    # key is score name and value is a list, each element is a list of scores (e.g. f1_score) of all examples
+                    valid_history_score = valid_history_scores.get(dataset_name, {})
+                    for score_name, score_values in score_dict.items():
+                        history_score_values = valid_history_score.get(score_name, [])
+                        history_score_values.append(score_values)
+                        valid_history_score[score_name] = history_score_values
+                    valid_history_scores[dataset_name] = valid_history_score
+
+                for dataset_name, score_dict in test_score_dict.items():
+                    test_history_score = test_history_scores.get(dataset_name, {})
+                    for score_name, score_values in score_dict.items():
+                        history_score_values = test_history_score.get(score_name, [])
+                        history_score_values.append(score_values)
+                        test_history_score[score_name] = history_score_values
+                    test_history_scores[dataset_name] = test_history_score
+
                 if opt.train_ml:
                     train_ml_history_losses.append(copy.copy(train_ml_losses))
-                    scores += [train_ml_history_losses]
-                    curve_names += ['Training ML Error']
                     train_ml_losses = []
-
                 if opt.train_rl:
                     train_rl_history_losses.append(copy.copy(train_rl_losses))
-                    scores += [train_rl_history_losses]
-                    curve_names += ['Training RL Reward']
                     train_rl_losses = []
+                '''
+                Iterate each dataset (including a merged 'all_datasets') and plot learning curves
+                '''
+                for dataset_name in opt.test_dataset_names + ['all_datasets']:
+                    valid_history_score = valid_history_scores[dataset_name]
+                    test_history_score = test_history_scores[dataset_name]
+                    curve_names = []
+                    scores_for_plot = []
+                    if opt.train_ml:
+                        scores_for_plot += [train_ml_history_losses]
+                        curve_names += ['Training ML Error']
 
-                valid_history_losses.append(valid_score_dict)
-                test_history_losses.append(test_score_dict)
+                    if opt.train_rl:
+                        scores_for_plot += [train_rl_history_losses]
+                        curve_names += ['Training RL Reward']
 
-                scores += [[result_dict[name] for result_dict in valid_history_losses] for name in opt.report_score_names]
-                curve_names += ['Valid-' + name for name in opt.report_score_names]
-                scores += [[result_dict[name] for result_dict in test_history_losses] for name in opt.report_score_names]
-                curve_names += ['Test-' + name for name in opt.report_score_names]
+                    scores_for_plot += [valid_history_score[name] for name in opt.report_score_names]
+                    curve_names += ['Valid-' + name for name in opt.report_score_names]
+                    scores_for_plot += [test_history_score[name] for name in opt.report_score_names]
+                    curve_names += ['Test-' + name for name in opt.report_score_names]
 
-                scores = [np.asarray(s) for s in scores]
-                # Plot the learning curve
-                plot_learning_curve_and_write_csv(scores=scores,
-                                                  curve_names=curve_names,
-                                                  checkpoint_names=checkpoint_names,
-                                                  title='Training Validation & Test',
-                                                  save_path=opt.plot_path + '/[epoch=%d,batch=%d,total_batch=%d]train_valid_test_curve' % (epoch, batch_i, total_batch))
+                    scores_for_plot = [np.asarray(s) for s in scores_for_plot]
+                    '''
+                    Plot the learning curve
+                    '''
+                    plot_learning_curve_and_write_csv(scores=scores_for_plot,
+                                                      curve_names=curve_names,
+                                                      checkpoint_names=checkpoint_names,
+                                                      title='Training Validation & Test of %s' % dataset_name,
+                                                      save_path=opt.plot_path + '/[epoch=%d,batch=%d,total_batch=%d].%s.learning_curve' % (epoch, batch_i, total_batch, dataset_name))
 
                 '''
-                determine if early stop training (whether f-score increased, before is if valid error decreased)
+                determine if early stop training (whether f-score increased, previously is if valid error decreased)
+                opt.report_score_names[0] is 'f_score@5_exact'
                 '''
-                valid_loss = np.average(valid_history_losses[-1][opt.report_score_names[0]])
+                valid_loss = np.average(valid_history_scores['all_datasets'][opt.report_score_names[0]][-1])
                 is_best_loss = valid_loss > best_loss
                 rate_of_change = float(valid_loss - best_loss) / float(best_loss) if float(best_loss) > 0 else 0.0
 
@@ -559,12 +595,16 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
                 logging.info('Current test loss (over %d datasets): %s\n' % (len(opt.test_dataset_names), str(opt.test_dataset_names)))
                 for report_score_name in opt.report_score_names:
-                    test_loss = np.average(test_history_losses[-1][report_score_name])
+                    test_loss = np.average(test_history_scores['all_datasets'][report_score_name][-1])
                     logging.info('\t\t %s = %.4f' % (report_score_name, test_loss))
 
                 best_loss = max(valid_loss, best_loss)
 
-                # only store the checkpoints that make better validation performances
+                '''
+                Save checkpoints, only store the ones that make better validation performances
+                '''
+                checkpoint_names.append('epoch=%d-batch=%d-total_batch=%d' % (epoch, batch_i, total_batch))
+
                 if total_batch > 1 and (total_batch % opt.save_model_every == 0 or is_best_loss):  # epoch >= opt.start_checkpoint_at and
                     # Save the checkpoint
                     logging.info('Saving checkpoint to: %s' % os.path.join(opt.model_path, '%s.epoch=%d.batch=%d.total_batch=%d.error=%f' % (opt.exp, epoch, batch_i, total_batch, valid_loss) + '.model'))
@@ -573,7 +613,7 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                         open(os.path.join(opt.model_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.model'), 'wb')
                     )
                     torch.save(
-                        (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_ml_history_losses, train_rl_history_losses, valid_history_losses, test_history_losses),
+                        (epoch, total_batch, best_loss, stop_increasing, checkpoint_names, train_ml_history_losses, train_rl_history_losses, valid_history_scores, test_history_scores),
                         open(os.path.join(opt.model_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (opt.exp, epoch, batch_i, total_batch) + '.state'), 'wb')
                     )
 
@@ -581,10 +621,11 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                     logging.info('Have not increased for %d epoches, early stop training' % stop_increasing)
                     early_stop_flag = True
                     break
+
                 logging.info('*' * 50)
 
 
-def load_data_vocab(opt, load_train=True):
+def load_data_vocab_for_training(opt, load_train=True):
 
     logging.info("Loading vocab from disk: %s" % (opt.vocab_path))
     word2id, id2word, vocab = torch.load(opt.vocab_path, 'rb')
@@ -596,8 +637,12 @@ def load_data_vocab(opt, load_train=True):
     logging.info('======================  Dataset  =========================')
     # one2many data loader
     if load_train:
-        train_one2many = torch.load(opt.data_path_prefix + '.train.one2many.pt', 'rb')
-        train_one2many_dataset = KeyphraseDataset(train_one2many, word2id=word2id, id2word=id2word, type='one2many')
+        train_data_path = opt.data_path_prefix + '.train.one2many.pt'
+        train_one2many_dataset = KeyphraseDataset(train_data_path,
+                                                  word2id=word2id,
+                                                  id2word=id2word,
+                                                  type='one2many',
+                                                  lazy_load=False)
         train_one2many_loader = KeyphraseDataLoader(dataset=train_one2many_dataset,
                                                     collate_fn=train_one2many_dataset.collate_fn_one2many,
                                                     num_workers=opt.batch_workers,
@@ -610,15 +655,27 @@ def load_data_vocab(opt, load_train=True):
     else:
         train_one2many_loader = None
 
-    valid_one2many = torch.load(opt.data_path_prefix + '.valid.one2many.pt', 'rb')
-    test_one2many = torch.load(opt.data_path_prefix + '.test.one2many.pt', 'rb')
+    # valid_one2many = torch.load(opt.data_path_prefix + '.valid.one2many.pt', 'rb')
+    # test_one2many = torch.load(opt.data_path_prefix + '.test.one2many.pt', 'rb')
 
     # !important. As it takes too long to do beam search, thus reduce the size of validation and test datasets
     # valid_one2many = valid_one2many[:2000]
     # test_one2many = test_one2many[:2000]
 
-    valid_one2many_dataset = KeyphraseDataset(valid_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
-    test_one2many_dataset = KeyphraseDataset(test_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
+    valid_dataset_path = opt.data_path_prefix + '.valid.one2many.pt'
+    test_dataset_path = opt.data_path_prefix + '.test.one2many.pt'
+    valid_one2many_dataset = KeyphraseDataset(valid_dataset_path,
+                                              word2id=word2id,
+                                              id2word=id2word,
+                                              type='one2many',
+                                              include_original=True,
+                                              lazy_load=True)
+    test_one2many_dataset = KeyphraseDataset(test_dataset_path,
+                                             word2id=word2id,
+                                             id2word=id2word,
+                                             type='one2many',
+                                             include_original=True,
+                                             lazy_load=True)
 
     """
     # temporary code, exporting test data for Theano model
@@ -652,10 +709,69 @@ def load_data_vocab(opt, load_train=True):
     logging.info('#(valid data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d' % (len(valid_one2many_loader.dataset), valid_one2many_loader.one2one_number(), len(valid_one2many_loader)))
     logging.info('#(test data size:  #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d' % (len(test_one2many_loader.dataset), test_one2many_loader.one2one_number(), len(test_one2many_loader)))
 
-    logging.info('#(vocab)=%d' % len(vocab))
+    logging.info('#(vocab from data)=%d' % len(vocab))
+    logging.info('#(vocab in setting)=%d' % opt.vocab_size)
+    if opt.vocab_size > len(vocab):
+        logging.info('size of vocab is smaller than setting, reset it to %d' % len(vocab))
+        opt.vocab_size = len(vocab)
     logging.info('#(vocab used)=%d' % opt.vocab_size)
 
     return train_one2many_loader, valid_one2many_loader, test_one2many_loader, word2id, id2word, vocab
+
+
+def load_vocab_and_datasets_for_testing(dataset_names, type, opt):
+    '''
+    Load additional datasets from disk
+    For now seven datasets are included: 'inspec', 'nus', 'semeval', 'krapivin', 'kp20k', 'duc', 'stackexchange'
+     Only 'kp20k', 'stackexchange' provide train/valid/test data.
+     The others have only train/test, and the train is mostly used for validation.
+    :param type:
+    :param opt:
+    :return:
+    '''
+    assert type == 'test' or type == 'valid'
+
+    logger.info("Loading vocab from disk: %s" % (opt.vocab_path))
+    word2id, id2word, vocab = torch.load(opt.vocab_path, 'rb')
+    logger.info('#(vocab)=%d' % len(vocab))
+
+    pin_memory = torch.cuda.is_available()
+    one2many_loaders = []
+
+    for dataset_name in dataset_names:
+        logger.info("Loading test dataset %s" % dataset_name)
+        if type == 'test':
+            dataset_path = os.path.join(opt.test_dataset_root_path, dataset_name, dataset_name + '.test.one2many.pt')
+        elif type == 'valid' and dataset_name in ['kp20k', 'stackexchange', 'twacg']:
+            dataset_path = os.path.join(opt.test_dataset_root_path, dataset_name, dataset_name + '.valid.one2many.pt')
+        elif type == 'valid' and dataset_name in ['inspec', 'nus', 'semeval', 'krapivin', 'duc']:
+            dataset_path = os.path.join(opt.test_dataset_root_path, dataset_name, dataset_name + '.train.one2many.pt')
+        else:
+            raise Exception('Unsupported dataset: %s, type=%s' % (dataset_name, type))
+
+        one2many_dataset = KeyphraseDataset(dataset_path,
+                                            word2id=word2id,
+                                            id2word=id2word,
+                                            type='one2many',
+                                            include_original=True,
+                                            lazy_load=True)
+        one2many_loader = KeyphraseDataLoader(dataset=one2many_dataset,
+                                              collate_fn=one2many_dataset.collate_fn_one2many,
+                                              num_workers=opt.batch_workers,
+                                              max_batch_example=opt.beam_search_batch_example,
+                                              max_batch_pair=opt.beam_search_batch_size,
+                                              pin_memory=pin_memory,
+                                              shuffle=False)
+
+        one2many_loaders.append(one2many_loader)
+
+        logger.info('#(%s data size:  #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d' %
+                    (type, len(one2many_loader.dataset),
+                     one2many_loader.one2one_number(),
+                     len(one2many_loader)))
+        logger.info('*' * 50)
+
+    return one2many_loaders, word2id, id2word, vocab
 
 
 def init_optimizer_criterion(model, opt):
@@ -755,10 +871,10 @@ def main():
         logging.info('Running on CPU!')
 
     try:
-        train_data_loader, valid_data_loader, _, word2id, id2word, vocab = load_data_vocab(opt)
+        train_data_loader, valid_data_loader, _, _, _, _ = load_data_vocab_for_training(opt)
         # ignore the previous test_data_loader
-        valid_data_loaders, _, _, _ = predict.load_vocab_and_datasets(dataset_names=opt.test_dataset_names, type='valid', opt=opt)
-        test_data_loaders, _, _, _ = predict.load_vocab_and_datasets(dataset_names=opt.test_dataset_names, type='test', opt=opt)
+        valid_data_loaders, _, _, _ = load_vocab_and_datasets_for_testing(dataset_names=opt.test_dataset_names, type='valid', opt=opt)
+        test_data_loaders, _, _, _ = load_vocab_and_datasets_for_testing(dataset_names=opt.test_dataset_names, type='test', opt=opt)
         model = init_model(opt)
         optimizer_ml, optimizer_rl, criterion = init_optimizer_criterion(model, opt)
         train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loaders, test_data_loaders, opt)
