@@ -169,6 +169,11 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         src_len_order = np.argsort([len(s) for s in src])[::-1]
         src = [src[i] for i in src_len_order]
         src_oov = [src_oov[i] for i in src_len_order]
+
+        # !TODO a temp workaround for OOM problem, truncate src length
+        src = [s if len(s) < 1000 else s[:1000] for s in src]
+        src_oov = [s if len(s) < 1000 else s[:1000] for s in src_oov]
+
         trg = [trg[i] for i in src_len_order]
         trg_target = [trg_target[i] for i in src_len_order]
         trg_copy_target = [trg_copy_target[i] for i in src_len_order]
