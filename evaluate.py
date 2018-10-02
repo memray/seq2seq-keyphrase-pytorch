@@ -166,7 +166,7 @@ def evaluate_multiple_datasets(generator, data_loaders, opt, title='', epoch=1, 
                                                predict_save_path=os.path.join(predict_save_path, dataset_name))
 
         # write the scores into file
-        score_json_path = os.path.join(predict_save_path, dataset_name, '%s.%s.detailed_score.json' % (dataset_name, title))
+        score_json_path = os.path.join(predict_save_path, dataset_name, 'detailed_score.json')
         with open(score_json_path, 'w') as score_json:
             score_json.write(json.dumps(score_dict))
 
@@ -179,7 +179,7 @@ def evaluate_multiple_datasets(generator, data_loaders, opt, title='', epoch=1, 
     # create a new tuple (key='all_datasets') by merging all results
     merged_score_dict = {}
     for dataset_name, score_dict in datasets_score_dict.items():
-        for score_name, score_values in score_dict.items():
+        for score_name, score_values in score_dict.items:
             merged_score_values = merged_score_dict.get(score_name, [])
             merged_score_values.extend(score_values)
             merged_score_dict[score_name] = merged_score_values
@@ -200,8 +200,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
     score_dict = {}  # {'precision@5':[],'recall@5':[],'f1score@5':[], 'precision@10':[],'recall@10':[],'f1score@10':[]}
 
     for i, batch in enumerate(data_loader):
-        # if i > 5:
-        #     break
+        if i > 5:
+            break
 
         one2many_batch, one2one_batch = batch
         src_list, src_len, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
@@ -251,7 +251,6 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, predict
                 filtered_trg_str_seqs = np.asarray(trg_str_seqs)[trg_str_is_present_flags]
             else:
                 pred_is_present_flags = [True] * len(processed_pred_str_seqs)
-                filtered_trg_str_seqs = trg_str_seqs
 
             valid_and_present = np.asarray(pred_is_valid_flags) * np.asarray(pred_is_present_flags)
             match_list = get_match_result(true_seqs=filtered_trg_str_seqs, pred_seqs=processed_pred_str_seqs)
