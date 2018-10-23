@@ -15,12 +15,14 @@ if __name__ == '__main__':
     Go over the whole kp20k dataset and count the number of phrases
     Note that the targets processed here contain many noises, which may have been removed during preprocessing
     '''
-    dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k', 'stackexchange']
-    # dataset_names = ['stackexchange']
+    # dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k', 'stackexchange']
+    dataset_names = ['twacg']
     for dataset_name in dataset_names:
         kw_key_name = 'keyword'
         if dataset_name == 'stackexchange':
             kw_key_name = 'tags'
+        elif dataset_name == 'twacg':
+            kw_key_name = 'admissible_commands'
 
         source_dir = '../../source_data/%s/' % dataset_name
         data_types = ['training', 'validation', 'testing']
@@ -29,6 +31,7 @@ if __name__ == '__main__':
             papers = []
             keyword_count_dict = dict()
             length_keyword_dict = dict()
+            target_total_count = 0
 
             source_files_name = '%s_%s.json' % (dataset_name, data_type)
             source_file_path = os.path.join(source_dir, source_files_name)
@@ -47,6 +50,7 @@ if __name__ == '__main__':
             for paper in papers:
                 # print(paper['keyword'])
                 for kw in paper[kw_key_name].split(';'):
+                    target_total_count += 1
                     trg_tokens = copyseq_tokenize(kw)
                     kw_freq = keyword_count_dict.get(kw, 0)
                     keyword_count_dict[kw] = kw_freq + 1
@@ -55,7 +59,8 @@ if __name__ == '__main__':
                     length_keyword_set.add(kw)
                     length_keyword_dict[len(trg_tokens)] = length_keyword_set
 
-
+            print('len(example) = %d' % len(papers))
+            print('len(total targets) = %d' % target_total_count)
             print("export the keyword list")
             keyword_list = sorted(keyword_count_dict.keys())
             if not os.path.exists(os.path.join(source_dir, 'keyword_stats')):
