@@ -4,6 +4,8 @@
     <content url="file://$MODULE_DIR$">
       <excludeFolder url="file://$MODULE_DIR$/data" />
       <excludeFolder url="file://$MODULE_DIR$/exp" />
+      <excludeFolder url="file://$MODULE_DIR$/prediction" />
+      <excludeFolder url="file://$MODULE_DIR$/source_data" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.6.1 (~/Project/anaconda3/bin/python3.6)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
