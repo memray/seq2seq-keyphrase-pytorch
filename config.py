@@ -1,35 +1,132 @@
+import json
 import logging
 import os
 
 import sys
 
 import time
+import torch
+import argparse
 
 
-def init_logging(logger_name, log_file, stdout=False):
+def init_opt(description):
+    parser = argparse.ArgumentParser(
+        description=description,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    preprocess_opts(parser)
+    model_opts(parser)
+    train_opts(parser)
+    predict_opts(parser)
+    opt = parser.parse_args()
+
+    if opt.seed > 0:
+        torch.manual_seed(opt.seed)
+
+    if torch.cuda.is_available() and not opt.device_ids:
+        opt.device_ids = 0
+
+    if hasattr(opt, 'train_ml') and opt.train_ml:
+        opt.exp += '.ml'
+
+    if hasattr(opt, 'train_rl') and opt.train_rl:
+        opt.exp += '.rl'
+
+    if hasattr(opt, 'copy_attention') and opt.copy_attention:
+        opt.exp += '.copy'
+
+    # if hasattr(opt, 'bidirectional') and opt.bidirectional:
+    #     opt.exp += '.bi-directional'
+    # else:
+    #     opt.exp += '.uni-directional'
+
+    # fill time into the name
+    if opt.exp_path.find('%s') > 0:
+        opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
+
+    # Path to outputs of predictions.
+    setattr(opt, 'pred_path', os.path.join(opt.exp_path, 'pred/'))
+    # Path to checkpoints.
+    setattr(opt, 'model_path', os.path.join(opt.exp_path, 'model/'))
+    # Path to log output.
+    setattr(opt, 'log_path', os.path.join(opt.exp_path, 'log/'))
+    setattr(opt, 'log_file', os.path.join(opt.log_path, 'output.log'))
+    # Path to plots.
+    setattr(opt, 'plot_path', os.path.join(opt.exp_path, 'plot/'))
+
+    if not os.path.exists(opt.exp_path):
+        os.makedirs(opt.exp_path)
+    if not os.path.exists(opt.pred_path):
+        os.makedirs(opt.pred_path)
+    if not os.path.exists(opt.model_path):
+        os.makedirs(opt.model_path)
+    if not os.path.exists(opt.log_path):
+        os.makedirs(opt.log_path)
+    if not os.path.exists(opt.plot_path):
+        os.makedirs(opt.plot_path)
+
+    # dump the setting (opt) to disk in order to reuse easily
+    if opt.train_from:
+        train_from_model_dir = opt.train_from[:opt.train_from.rfind('model/') + 6]
+        prev_opt = torch.load(
+            open(os.path.join(train_from_model_dir, opt.exp + '.initial.config'), 'rb')
+        )
+        prev_opt.seed = opt.seed
+        prev_opt.train_from = opt.train_from
+        prev_opt.save_model_every = opt.save_model_every
+        prev_opt.run_valid_every = opt.run_valid_every
+        prev_opt.report_every = opt.report_every
+        prev_opt.test_dataset_names = opt.test_dataset_names
+
+        prev_opt.exp = opt.exp
+        prev_opt.vocab = opt.vocab
+        prev_opt.exp_path = opt.exp_path
+        prev_opt.pred_path = opt.pred_path
+        prev_opt.model_path = opt.model_path
+        prev_opt.log_path = opt.log_path
+        prev_opt.log_file = opt.log_file
+        prev_opt.plot_path = opt.plot_path
+
+        for k,v in vars(opt).items():
+            if not hasattr(prev_opt, k):
+                setattr(prev_opt, k, v)
+
+        opt = prev_opt
+    else:
+        torch.save(opt,
+                   open(os.path.join(opt.model_path, opt.exp + '.initial.config'), 'wb')
+                   )
+        json.dump(vars(opt), open(os.path.join(opt.model_path, opt.exp + '.initial.json'), 'w'))
+
+    return opt
+
+
+def init_logging(logger_name, log_file, redirect_to_stdout=False, level=logging.INFO):
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s',
                                   datefmt='%m/%d/%Y %H:%M:%S'   )
 
-    print('Making log output file: %s' % log_file)
-    print(log_file[: log_file.rfind(os.sep)])
     if not os.path.exists(log_file[: log_file.rfind(os.sep)]):
         os.makedirs(log_file[: log_file.rfind(os.sep)])
 
     fh = logging.FileHandler(log_file)
     fh.setFormatter(formatter)
-    fh.setLevel(logging.INFO)
+    fh.setLevel(level)
 
     logger = logging.getLogger(logger_name)
     logger.addHandler(fh)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(level)
 
-    if stdout:
+    if redirect_to_stdout:
         ch = logging.StreamHandler(sys.stdout)
         ch.setFormatter(formatter)
-        ch.setLevel(logging.INFO)
+        ch.setLevel(level)
         logger.addHandler(ch)
 
+    logger.info('Initializing logger: %s' % logger_name)
+    logger.info('Making log output file: %s' % log_file)
+    logger.info(log_file[: log_file.rfind(os.sep)])
+
     return logger
+
 
 def model_opts(parser):
     """
@@ -91,6 +188,10 @@ def model_opts(parser):
                         help="""The attention type to use:
                         dot or general (Luong) or concat (Bahdanau)""")
 
+    parser.add_argument('-target_attention_mode', type=str, default='general',
+                        choices=['dot', 'general', 'concat', None],
+                        help="""The attention type to use: dot or general (Luong) or concat (Bahdanau)""")
+
     # Genenerator and loss options.
     parser.add_argument('-copy_attention', action="store_true",
                         help='Train a copy model.')
@@ -111,7 +212,7 @@ def model_opts(parser):
                         help="A gate controling the flow from generative model and copy model (see See et al.)")
 
     # parser.add_argument('-coverage_attn', action="store_true",
-    #                     help='Train a coverage attention layer.')
+    #                     help='Train a coverage attention layer by Tu:2016:ACL.')
     # parser.add_argument('-lambda_coverage', type=float, default=1,
     #                     help='Lambda value for coverage by Tu:2016:ACL.')
 
@@ -133,7 +234,7 @@ def preprocess_opts(parser):
                         help="Size of the source vocabulary")
     # for copy model
     parser.add_argument('-max_unk_words', type=int, default=1000,
-                        help="Maximum number of unknown words the model supports (mainly for masking in loss)")
+                        help="Maximum number of unknown words the model supports (mainly for masking in loss).")
 
     parser.add_argument('-words_min_frequency', type=int, default=0)
 
@@ -142,7 +243,7 @@ def preprocess_opts(parser):
                         help="Maximum source sequence length")
     parser.add_argument('-min_src_seq_length', type=int, default=20,
                         help="Minimum source sequence length")
-    parser.add_argument('-max_trg_seq_length', type=int, default=8,
+    parser.add_argument('-max_trg_seq_length', type=int, default=6,
                         help="Maximum target sequence length to keep.")
     parser.add_argument('-min_trg_seq_length', type=int, default=None,
                         help="Minimun target sequence length to keep.")
@@ -152,6 +253,8 @@ def preprocess_opts(parser):
                         help="Truncate source sequence length.")
     parser.add_argument('-trg_seq_length_trunc', type=int, default=None,
                         help="Truncate target sequence length.")
+    parser.add_argument('-trg_num_trunc', type=int, default=4,
+                        help="Truncate examples with many targets to maximize the utility of GPU memory.")
 
     # Data processing options
     parser.add_argument('-shuffle', type=int, default=1,
@@ -221,13 +324,13 @@ def train_opts(parser):
     parser.add_argument('-optim', default='adam',
                         choices=['sgd', 'adagrad', 'adadelta', 'adam'],
                         help="""Optimization method.""")
-    parser.add_argument('-max_grad_norm', type=float, default=5,
+    parser.add_argument('-max_grad_norm', type=float, default=2,
                         help="""If the norm of the gradient vector exceeds this,
                         renormalize it to have the norm equal to
                         max_grad_norm""")
     parser.add_argument('-truncated_decoder', type=int, default=0,
                         help="""Truncated bptt.""")
-    parser.add_argument('-dropout', type=float, default=0.5,
+    parser.add_argument('-dropout', type=float, default=0.0,
                         help="Dropout probability; applied in LSTM stacks.")
 
     # Learning options
@@ -291,12 +394,13 @@ def train_opts(parser):
     parser.add_argument('-timemark', type=str, default=timemark,
                         help="Save checkpoint at this interval.")
 
+    # output setting
     parser.add_argument('-save_model_every', type=int, default=2000,
                         help="Save checkpoint at this interval.")
 
     parser.add_argument('-report_every', type=int, default=10,
                         help="Print stats at this interval.")
-    parser.add_argument('-exp', type=str, default="stackexchange",
+    parser.add_argument('-exp', type=str, default="kp20k",
                         help="Name of the experiment for logging.")
     parser.add_argument('-exp_path', type=str, default="exp/%s.%s",
                         help="Path of experiment log/plot.")
@@ -320,15 +424,19 @@ def train_opts(parser):
 
 def predict_opts(parser):
     parser.add_argument('-must_appear_in_src', action="store_true", default="True",
-                        help="""whether the predicted sequences must appear in the source text""")
-    parser.add_argument('-num_oneword_seq', type=int, default=10000,
-                        help="""Source sequence to decode (one line per
-                        sequence)""")
+                        help='whether the predicted sequences must appear in the source text')
+
     parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5_exact', 'f_score@5_soft', 'f_score@10_exact', 'f_score@10_soft'], help="""Default measure to report""")
+
+    parser.add_argument('-test_dataset_root_path', type=str, default="data/")
+
+    parser.add_argument('-test_dataset_names', type=str, nargs='+',
+                        default=['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k', 'stackexchange'],
+                        help='Name of each test dataset, also the name of folder from which we load processed test dataset.')
+
+    # parser.add_argument('-num_oneword_seq', type=int, default=10000,
+    #                     help='Source sequence to decode (one line per sequence)')
     # parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5#oneword=-1', 'f_score@10#oneword=-1', 'f_score@5#oneword=1', 'f_score@10#oneword=1'], help="""Default measure to report""")
-    # parser.add_argument('-test_data', required=True,
-    #                     help="""Source sequence to decode (one line per
-    #                     sequence)""")
     # parser.add_argument('-save_data', required=True,
     #                     help="Output file for the prepared test data")
     # parser.add_argument('-model_path', required=True,

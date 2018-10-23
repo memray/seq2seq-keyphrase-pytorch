@@ -197,7 +197,7 @@ class Progbar(object):
         self.seen_so_far = 0
 
 
-def plot_learning_curve(scores, curve_names, checkpoint_names, title, ylim=None, save_path=None):
+def plot_learning_curve_and_write_csv(scores, curve_names, checkpoint_names, title, ylim=None, save_path=None):
     """
     Generate a simple plot of the test and training learning curve.
 

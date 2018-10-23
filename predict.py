@@ -14,78 +14,84 @@ import torch.nn as nn
 from torch import cuda
 
 from beam_search import SequenceGenerator
+from pykp.dataloader import KeyphraseDataLoader
 from train import load_data_vocab, init_model, init_optimizer_criterion
-from utils import Progbar, plot_learning_curve
+from utils import Progbar, plot_learning_curve_and_write_csv
 
 import pykp
-from pykp.io import KeyphraseDatasetTorchText
+from pykp.io import KeyphraseDatasetTorchText, KeyphraseDataset
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
 
+logger = logging.getLogger()
+
+def load_vocab_and_testsets(opt):
+    logger.info("Loading vocab from disk: %s" % (opt.vocab))
+    word2id, id2word, vocab = torch.load(opt.vocab, 'rb')
+    opt.word2id = word2id
+    opt.id2word = id2word
+    opt.vocab = vocab
+    logger.info('#(vocab)=%d' % len(vocab))
+    logger.info('#(vocab used)=%d' % opt.vocab_size)
+
+    pin_memory = torch.cuda.is_available()
+    test_one2many_loaders = []
+
+    for testset_name in opt.test_dataset_names:
+        logger.info("Loading test dataset %s" % testset_name)
+        testset_path = os.path.join(opt.test_dataset_root_path, testset_name, testset_name + '.test.one2many.pt')
+        test_one2many = torch.load(testset_path, 'wb')
+        test_one2many_dataset = KeyphraseDataset(test_one2many, word2id=word2id, id2word=id2word, type='one2many', include_original=True)
+        test_one2many_loader = KeyphraseDataLoader(dataset=test_one2many_dataset,
+                                                   collate_fn=test_one2many_dataset.collate_fn_one2many,
+                                                   num_workers=opt.batch_workers,
+                                                   max_batch_example=opt.beam_search_batch_example,
+                                                   max_batch_pair=opt.beam_search_batch_size,
+                                                   pin_memory=pin_memory,
+                                                   shuffle=False)
+
+        test_one2many_loaders.append(test_one2many_loader)
+        logger.info('#(test data size:  #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d' % (len(test_one2many_loader.dataset), test_one2many_loader.one2one_number(), len(test_one2many_loader)))
+        logger.info('*' * 50)
+
+    return test_one2many_loaders, word2id, id2word, vocab
+
+
 def main():
-    # load settings for training
-    parser = argparse.ArgumentParser(
-        description='predict.py',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    config.preprocess_opts(parser)
-    config.model_opts(parser)
-    config.train_opts(parser)
-    config.predict_opts(parser)
-    opt = parser.parse_args()
+    opt = config.init_opt(description='predict.py')
+    logger = config.init_logging('predict', opt.exp_path + '/output.log', redirect_to_stdout=False)
 
-    if opt.seed > 0:
-        torch.manual_seed(opt.seed)
+    logger.info('EXP_PATH : ' + opt.exp_path)
 
-    print(opt.gpuid)
-    if torch.cuda.is_available() and not opt.gpuid:
-        opt.gpuid = 0
+    logger.info('Parameters:')
+    [logger.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
 
-    opt.exp = 'predict.' + opt.exp
-    if hasattr(opt, 'copy_model') and opt.copy_model:
-        opt.exp += '.copy'
-
-    if hasattr(opt, 'bidirectional'):
-        if opt.bidirectional:
-            opt.exp += '.bi-directional'
+    logger.info('======================  Checking GPU Availability  =========================')
+    if torch.cuda.is_available():
+        if isinstance(opt.device_ids, int):
+            opt.device_ids = [opt.device_ids]
+        logger.info('Running on %s! devices=%s' % ('MULTIPLE GPUs' if len(opt.device_ids) > 1 else '1 GPU', str(opt.device_ids)))
     else:
-        opt.exp += '.uni-directional'
-
-    # fill time into the name
-    if opt.exp_path.find('%s') > 0:
-        opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
-        opt.pred_path = opt.pred_path % (opt.exp, opt.timemark)
-
-    if not os.path.exists(opt.exp_path):
-        os.makedirs(opt.exp_path)
-    if not os.path.exists(opt.pred_path):
-        os.makedirs(opt.pred_path)
-
-    logging = config.init_logging('train', opt.exp_path + '/output.log')
-
-    logging.info('Parameters:')
-    [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
+        logger.info('Running on CPU!')
 
     try:
-        train_data_loader, valid_data_loader, test_data_loader, word2id, id2word, vocab = load_data_vocab(opt, load_train=False)
+        test_data_loaders, word2id, id2word, vocab = load_vocab_and_testsets(opt)
         model = init_model(opt)
-        # optimizer, criterion = init_optimizer_criterion(model, opt)
-
         generator = SequenceGenerator(model,
                                       eos_id=opt.word2id[pykp.io.EOS_WORD],
                                       beam_size=opt.beam_size,
                                       max_sequence_length=opt.max_sent_length
                                       )
 
-        # import time
-        # start_time = time.time()
-        evaluate_beam_search(generator, test_data_loader, opt, title='predict', save_path=opt.pred_path + '/[epoch=%d,batch=%d,total_batch=%d]test_result.csv' % (0, 0, 0))
-        # print("--- %s seconds --- Complete Beam Search" % (time.time() - start_time))
-
-        # predict_greedy(model, test_data_loader, test_examples, opt)
+        for testset_name, test_data_loader in zip(opt.test_dataset_names, test_data_loaders):
+            logger.info('Evaluating %s' % testset_name)
+            evaluate_beam_search(generator, test_data_loader, opt,
+                                 title='test_%s' % testset_name,
+                                 predict_save_path=opt.pred_path + '/%s_test_result/' % (testset_name))
 
     except Exception as e:
-        logging.exception("message")
+        logger.error(e, exc_info=True)
 
 if __name__ == '__main__':
     main()
