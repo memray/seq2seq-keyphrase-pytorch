@@ -492,3 +492,66 @@ def self_redundancy(_input):
     res = np.max(scores, 1)
     res = np.mean(res)
     return res
+
+
+def to_np(x):
+    if isinstance(x, float) or isinstance(x, int):
+        return x
+    if isinstance(x, np.ndarray):
+        return x
+    return x.data.cpu().numpy()
+
+
+def get_nll(one2one_batch, model, criterion, opt):
+    src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists = one2one_batch
+    max_oov_number = max([len(oov) for oov in oov_lists])
+
+    if torch.cuda.is_available():
+        src = src.cuda()
+        trg = trg.cuda()
+        trg_target = trg_target.cuda()
+        trg_copy_target = trg_copy_target.cuda()
+        src_oov = src_oov.cuda()
+
+    decoder_log_probs, _, _, _, _ = model.forward(src, src_len, trg, src_oov, oov_lists)
+
+    if not opt.copy_attention:
+        nll_loss = criterion(
+            decoder_log_probs.contiguous().view(-1, opt.vocab_size),
+            trg_target.contiguous().view(-1)
+        )
+    else:
+        nll_loss = criterion(
+            decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
+            trg_copy_target.contiguous().view(-1)
+        )
+    loss = nll_loss
+
+    return to_np(loss)
+
+
+def evaluate_nll_loss(model, data_loader, criterion, opt, title='', epoch=1, save_path=None):
+    total_loss, total_batches = 0, 0
+    print_losses = []
+
+    for i, batch in enumerate(data_loader):
+
+        src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists = batch
+        for j in len(src):
+            tiny_batch = (src[j: j + 1], src_len[j: j + 1], trg[j: j + 1], trg_target[j: j + 1], trg_copy_target[j: j + 1], src_oov[j: j + 1], oov_lists[j: j + 1])
+            _loss = get_nll(tiny_batch, model, criterion, opt)
+            total_loss += _loss
+            total_batches += 1
+            print_losses.append(_loss)
+    print_losses = [str(_l) for _l in print_losses]
+    if total_batches > 0:
+        total_loss = float(total_loss) / float(total_batches)
+    else:
+        total_loss = 0.0
+    print_losses = ["total: " + str(total_loss)] + print_losses
+
+    if save_path:
+        with open(save_path + os.path.sep + title + '_result.csv', 'w') as text_file:
+            text_file.write("\n".join(print_losses))
+
+    return total_loss
