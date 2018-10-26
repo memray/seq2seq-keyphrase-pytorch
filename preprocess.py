@@ -61,6 +61,9 @@ def main():
     elif opt.dataset == 'twacg':
         src_fields = ['title', 'observation']
         trg_fields = ['admissible_commands']
+    elif opt.dataset == 'twlm':
+        src_fields = ['title', 'observation']
+        trg_fields = ['admissible_commands']
     else:
         raise Exception('Unsupported dataset name=%s' % opt.dataset)
 
@@ -172,7 +175,7 @@ def main():
     print("Dumping valid to disk: %s" % (opt.save_data + '.valid.pt'))
     torch.save(valid_one2one, open(opt.save_data + '.valid.one2one.pt', 'wb'))
     torch.save(valid_one2many, open(opt.save_data + '.valid.one2many.pt', 'wb'))
-    print("Dumping test to disk: %s" % (opt.save_data + '.valid.pt'))
+    print("Dumping test to disk: %s" % (opt.save_data + '.test.pt'))
     torch.save(test_one2one, open(opt.save_data + '.test.one2one.pt', 'wb'))
     torch.save(test_one2many, open(opt.save_data + '.test.one2many.pt', 'wb'))
     print("Dumping done!")
