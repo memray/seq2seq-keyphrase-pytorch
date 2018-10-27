@@ -537,7 +537,7 @@ def evaluate_nll_loss(model, data_loader, criterion, opt, title='', epoch=1, sav
     for i, batch in enumerate(data_loader):
         batch = batch[0]
         src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists, _, _ = batch
-        _loss = get_nll(batch, model, criterion, opt)
+        _loss = get_nll((src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists), model, criterion, opt)
         for item in _loss:    
             total_loss += item
             total_batches += 1
