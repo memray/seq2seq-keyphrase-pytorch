@@ -318,7 +318,9 @@ def brief_report(epoch, batch_i, one2one_batch, loss_ml, decoder_log_probs, opt)
             ' [HAS COPY]' + str(trg_i) if has_copy else ''))
 
 
-def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt):
+def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader, valid_data_loader, test_data_loader, opt, ctn_batch=None):
+    if ctn_batch is None:
+        ctn_batch = criterion
     generator = SequenceGenerator(model,
                                   eos_id=opt.word2id[pykp.io.EOS_WORD],
                                   bos_id=opt.word2id[pykp.io.BOS_WORD],
@@ -393,9 +395,9 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
                     epoch, total_batch))
                 
 
-                valid_loss = evaluate_nll_loss(model, valid_data_loader, criterion, opt ,title='Validating, epoch=%d, batch=%d, total_batch=%d' % (
+                valid_loss = evaluate_nll_loss(model, valid_data_loader, ctn_batch, opt ,title='Validating, epoch=%d, batch=%d, total_batch=%d' % (
                     epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
-                test_loss = evaluate_nll_loss(model, test_data_loader, criterion, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (
+                test_loss = evaluate_nll_loss(model, test_data_loader, ctn_batch, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (
                     epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
 
                 '''
@@ -507,6 +509,7 @@ def init_optimizer_criterion(model, opt):
     # optimizer = torch.optim.RMSprop(model.parameters(), lr=0.1)
     '''
     criterion = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.io.PAD_WORD])
+    criterion_batch = torch.nn.NLLLoss(ignore_index=opt.word2id[pykp.io.PAD_WORD], reduce=False)
 
     if opt.train_ml:
         optimizer_ml = Adam(params=filter(
@@ -516,8 +519,9 @@ def init_optimizer_criterion(model, opt):
 
     if torch.cuda.is_available():
         criterion = criterion.cuda()
+        criterion_batch = criterion_batch.cuda()
 
-    return optimizer_ml, None, criterion
+    return optimizer_ml, None, criterion, criterion_batch
 
 
 def init_model(opt):
@@ -614,10 +618,10 @@ def main():
         train_data_loader, valid_data_loader, test_data_loader, word2id, id2word, vocab = load_data_vocab(
             opt)
         model = init_model(opt)
-        optimizer_ml, optimizer_rl, criterion = init_optimizer_criterion(
+        optimizer_ml, optimizer_rl, criterion, ctn_batch = init_optimizer_criterion(
             model, opt)
         train_model(model, optimizer_ml, optimizer_rl, criterion,
-                    train_data_loader, valid_data_loader, test_data_loader, opt)
+                    train_data_loader, valid_data_loader, test_data_loader, opt, ctn_batch)
     except Exception as e:
         logging.exception("message")
 

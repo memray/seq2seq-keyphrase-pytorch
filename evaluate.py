@@ -535,13 +535,13 @@ def evaluate_nll_loss(model, data_loader, criterion, opt, title='', epoch=1, sav
     print_losses = []
 
     for i, batch in enumerate(data_loader):
+        batch = batch[0]
         src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists, _, _ = batch
-        for j in len(src):
-            tiny_batch = (src[j: j + 1], src_len[j: j + 1], trg[j: j + 1], trg_target[j: j + 1], trg_copy_target[j: j + 1], src_oov[j: j + 1], oov_lists[j: j + 1])
-            _loss = get_nll(tiny_batch, model, criterion, opt)
-            total_loss += _loss
+        _loss = get_nll(batch, model, criterion, opt)
+        for item in _loss:    
+            total_loss += item
             total_batches += 1
-            print_losses.append(_loss)
+            print_losses.append(item)
     print_losses = [str(_l) for _l in print_losses]
     if total_batches > 0:
         total_loss = float(total_loss) / float(total_batches)
