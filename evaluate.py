@@ -550,7 +550,7 @@ def evaluate_nll_loss(model, data_loader, criterion, opt, title='', epoch=1, sav
     print_losses = ["total: " + str(total_loss)] + print_losses
 
     if save_path:
-        with open(save_path + os.path.sep + title + '_result.csv', 'w') as text_file:
+        with open(save_path + "_" + title + '_result.csv', 'w') as text_file:
             text_file.write("\n".join(print_losses))
 
     return total_loss
