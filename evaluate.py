@@ -297,7 +297,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         # export scores. Each row is scores (precision, recall and f-score) of
         # different way of filtering predictions (how many one-word predictions
         # to keep)
-        with open(save_path + os.path.sep + title + '_result.csv', 'w') as result_csv:
+        with open(save_path + "_" + title + '_result.csv', 'w') as result_csv:
             csv_lines = []
             for mode in ["exact", "soft"]:
                 csv_line = ""
