@@ -285,7 +285,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         # for training, the trg_copy_target_o2o and trg_copy_target_o2m is the final target (no way to uncover really unseen words). for evaluation, the trg_str is the final target.
         if self.include_original:
             src_str = [b['src_str'] for b in batches]
-            trg_str = [b['trg_str'] for b in batches]
+            trg_str = [b['trg_str'][1:] for b in batches]
 
         # sort all the sequences in the order of source lengths, to meet the requirement of pack_padded_sequence
         src_len_order = np.argsort([len(s) for s in src])[::-1]
