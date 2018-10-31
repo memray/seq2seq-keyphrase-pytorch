@@ -141,7 +141,8 @@ class Attention(nn.Module):
             condition = condition.expand(condition.size(0), src_len, condition.size(-1))  # bathc x src_len x enc_h
             for i in range(hiddens.size(1)):
                 # (batch, src_len, trg_hidden_dim)
-                hidden_i = hiddens[:, i: i + 1, :].expand(hidden_i.size(0), src_len, hidden_i.size(-1))
+                hidden_i = hiddens[:, i: i + 1, :]
+                hidden_i = hidden_i.expand(hidden_i.size(0), src_len, hidden_i.size(-1))
                 # (batch_size, src_len, dec_hidden_dim + enc_hidden_dim)
                 concated = torch.cat((hidden_i, condition, encoder_outputs), 2)
                 if encoder_mask is not None:
@@ -563,7 +564,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         else:
             cond_h_t = cond_h_t[-1]
 
-        return src_h, (h_t, c_t), cond_enc
+        return src_h, (h_t, c_t), cond_h_t
 
     def merge_decode_inputs(self, trg_emb, h_tilde, copy_h_tilde):
         '''
