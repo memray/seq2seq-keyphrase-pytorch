@@ -30,7 +30,7 @@ from torch.distributions import Categorical
 class Sequence(object):
     """Represents a complete or partial sequence."""
 
-    def __init__(self, batch_id, sentence, dec_hidden, trg_enc_hidden, context, ctx_mask, src_oov, oov_list, logprobs, score, attention=None):
+    def __init__(self, batch_id, sentence, dec_hidden, trg_enc_hidden, enc_condition, context, ctx_mask, src_oov, oov_list, logprobs, score, attention=None):
         """Initializes the Sequence.
 
         Args:
@@ -48,6 +48,7 @@ class Sequence(object):
         self.context = context
         self.ctx_mask = ctx_mask
         self.src_oov = src_oov
+        self.enc_condition = enc_condition
         self.oov_list = oov_list
         self.logprobs = logprobs
         self.score = score
@@ -216,6 +217,8 @@ class SequenceGenerator(object):
         src_oovs = torch.cat([seq.src_oov for seq in flattened_sequences]).view(
             batch_size, *flattened_sequences[0].src_oov.size())
         oov_lists = [seq.oov_list for seq in flattened_sequences]
+        enc_condition = torch.cat([seq.enc_condition for seq in flattened_sequences]).view(
+            batch_size, *flattened_sequences[0].enc_condition.size())
 
         if torch.cuda.is_available():
             inputs = inputs.cuda()
@@ -231,8 +234,9 @@ class SequenceGenerator(object):
             contexts = contexts.cuda()
             ctx_mask = ctx_mask.cuda()
             src_oovs = src_oovs.cuda()
+            enc_condition = enc_condition.cuda()
 
-        return seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, trg_enc_hiddens, contexts, ctx_mask, src_oovs, oov_lists
+        return seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, trg_enc_hiddens, enc_condition, contexts, ctx_mask, src_oovs, oov_lists
 
     def beam_search(self, src_input, src_len, src_oov, oov_list, word2id):
         """Runs beam search sequence generation given input (padded word indexes)
@@ -489,7 +493,7 @@ class SequenceGenerator(object):
 
         return complete_sequences
 
-    def sample(self, src_input, src_len, src_oov, oov_list, word2id, k, mode="greedy"):
+    def sample(self, src_input, src_len, cond, src_oov, oov_list, word2id, k, mode="greedy"):
         """
         Sample k sequeces for each src in src_input
 
@@ -502,7 +506,7 @@ class SequenceGenerator(object):
         batch_size = len(src_input)
 
         src_mask = self.get_mask(src_input)  # same size as input_src
-        src_context, (src_h, src_c) = self.model.encode(src_input, src_len)
+        src_context, (src_h, src_c), cond_enc = self.model.encode(src_input, src_len, cond)
 
         # prepare the init hidden vector, (batch_size, trg_seq_len,
         # dec_hidden_dim)
@@ -531,6 +535,7 @@ class SequenceGenerator(object):
                 sentence=[initial_input[batch_i]],
                 dec_hidden=dec_hiddens[batch_i],
                 trg_enc_hidden=trg_enc_hiddens[batch_i],
+                enc_condition=cond_enc[batch_i],
                 context=src_context[batch_i],
                 ctx_mask=src_mask[batch_i],
                 src_oov=src_oov[batch_i],
@@ -547,7 +552,7 @@ class SequenceGenerator(object):
 
             # flatten 2d sequences (batch_size, beam_size) into 1d batches
             # (batch_size * beam_size) to feed model
-            _, flattened_id_map, inputs, dec_hiddens, trg_enc_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(
+            _, flattened_id_map, inputs, dec_hiddens, trg_enc_hiddens, cond_enc, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(
                 sampled_sequences)
 
             # Run one-step generation. log_probs=(batch_size, 1, K),
@@ -557,6 +562,7 @@ class SequenceGenerator(object):
                 dec_hidden=dec_hiddens,
                 trg_enc_hidden=trg_enc_hiddens,
                 enc_context=contexts,
+                enc_condition=cond_enc,
                 ctx_mask=ctx_mask,
                 src_map=src_oovs,
                 oov_list=oov_lists,
@@ -670,6 +676,7 @@ class SequenceGenerator(object):
                             sentence=new_sent,
                             dec_hidden=new_dec_hidden,
                             trg_enc_hidden=new_trg_enc_hidden,
+                            enc_condition=partial_seq.enc_condition,
                             context=partial_seq.context,
                             ctx_mask=partial_seq.ctx_mask,
                             src_oov=partial_seq.src_oov,

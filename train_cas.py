@@ -195,7 +195,7 @@ def get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt):
 
 
 def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
-    src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists = one2one_batch
+    src, src_len, cond, trg, trg_target, trg_copy_target, src_oov, oov_lists = one2one_batch
     max_oov_number = max([len(oov) for oov in oov_lists])
     trg_copy_target_np = copy.copy(trg_copy_target)
     trg_copy_np = copy.copy(trg)
@@ -207,11 +207,12 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
     if torch.cuda.is_available():
         src = src.cuda()
         trg = trg.cuda()
+        cond = cond.cuda()
         trg_target = trg_target.cuda()
         trg_copy_target = trg_copy_target.cuda()
         src_oov = src_oov.cuda()
 
-    decoder_log_probs, decoder_outputs, _, source_representations, target_representations = model.forward(src, src_len, trg, src_oov, oov_lists)
+    decoder_log_probs, decoder_outputs, _, source_representations, target_representations = model.forward(src, src_len, cond, trg, src_oov, oov_lists)
 
     te_loss = get_target_encoder_loss(model, source_representations, target_representations, trg_copy_np, replay_memory, criterion, opt)
     penalties = get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, opt)

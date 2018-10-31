@@ -180,11 +180,12 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
     for i, batch in enumerate(data_loader):
 
         one2many_batch, one2one_batch = batch
-        src_list, src_len, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
+        src_list, src_len, condition, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
 
         if torch.cuda.is_available():
             src_list = src_list.cuda()
             src_oov_map_list = src_oov_map_list.cuda()
+            condition = condition.cuda()
 
         print("batch size - %s" % str(src_list.size(0)))
         # print("src size - %s" % str(src_list.size()))
@@ -198,7 +199,7 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             eval_topk = 5
         elif opt.eval_method in ["sampling", "greedy", "hybrid"]:
             pred_seq_list = generator.sample(
-                src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=1, mode=opt.eval_method)
+                src_list, src_len, condition, src_oov_map_list, oov_list, opt.word2id, k=1, mode=opt.eval_method)
             best_pred_seq = [b[0]
                              for b in pred_seq_list]  # list(batch) of Sequence
             eval_topk = 1000

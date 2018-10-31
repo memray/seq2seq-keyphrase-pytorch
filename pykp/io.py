@@ -239,7 +239,12 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         src_oov = [[self.word2id[BOS_WORD]] + b['src_oov'] + [self.word2id[EOS_WORD]] for b in batches]
         # target_input: input to decoder, starts with BOS and oovs are replaced with <unk>
         trg, trg_copy_target, trg_target = [], [], []
+        cond = []
         for b in batches:
+            cond.append(b['trg'][0])
+            b['trg'] = b['trg'][1:]
+            b['trg_copy'] = b['trg_copy'][1:]
+
             tmp_trg = [self.word2id[BOS_WORD]]
             tmp_trg_copy_target = []
             tmp_trg_target = []
@@ -289,6 +294,7 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         trg = [trg[i] for i in src_len_order]
         trg_target = [trg_target[i] for i in src_len_order]
         trg_copy_target = [trg_copy_target[i] for i in src_len_order]
+        cond = [cond[i] for i in src_len_order]
         oov_lists = [oov_lists[i] for i in src_len_order]
         if self.include_original:
             src_str = [src_str[i] for i in src_len_order]
@@ -297,12 +303,13 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         # pad the one2many variables
         src_o2s, src_o2s_len, _ = self._pad(src)
         trg_o2s, _, _ = self._pad(trg)
+        cond_o2s, _, _ = self._pad(cond)
         src_oov_o2s, _, _ = self._pad(src_oov)
         trg_target_o2s, _, _      = self._pad(trg_target)
         trg_copy_target_o2s, _, _ = self._pad(trg_copy_target)
         oov_lists_o2s = oov_lists
 
-        assert (len(src) == len(src_o2s) == len(src_oov_o2s) == len(trg_copy_target_o2s) == len(oov_lists_o2s))
+        assert (len(src) == len(src_o2s) == len(src_oov_o2s) == len(trg_copy_target_o2s) == len(oov_lists_o2s) == len(cond_o2s))
 
         '''
         for s, s_o2o, t, t_o2o in zip(list(itertools.chain(*[[src[idx]]*len(t) for idx,t in enumerate(trg)])), src_o2o.data.numpy(), list(itertools.chain(*[t for t in trg])), trg_o2o.data.numpy()):
@@ -315,9 +322,9 @@ class KeyphraseDataset(torch.utils.data.Dataset):
 
         # return two tuples, 1st for one2many and 2nd for one2one (src, src_oov, trg, trg_target, trg_copy_target, oov_lists)
         if self.include_original:
-            return (src_o2s, src_o2s_len, trg_o2s, trg_target_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s, src_str, trg_str), (None,)
+            return (src_o2s, src_o2s_len, cond_o2s, trg_o2s, trg_target_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s, src_str, trg_str), (None,)
         else:
-            return (src_o2s, src_o2s_len, trg_o2s, trg_target_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s), (None,)
+            return (src_o2s, src_o2s_len, cond_o2s, trg_o2s, trg_target_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s), (None,)
 
 
 class KeyphraseDatasetTorchText(torchtext.data.Dataset):

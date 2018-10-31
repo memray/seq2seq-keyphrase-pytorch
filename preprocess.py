@@ -61,6 +61,9 @@ def main():
     elif opt.dataset == 'twacg':
         src_fields = ['title', 'observation']
         trg_fields = ['admissible_commands']
+    elif opt.dataset == 'twacg_cond':
+        src_fields = ['title', 'observation']
+        trg_fields = ['admissible_commands']
     else:
         raise Exception('Unsupported dataset name=%s' % opt.dataset)
 
