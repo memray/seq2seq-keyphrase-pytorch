@@ -557,7 +557,6 @@ class Seq2SeqLSTMAttention(nn.Module):
             h_t = src_h_t[-1]
             c_t = src_c_t[-1]
 
-            
         _, (cond_h_t, _) = self.encoder(cond_emb, (self.h0_encoder, self.c0_encoder))
         if self.bidirectional:
             cond_h_t = torch.cat((cond_h_t[-1], cond_h_t[-2]), 1)

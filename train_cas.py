@@ -200,8 +200,8 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
     trg_copy_target_np = copy.copy(trg_copy_target)
     trg_copy_np = copy.copy(trg)
 
-    print("src size - ", src.size())
-    print("target size - ", trg.size())
+    # print("src size - ", src.size())
+    # print("target size - ", trg.size())
 
     optimizer.zero_grad()
     if torch.cuda.is_available():
@@ -236,12 +236,12 @@ def train_ml(one2one_batch, model, optimizer, criterion, replay_memory, opt):
             trg_copy_target.contiguous().view(-1)
         )
     nll_loss = nll_loss * (1 - opt.loss_scale)
-    print("--loss calculation- %s seconds ---" % (time.time() - start_time))
+    # print("--loss calculation- %s seconds ---" % (time.time() - start_time))
     loss = nll_loss + penalties + te_loss
 
     start_time = time.time()
     loss.backward(retain_graph=True)
-    print("--backward- %s seconds ---" % (time.time() - start_time))
+    # print("--backward- %s seconds ---" % (time.time() - start_time))
 
     if opt.max_grad_norm > 0:
         pre_norm = torch.nn.utils.clip_grad_norm(
