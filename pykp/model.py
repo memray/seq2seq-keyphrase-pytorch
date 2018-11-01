@@ -138,11 +138,10 @@ class Attention(nn.Module):
             energies = []
             src_len = encoder_outputs.size(1)
             condition = condition.unsqueeze(1)  # batch x 1 x enc_h
-            condition = condition.expand(condition.size(0), src_len, condition.size(-1))  # bathc x src_len x enc_h
+            condition = condition.expand(-1, src_len, -1)  # bathc x src_len x enc_h
             for i in range(hiddens.size(1)):
                 # (batch, src_len, trg_hidden_dim)
-                hidden_i = hiddens[:, i: i + 1, :]
-                hidden_i = hidden_i.expand(hidden_i.size(0), src_len, hidden_i.size(-1))
+                hidden_i = hiddens[:, i: i + 1, :].expand(-1, src_len, -1)
                 # (batch_size, src_len, dec_hidden_dim + enc_hidden_dim)
                 concated = torch.cat((hidden_i, condition, encoder_outputs), 2)
                 if encoder_mask is not None:
@@ -343,8 +342,9 @@ class Seq2SeqLSTMAttention(nn.Module):
         )
 
         self.decoder = nn.LSTM(
-            input_size=self.emb_dim if not self.enable_target_encoder else self.emb_dim +
-            self.target_encoding_mlp_hidden_dim[0],
+            input_size=self.emb_dim + self.src_hidden_dim * self.num_directions 
+            if not self.enable_target_encoder else self.emb_dim +
+            self.target_encoding_mlp_hidden_dim[0] + self.src_hidden_dim * self.num_directions,
             hidden_size=self.trg_hidden_dim,
             num_layers=self.nlayers_trg,
             bidirectional=False,
@@ -652,6 +652,9 @@ class Seq2SeqLSTMAttention(nn.Module):
         else:
             decoder_input = trg_emb
             trg_enc_h = init_hidden_target_encoder[0].unsqueeze(0)
+        
+        
+        decoder_input = torch.cat([decoder_input, enc_condition.unsqueeze(0).expand(decoder_input.size(0), -1, -1)], -1)
         decoder_input = nn.functional.dropout(decoder_input, p=self.dropout, training=self.training)
 
         # both in/output of decoder LSTM is batch-second (trg_len, batch_size,
@@ -930,6 +933,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         else:
             dec_input = trg_emb
 
+        dec_input = torch.cat([dec_input, enc_condition.unsqueeze(0).expand(dec_input.size(0), -1, -1)], -1)
         # (seq_len, batch_size, hidden_size * num_directions)
         decoder_output, dec_hidden = self.decoder(
             dec_input, dec_hidden
