@@ -32,8 +32,15 @@ def has_special_token(seq, special_tokens):
 def process_predseqs(seq_sentence_np, oov, id2word, opt):
     # pred_seq is a sequence of word indices, key phrases are separated by
     # special token
-    if len(seq_sentence_np) > 0 and seq_sentence_np[-1] == opt.word2id[EOS_WORD]:
-        seq_sentence_np = seq_sentence_np[:-1]
+    if len(seq_sentence_np) > 0 and opt.word2id[EOS_WORD] in seq_sentence_np:
+        which = 0
+        for i in range(len(seq_sentence_np)):
+            if seq_sentence_np[i] == opt.word2id[EOS_WORD]:
+                which = i
+                break
+        seq_sentence_np = seq_sentence_np[:which]
+    if len(seq_sentence_np) == 0:
+        return []
 
     processed_seq = [id2word[x] if x < opt.vocab_size else oov[
         x - opt.vocab_size] for x in seq_sentence_np]
@@ -536,13 +543,15 @@ def evaluate_nll_loss(model, data_loader, criterion, opt, title='', epoch=1, sav
 
     for i, batch in enumerate(data_loader):
         batch = batch[0]
-        src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists, _, _ = batch
+        src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists, src_str_list, trg_str_list = batch
         _loss = get_nll((src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists), model, criterion, opt)
-        for item in _loss:    
-            total_loss += item
+        for j in range(len(_loss)):    
+            total_loss += _loss[j]
             total_batches += 1
-            print_losses.append(item)
-    print_losses = [str(_l) for _l in print_losses]
+            src = " ".join(src_str_list[j])
+            trg = [" ".join(item) for item in trg_str_list[j]]
+            trg = " / ".join(trg)
+            print_losses.append(src + "\t" + trg +  "\t" + str(_loss[j]))
     if total_batches > 0:
         total_loss = float(total_loss) / float(total_batches)
     else:
@@ -550,7 +559,7 @@ def evaluate_nll_loss(model, data_loader, criterion, opt, title='', epoch=1, sav
     print_losses = ["total: " + str(total_loss)] + print_losses
 
     if save_path:
-        with open(save_path + "_" + title + '_result.csv', 'w') as text_file:
+        with open(save_path + "_" + title + '_result.txt', 'w') as text_file:
             text_file.write("\n".join(print_losses))
 
     return total_loss
