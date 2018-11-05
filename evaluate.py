@@ -238,13 +238,13 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
 
             trg_str_is_present = if_present_duplicate_phrase(src_str, trg_str_seqs)
             print_out += "\n GT IS PRESENT: " + " / ".join([str(item) for item in trg_str_is_present])
-            trg_str_seqs = [item for item, _flag in zip(trg_str_seqs, trg_str_is_present) if _flag]
-            trg_str_seqs = clean_list_of_list(trg_str_seqs)
+            # trg_str_seqs = [item for item, _flag in zip(trg_str_seqs, trg_str_is_present) if _flag]
+            # trg_str_seqs = clean_list_of_list(trg_str_seqs)
             
             pred_str_is_present = if_present_duplicate_phrase(src_str, processed_strings)
             print_out += "\n PRED IS PRESENT: " + " / ".join([str(item) for item in pred_str_is_present])
-            processed_strings = [item for item, _flag in zip(processed_strings, pred_str_is_present) if _flag]
-            processed_strings = clean_list_of_list(processed_strings)
+            # processed_strings = [item for item, _flag in zip(processed_strings, pred_str_is_present) if _flag]
+            # processed_strings = clean_list_of_list(processed_strings)
 
             if len(trg_str_seqs) > 0:
                 '''
@@ -521,7 +521,7 @@ def get_nll(one2one_batch, model, criterion, opt):
         src_oov = src_oov.cuda()
 
     decoder_log_probs, _, _, _, _ = model.forward(src, src_len, trg, src_oov, oov_lists)
-
+    batch_size = decoder_log_probs.size(0)
     if not opt.copy_attention:
         nll_loss = criterion(
             decoder_log_probs.contiguous().view(-1, opt.vocab_size),
@@ -532,8 +532,9 @@ def get_nll(one2one_batch, model, criterion, opt):
             decoder_log_probs.contiguous().view(-1, opt.vocab_size + max_oov_number),
             trg_copy_target.contiguous().view(-1)
         )
+    nll_loss = nll_loss.view(batch_size, -1)
+    nll_loss = torch.sum(nll_loss, -1)
     loss = nll_loss
-
     return to_np(loss)
 
 
