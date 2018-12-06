@@ -122,3 +122,6 @@ ENV/
 .DS_Store
 !/pykp/data/
 /pykp/stanford-postagger/
+/prediction/
+/data/
+/.idea/

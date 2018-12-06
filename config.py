@@ -283,7 +283,7 @@ def train_opts(parser):
                         help="""If training from a checkpoint then this is the
                         path to the pretrained model's state_dict.""")
     # GPU
-    parser.add_argument('-gpuid', default=[0], nargs='+', type=int,
+    parser.add_argument('-device_ids', default=[0], nargs='+', type=int,
                         help="Use CUDA on the listed devices.")
     parser.add_argument('-seed', type=int, default=9527,
                         help="""Random seed used for the experiments
@@ -465,7 +465,7 @@ def predict_opts(parser):
     #                     help="""If verbose is set, will output the n_best
     #                     decoded sentences""")
     # GPU
-    # parser.add_argument('-gpuid', default=[0], nargs='+', type=int,
+    # parser.add_argument('-device_ids', default=[0], nargs='+', type=int,
     #                     help="Use CUDA on the listed devices.")
     # parser.add_argument('-seed', type=int, default=9527,
     #                     help="""Random seed used for the experiments

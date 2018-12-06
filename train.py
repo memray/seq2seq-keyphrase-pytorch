@@ -416,10 +416,11 @@ def train_model(model, optimizer_ml, optimizer_rl, criterion, train_data_loader,
 
     logging.info('======================  Checking GPU Availability  =========================')
     if torch.cuda.is_available():
-        if isinstance(opt.gpuid, int):
-            opt.gpuid = [opt.gpuid]
-        logging.info('Running on GPU! devices=%s' % str(opt.gpuid))
-        # model = nn.DataParallel(model, device_ids=opt.gpuid)
+        if isinstance(opt.device_ids, int):
+            opt.device_ids = [opt.device_ids]
+        logging.info('Running on GPU! devices=%s' % str(opt.device_ids))
+        # model = nn.DataParallel(model, device_ids=opt.device_ids)
+        model = model.cuda()
     else:
         logging.info('Running on CPU!')
 
