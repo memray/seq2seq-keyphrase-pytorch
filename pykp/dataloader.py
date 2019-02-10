@@ -16,6 +16,7 @@ import re
 import sys
 import traceback
 import threading
+import Queue
 
 if sys.version_info[0] == 2:
     string_classes = basestring

@@ -1,3 +1,8 @@
+"""
+Preprocess the data for training/validating/testing
+Be advised to run the remove_duplicates.py on raw json files (remove overlapping docs between train and valid/test)
+ before running this preprocess
+"""
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
@@ -81,7 +86,6 @@ def main():
     torch.save([word2id, id2word, vocab], open(opt.vocab_path, 'wb'))
     opt.vocab_path = os.path.join(opt.output_path, opt.dataset_name + '.vocab.pt')
     torch.save([word2id, id2word, vocab], open(opt.vocab_path, 'wb'))
-
 
     print("Exporting a small dataset to %s (for debugging), "
           "size of train/valid/test is 20000" % opt.subset_output_path)
