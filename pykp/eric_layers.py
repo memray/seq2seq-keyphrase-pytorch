@@ -111,12 +111,12 @@ class MLPMultiToOne(torch.nn.Module):
         transfered = []
         for i, item in enumerate(x):
             temp = self.first_layer[i].forward(item)
-            temp = F.tanh(temp)
+            temp = torch.tanh(temp)
             transfered.append(temp)
         transfered = torch.stack(transfered, -1)
         transfered = torch.sum(transfered, -1)  # batch x hidden
         curr = self.last_layer.forward(transfered)
-        curr = F.tanh(curr)
+        curr = torch.tanh(curr)
         return curr
 
 
@@ -151,7 +151,7 @@ class MultilayerPerceptron(torch.nn.Module):
         tmp = x
         for i in range(len(self.hidden_dim)):
             tmp = self.mlp[i](tmp)
-            tmp = F.tanh(tmp)
+            tmp = torch.tanh(tmp)
             res.append(tmp)
         if flag:
             res = [r.view(dim1, dim2, -1) for r in res]

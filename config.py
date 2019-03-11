@@ -82,9 +82,6 @@ def model_opts(parser):
                              "as additional input (via concatenation with the word"
                              "embeddings) to the decoder.")
 
-    parser.add_argument('-bidirectional',
-                        action="store_true",
-                        help="whether the encoder is bidirectional")
 
     # Attention options
     parser.add_argument('-attention_mode', type=str, default='concat',
