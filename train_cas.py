@@ -32,7 +32,7 @@ from utils import Progbar, plot_learning_curve
 
 import pykp
 from pykp.io import KeyphraseDataset
-from pykp.model import Seq2SeqLSTMAttention, Seq2SeqLSTMAttentionCascading
+from pykp.model import Seq2SeqLSTMAttention
 
 import time
 
@@ -580,17 +580,9 @@ def init_optimizer_criterion(model, opt):
 
 
 def init_model(opt):
-    logging.info(
-        '======================  Model Parameters  =========================')
+    logging.info('======================  Model Parameters  =========================')
 
-    if opt.cascading_model:
-        model = Seq2SeqLSTMAttentionCascading(opt)
-    else:
-        if opt.copy_attention:
-            logging.info('Train a Seq2Seq model with Copy Mechanism')
-        else:
-            logging.info('Train a normal Seq2Seq model')
-        model = Seq2SeqLSTMAttention(opt)
+    model = Seq2SeqLSTMAttention(opt)
 
     if opt.train_from:
         logging.info("loading previous checkpoint from %s" % opt.train_from)

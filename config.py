@@ -95,9 +95,6 @@ def model_opts(parser):
     parser.add_argument('-pointer_softmax_hidden_dim', type=int, default=64,
                         help='pointer softmax hidden size, 0 to disable')
 
-    # Genenerator and loss options.
-    parser.add_argument('-copy_attention', action="store_true",
-                        help='Train a copy model.')
 
     parser.add_argument('-copy_mode', type=str, default='concat',
                         choices=['dot', 'general', 'concat'],
@@ -127,9 +124,6 @@ def model_opts(parser):
     # group.add_argument('-lambda_coverage', type=float, default=1,
     #                    help='Lambda value for coverage.')
 
-    # Cascading model options
-    parser.add_argument('-cascading_model', action="store_true",
-                        help='Train a copy model.')
                         
     parser.add_argument('-test_2k', action="store_true",
                         help="test on a subset")

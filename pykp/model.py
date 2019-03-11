@@ -19,67 +19,6 @@ __email__ = "rui.meng@pitt.edu"
 import time
 
 
-def time_usage(func):
-    # argnames = func.func_code.co_varnames[:func.func_code.co_argcount]
-    fname = func.__name__
-
-    def wrapper(*args, **kwargs):
-        beg_ts = time.time()
-        retval = func(*args, **kwargs)
-        end_ts = time.time()
-        # print(fname, "elapsed time: %f" % (end_ts - beg_ts))
-        return retval
-
-    return wrapper
-
-
-class AttentionExample(nn.Module):
-
-    def __init__(self, hidden_size, method='concat'):
-        super(AttentionExample, self).__init__()
-
-        self.method = method
-        self.hidden_size = hidden_size
-
-        if self.method == 'general':
-            self.attn = nn.Linear(self.hidden_size, hidden_size)
-
-        elif self.method == 'concat':
-            self.attn = nn.Linear(self.hidden_size * 2, hidden_size)
-            self.other = nn.Parameter(torch.FloatTensor(1, hidden_size))
-
-    def forward(self, hidden, encoder_outputs):
-        seq_len = len(encoder_outputs)
-
-        # Create variable to store attention energies
-        attn_energies = Variable(torch.zeros(seq_len))  # B x 1 x S
-        if torch.cuda.is_available():
-            attn_energies = attn_energies.cuda()
-
-        # Calculate energies for each encoder output
-        for i in range(seq_len):
-            attn_energies[i] = self.score(hidden, encoder_outputs[i])
-
-        # Normalize energies to weights in range 0 to 1, resize to 1 x 1 x
-        # seq_len
-        return torch.nn.functional.softmax(attn_energies).unsqueeze(0).unsqueeze(0)
-
-    def score(self, hidden, encoder_output):
-        if self.method == 'dot':
-            energy = hidden.dot(encoder_output)
-            return energy
-
-        elif self.method == 'general':
-            energy = self.attn(encoder_output)
-            energy = hidden.dot(energy)
-            return energy
-
-        elif self.method == 'concat':
-            energy = self.attn(torch.cat((hidden, encoder_output), 1))
-            energy = self.other.dot(energy)
-            return energy
-
-
 class Attention(nn.Module):
 
     def __init__(self, enc_dim, trg_dim, method='general'):
@@ -297,7 +236,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.attention_mode = opt.attention_mode    # 'dot', 'general', 'concat'
         self.input_feeding = opt.input_feeding
 
-        self.copy_attention = opt.copy_attention    # bool, enable copy attention or not
         self.copy_mode = opt.copy_mode         # same to `attention_mode`
         self.copy_input_feeding = opt.copy_input_feeding
         self.reuse_copy_attn = opt.reuse_copy_attn
@@ -389,21 +327,14 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.decoder2vocab = nn.Linear(self.trg_hidden_dim, self.vocab_size)
 
         # copy attention
-        if self.copy_attention:
-            if self.copy_mode is None and self.attention_mode:
-                self.copy_mode = self.attention_mode
-            assert self.copy_mode is not None
-            assert self.unk_word is not None
-            logging.info("Applying Copy Mechanism, type=%s" % self.copy_mode)
-            # for Gu's model
-            self.copy_attention_layer = Attention(
-                self.src_hidden_dim * self.num_directions, self.trg_hidden_dim, method=self.copy_mode)
-            # for See's model
-            # self.copy_gate            = nn.Linear(self.trg_hidden_dim, self.vocab_size)
-        else:
-            self.copy_mode = None
-            self.copy_input_feeding = False
-            self.copy_attention_layer = None
+        if self.copy_mode is None and self.attention_mode:
+            self.copy_mode = self.attention_mode
+        assert self.copy_mode is not None
+        assert self.unk_word is not None
+        logging.info("Applying Copy Mechanism, type=%s" % self.copy_mode)
+        # for Gu's model
+        self.copy_attention_layer = Attention(
+            self.src_hidden_dim * self.num_directions, self.trg_hidden_dim, method=self.copy_mode)
 
         # setup for input-feeding, add a bridge to compress the additional
         # inputs. Note that input-feeding cannot work with teacher-forcing
@@ -668,24 +599,20 @@ class Seq2SeqLSTMAttention(nn.Module):
         '''
         (3) Copy Attention
         '''
-        if self.copy_attention:
-            # copy_weights and copy_logits is (batch_size, trg_len, src_len)
-            if not self.reuse_copy_attn:
-                _, copy_weighted_context, copy_weights, copy_logits = self.copy_attention_layer(
-                    decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
-            else:
-                copy_weighted_context, copy_weights = weighted_context, attn_weights
-
-            # (batch_size, trg_len, trg_hidden_dim)
-            decoder_outputs = decoder_outputs.permute(1, 0, 2)
-            # merge the generative and copying probs, (batch_size, trg_len,
-            # vocab_size + max_oov_number)
-            # (batch_size, trg_len, vocab_size + max_oov_number)
-            decoder_log_probs = self.merge_copy_probs(
-                decoder_outputs, copy_weighted_context, decoder_logits, copy_weights, src_map, oov_list, trg_mask)
+        # copy_weights and copy_logits is (batch_size, trg_len, src_len)
+        if not self.reuse_copy_attn:
+            _, copy_weighted_context, copy_weights, copy_logits = self.copy_attention_layer(
+                decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
         else:
-            decoder_log_probs = torch.nn.functional.log_softmax(
-                decoder_logits, dim=-1).view(batch_size, -1, self.vocab_size)
+            copy_weighted_context, copy_weights = weighted_context, attn_weights
+
+        # (batch_size, trg_len, trg_hidden_dim)
+        decoder_outputs = decoder_outputs.permute(1, 0, 2)
+        # merge the generative and copying probs, (batch_size, trg_len,
+        # vocab_size + max_oov_number)
+        # (batch_size, trg_len, vocab_size + max_oov_number)
+        decoder_log_probs = self.merge_copy_probs(
+            decoder_outputs, copy_weighted_context, decoder_logits, copy_weights, src_map, oov_list, trg_mask)
 
         # Return final outputs (logits after log_softmax), hidden states, and
         # attention weights (for visualization)
@@ -932,22 +859,18 @@ class Seq2SeqLSTMAttention(nn.Module):
         # (batch_size, trg_len, trg_hidden_size) -> (batch_size, 1, vocab_size)
         decoder_logit = self.decoder2vocab(h_tilde.view(-1, trg_hidden_dim))
 
-        if not self.copy_attention:
-            decoder_log_prob = torch.nn.functional.log_softmax(
-                decoder_logit, dim=-1).view(batch_size, 1, self.vocab_size)
+        decoder_logit = decoder_logit.view(batch_size, 1, self.vocab_size)
+        # copy_weights and copy_logits is (batch_size, trg_len, src_len)
+        if not self.reuse_copy_attn:
+            _, copy_weighted_context, copy_weight, _ = self.copy_attention_layer(
+                decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
         else:
-            decoder_logit = decoder_logit.view(batch_size, 1, self.vocab_size)
-            # copy_weights and copy_logits is (batch_size, trg_len, src_len)
-            if not self.reuse_copy_attn:
-                _, copy_weighted_context, copy_weight, _ = self.copy_attention_layer(
-                    decoder_output.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
-            else:
-                copy_weighted_context, copy_weight = weighted_context, attn_weight
-            copy_weights.append(copy_weight)  # (batch_size, 1, src_len)
-            # merge the generative and copying probs (batch_size, 1, vocab_size
-            # + max_unk_word)
-            decoder_log_prob = self.merge_copy_probs(decoder_output.permute(
-                1, 0, 2), copy_weighted_context, decoder_logit, copy_weight, src_map, oov_list, trg_mask)
+            copy_weighted_context, copy_weight = weighted_context, attn_weight
+        copy_weights.append(copy_weight)  # (batch_size, 1, src_len)
+        # merge the generative and copying probs (batch_size, 1, vocab_size
+        # + max_unk_word)
+        decoder_log_prob = self.merge_copy_probs(decoder_output.permute(
+            1, 0, 2), copy_weighted_context, decoder_logit, copy_weight, src_map, oov_list, trg_mask)
 
         # Prepare for the next iteration, get the top word, top_idx and
         # next_index are (batch_size, K)
@@ -973,12 +896,9 @@ class Seq2SeqLSTMAttention(nn.Module):
         # Return final outputs, hidden states, and attention weights (for
         # visualization)
         if return_attention:
-            if not self.copy_attention:
-                return log_probs, dec_hidden, trg_enc_hidden, attn_weights
-            else:
-                # (batch_size, max_len, src_seq_len)
-                copy_weights = torch.cat(copy_weights, 1)
-                return log_probs, dec_hidden, trg_enc_hidden, (attn_weights, copy_weights)
+            # (batch_size, max_len, src_seq_len)
+            copy_weights = torch.cat(copy_weights, 1)
+            return log_probs, dec_hidden, trg_enc_hidden, (attn_weights, copy_weights)
         else:
             return log_probs, dec_hidden, trg_enc_hidden
 
@@ -1147,8 +1067,3 @@ class Seq2SeqLSTMAttention(nn.Module):
         # visualization)
         return decoder_log_probs, decoder_outputs, attn_weights
 
-
-class Seq2SeqLSTMAttentionCascading(Seq2SeqLSTMAttention):
-
-    def __init__(self, opt):
-        super(Seq2SeqLSTMAttentionCascading, self).__init__(opt)
