@@ -66,8 +66,6 @@ def main():
 
     print("Loading training data...")
     src_trgs_pairs = pykp.io.load_json_data(opt.train_path, name=opt.dataset, src_fields=src_fields, trg_fields=trg_fields, trg_delimiter=';')
-    # src_trgs_pairs = pykp.io.load_json_data(opt.train_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
-    # src_trgs_pairs = pykp.io.load_json_data(opt.train_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
     print("Processing training data...")
     tokenized_train_pairs = pykp.io.tokenize_filter_data(
@@ -94,16 +92,11 @@ def main():
     len_train_one2many = len(train_one2many)
     train_one2many = None
 
-    # opt.vocab = 'data/kp20k/kp20k.vocab.pt'
-    # word2id, id2word, vocab = torch.load(opt.vocab, 'wb')
-
     '''
     Load and process validation data
     '''
     print("Loading validation data...")
     src_trgs_pairs = pykp.io.load_json_data(opt.valid_path, name=opt.dataset, src_fields=src_fields, trg_fields=trg_fields, trg_delimiter=';')
-    # src_trgs_pairs = pykp.io.load_json_data(opt.valid_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
-    # src_trgs_pairs = pykp.io.load_json_data(opt.valid_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
     print("Processing validation data...")
     tokenized_valid_pairs = pykp.io.tokenize_filter_data(
@@ -121,8 +114,6 @@ def main():
     '''
     print("Loading test data...")
     src_trgs_pairs = pykp.io.load_json_data(opt.test_path, name=opt.dataset, src_fields=src_fields, trg_fields=trg_fields, trg_delimiter=';')
-    # src_trgs_pairs = pykp.io.load_json_data(opt.test_path, name='stackexchange', src_fields=['title', 'question'], trg_fields=['tags'], trg_delimiter=';')
-    # src_trgs_pairs = pykp.io.load_json_data(opt.test_path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';')
 
     print("Processing test data...")
     tokenized_test_pairs = pykp.io.tokenize_filter_data(

@@ -1,0 +1,57 @@
+general:
+  random_seed: 42
+  exp: "kp20k"
+  data_path: "data/kp20k/kp20k"
+  vocab_path: "data/kp20k/kp20k.vocab.pt"
+
+preproc:
+  vocab_size: 50000
+  max_unk_words: 1000
+  words_min_frequency: 0
+  max_src_seq_length: 300
+  min_src_seq_length: 20
+  max_trg_seq_length: 8
+  min_trg_seq_length: None
+  src_seq_length_trunc: None
+  trg_seq_length_trunc: None
+  shuffle: False
+  lower: True
+  keyphrase_ordering: "source"  # origin, source, alphabet, shuffle
+
+training:
+  epochs: 100
+  batch_size: 128
+  optimizer:
+    step_rule: 'adam'  # adam
+    learning_rate: 0.001
+    clip_grad_norm: 5
+
+evaluate:
+  test_2k: True
+  eval_method: "greedy"
+  max_sent_length: 20
+  beam_size: 5
+  batch_size: 16
+
+checkpoint:
+  save_frequency: 100  # epoch
+  experiment_tag: 'name_your_current_experiment_here.pt'
+  load_pretrained: False  # during test, enable this so that the agent load your pretrained model
+
+model:
+  embedding_size: 150
+  rnn_hidden_size: 300
+  pointer_softmax_hidden_dim: 64
+  nlayers_src: 1
+  nlayers_trg: 1
+  dropout: 0.3
+  target_encoder:
+    target_encoder_lambda: 0.0
+    rnn_hidden_size: 64
+    target_encoding_mlp_hidden_dim: [32, 32]
+    n_negative_samples: 32
+  orthogonal_regularization:
+    orthogonal_regularization_lambda: 0.0
+    orthogonal_regularization_position: "sep"  # sep, post
+    replay_buffer_capacity: 128
+    orth_reg_mode: 0  # 0: only to decodings, 1: apply orth reg also on target encodings

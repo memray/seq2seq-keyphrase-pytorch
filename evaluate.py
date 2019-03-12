@@ -203,9 +203,8 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 src_list, src_len, src_oov_map_list, oov_list, opt.word2id)
             best_pred_seq = pred_seq_list
             eval_topk = 5
-        elif opt.eval_method in ["sampling", "greedy", "hybrid"]:
-            pred_seq_list = generator.sample(
-                src_list, src_len, src_oov_map_list, oov_list, opt.word2id, k=1, mode=opt.eval_method)
+        elif opt.eval_method in ["greedy"]:
+            pred_seq_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id)
             best_pred_seq = [b[0]
                              for b in pred_seq_list]  # list(batch) of Sequence
             eval_topk = 1000

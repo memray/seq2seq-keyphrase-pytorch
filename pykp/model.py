@@ -104,14 +104,15 @@ class Attention(nn.Module):
 class Seq2SeqLSTMAttention(nn.Module):
     """Container module with an encoder, deocder, embeddings."""
 
-    def __init__(self, opt):
+    def __init__(self, config, word2id, id2word, vocab):
         """Initialize model."""
         super(Seq2SeqLSTMAttention, self).__init__()
 
-        self.vocab_size = None
-        self.pad_token_src = opt.word2id[pykp.io.PAD_WORD]
-        self.pad_token_trg = opt.word2id[pykp.io.PAD_WORD]
-        self.unk_word = opt.word2id[pykp.io.UNK_WORD]
+        self.config = config
+        self.vocab_size = len(vocab)
+        self.pad_token_src = word2id[pykp.io.PAD_WORD]
+        self.pad_token_trg = word2id[pykp.io.PAD_WORD]
+        self.unk_word = word2id[pykp.io.UNK_WORD]
 
         self.read_config()
         self._def_layers()
@@ -162,21 +163,39 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         if self.pointer_softmax_hidden_dim > 0:
             self.pointer_softmax_context = TimeDistributedDense(mlp=nn.Linear(
-                self.src_hidden_dim * 2,
-                self.pointer_softmax_hidden_dim
+                self.src_hidden_dim * 2, self.pointer_softmax_hidden_dim
             ))
             self.pointer_softmax_target = TimeDistributedDense(mlp=nn.Linear(
-                self.trg_hidden_dim,
-                self.pointer_softmax_hidden_dim
+                self.trg_hidden_dim, self.pointer_softmax_hidden_dim
             ))
             self.pointer_softmax_squash = TimeDistributedDense(mlp=nn.Linear(
-                self.pointer_softmax_hidden_dim,
-                1
+                self.pointer_softmax_hidden_dim, 1
             ))
 
         self.encoder2decoder_hidden = nn.Linear(self.src_hidden_dim * 2, self.trg_hidden_dim)
         self.encoder2decoder_cell = nn.Linear(self.src_hidden_dim * 2, self.trg_hidden_dim)
         self.decoder2vocab = nn.Linear(self.trg_hidden_dim, self.vocab_size)
+
+    def load_pretrained_model(self, load_from):
+        """
+        Load pretrained checkpoint from file.
+
+        Arguments:
+            load_from: File name of the pretrained model checkpoint.
+        """
+        print("loading model from %s\n" % (load_from))
+        try:
+            if self.use_cuda:
+                state_dict = torch.load(load_from)
+            else:
+                state_dict = torch.load(load_from, map_location='cpu')
+            self.load_state_dict(state_dict)
+        except:
+            print("Failed to load checkpoint...")
+
+    def save_model_to_path(self, save_to):
+        torch.save(self.state_dict(), save_to)
+        print("Saved checkpoint to %s..." % (save_to))
 
     def init_weights(self):
         """Initialize weights."""

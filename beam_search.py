@@ -413,7 +413,7 @@ class SequenceGenerator(object):
 
         return complete_sequences
 
-    def sample(self, src_input, src_len, src_oov, oov_list, word2id, k, mode="greedy"):
+    def sample(self, src_input, src_len, src_oov, oov_list, word2id):
         """
         Sample k sequeces for each src in src_input
 
@@ -447,7 +447,7 @@ class SequenceGenerator(object):
         elif isinstance(trg_enc_hiddens, list):
             trg_enc_hiddens = trg_enc_hiddens
 
-        sampled_sequences = [TopN_heap(k) for _ in range(batch_size)]
+        sampled_sequences = [TopN_heap(1) for _ in range(batch_size)]
 
         for batch_i in range(batch_size):
             seq = Sequence(
@@ -489,33 +489,12 @@ class SequenceGenerator(object):
             # (hyp_seq_size, K+1)
             log_probs = log_probs.view(num_partial_sequences, -1)
             # convert the log_prob back to prob
-            exp_log_probs = torch.exp(log_probs)
-            # m = Categorical(exp_log_probs)
 
             # probs, words are [batch_size, k] at time 0, and [batch_size * k,
             # 1] later on
 
-            _k = 1 if current_len == 1 else k
             # greedy
-            probs_greedy, words_greedy = log_probs.data.topk(_k, dim=-1)
-            # sample
-            words_sample = torch.multinomial(
-                exp_log_probs, _k, replacement=False)
-            probs_sample = torch.gather(log_probs, 1, words_sample)
-            words_sample = words_sample.data
-            if mode == "greedy":
-                probs, words = probs_greedy, words_greedy
-            elif mode == "sampling":
-                probs, words = probs_sample, words_sample
-            elif mode == "hybrid":
-                temp_mask = torch.eq(inputs, self.sep_id) + \
-                    torch.eq(inputs, self.bos_id)
-                temp_mask = temp_mask.float()
-                probs = probs_sample * temp_mask + \
-                    probs_greedy * (1 - temp_mask)
-                temp_mask = temp_mask.long()
-                words = words_sample * temp_mask + \
-                    words_greedy * (1 - temp_mask)
+            probs, words = log_probs.data.topk(1, dim=-1)
 
             # (hyp_seq_size, trg_len=1, src_len) -> (hyp_seq_size, src_len)
             if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
@@ -540,12 +519,12 @@ class SequenceGenerator(object):
             # For every partial_sequence (num_partial_sequences in total), find
             # and trim to the best hypotheses (beam_size in total)
             for batch_i in range(batch_size):
-                new_partial_sequences = TopN_heap(k)
+                new_partial_sequences = TopN_heap(1)
 
                 for partial_id, partial_seq in enumerate(sampled_sequences[batch_i].extract()):
                     flattened_seq_id = flattened_id_map[batch_i][partial_id]
 
-                    seq_number = 1 if current_len > 1 else k
+                    seq_number = 1
 
                     # check each new beam and decide to add to hypotheses or
                     # completed list
