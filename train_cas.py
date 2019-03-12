@@ -286,6 +286,11 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
             report_loss.append(('te_loss', te_loss))
             progbar.update(epoch, batch_i, report_loss)
 
+            #################################
+            #################################
+            #################################
+            #################################
+            #################################
             # Validate and save checkpoint at end of epoch
             if (batch_i == len(train_data_loader) - 1):
                 logging.info('*' * 50)
