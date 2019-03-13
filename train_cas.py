@@ -344,8 +344,8 @@ def load_data_vocab(config, load_train=True):
         valid_one2seq = valid_one2seq[:2000]
         test_one2seq = test_one2seq[:2000]
 
-    valid_one2seq_dataset = KeyphraseDataset(valid_one2seq, word2id=word2id, id2word=id2word, type='one2seq', include_original=True, ordering=config['preproc'].keyphrase_ordering)
-    test_one2seq_dataset = KeyphraseDataset(test_one2seq, word2id=word2id, id2word=id2word, type='one2seq', include_original=True, ordering=config['preproc'].keyphrase_ordering)
+    valid_one2seq_dataset = KeyphraseDataset(valid_one2seq, word2id=word2id, id2word=id2word, type='one2seq', include_original=True, ordering=config['preproc']['keyphrase_ordering'])
+    test_one2seq_dataset = KeyphraseDataset(test_one2seq, word2id=word2id, id2word=id2word, type='one2seq', include_original=True, ordering=config['preproc']['keyphrase_ordering'])
 
     valid_one2seq_loader = KeyphraseDataLoader(dataset=valid_one2seq_dataset, collate_fn=valid_one2seq_dataset.collate_fn_one2seq, num_workers=4,
                                                max_batch_example=config['evaluate']['batch_size'], max_batch_pair=config['evaluate']['batch_size'], pin_memory=True, shuffle=False)
