@@ -214,8 +214,8 @@ class LSTMCell(torch.nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        torch.nn.init.orthogonal(self.weight_hh.data)
-        torch.nn.init.xavier_uniform(self.weight_ih.data)
+        torch.nn.init.orthogonal_(self.weight_hh.data)
+        torch.nn.init.xavier_uniform_(self.weight_ih.data)
         if self.use_bias:
             self.bias_f.data.fill_(1.0)
             self.bias_iog.data.fill_(0.0)

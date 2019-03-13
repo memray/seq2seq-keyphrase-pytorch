@@ -20,7 +20,7 @@ preproc:
 
 training:
   epochs: 100
-  batch_size: 128
+  batch_size: 32
   optimizer:
     step_rule: 'adam'  # adam
     learning_rate: 0.001
