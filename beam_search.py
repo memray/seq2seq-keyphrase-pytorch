@@ -310,12 +310,6 @@ class SequenceGenerator(object):
             probs, words = log_probs.data.topk(self.beam_size + 1, dim=-1)
             words = words.squeeze(1)
             probs = probs.squeeze(1)
-            # (hyp_seq_size, trg_len=1, src_len) -> (hyp_seq_size, src_len)
-            if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
-                attn_weights = (attn_weights[0].squeeze(
-                    1), attn_weights[1].squeeze(1))
-            else:
-                attn_weights = attn_weights.squeeze(1)
 
             # tuple of (num_layers * num_directions, batch_size,
             # trg_hidden_dim)=(1, hyp_seq_size, trg_hidden_dim), squeeze the
@@ -495,13 +489,6 @@ class SequenceGenerator(object):
 
             # greedy
             probs, words = log_probs.data.topk(1, dim=-1)
-
-            # (hyp_seq_size, trg_len=1, src_len) -> (hyp_seq_size, src_len)
-            if isinstance(attn_weights, tuple):  # if it's (attn, copy_attn)
-                attn_weights = (attn_weights[0].squeeze(
-                    1), attn_weights[1].squeeze(1))
-            else:
-                attn_weights = attn_weights.squeeze(1)
 
             # tuple of (num_layers * num_directions, batch_size,
             # trg_hidden_dim)=(1, hyp_seq_size, trg_hidden_dim), squeeze the
