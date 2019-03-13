@@ -27,7 +27,7 @@ class Attention(nn.Module):
         self.softmax = nn.Softmax()
         self.linear_out = nn.Linear(enc_dim + trg_dim, trg_dim, bias=False)
 
-    def score(self, hiddens, encoder_outputs, encoder_mask=None):
+    def get_energy(self, hiddens, encoder_outputs, encoder_mask=None):
         '''
         :param hiddens: (batch, trg_len, trg_hidden_dim)
         :param encoder_outputs: (batch, src_len, src_hidden_dim)
@@ -36,23 +36,16 @@ class Attention(nn.Module):
         energies = []
         src_len = encoder_outputs.size(1)
         for i in range(hiddens.size(1)):
-            # (batch, src_len, trg_hidden_dim)
-            hidden_i = hiddens[:, i: i + 1, :].expand(-1, src_len, -1)
-            # (batch_size, src_len, dec_hidden_dim + enc_hidden_dim)
-            concated = torch.cat((hidden_i, encoder_outputs), 2)
+            hidden_i = hiddens[:, i: i + 1, :].expand(-1, src_len, -1)  # (batch, 1, trg_hidden_dim) --> (batch, src_len, trg_hidden_dim)
+            concated = torch.cat((hidden_i, encoder_outputs), 2)  # (batch_size, src_len, dec_hidden_dim + enc_hidden_dim)
             if encoder_mask is not None:
-                # (batch_size, src_len, dec_hidden_dim + enc_hidden_dim)
-                concated = concated * encoder_mask.unsqueeze(-1)
-            # (batch_size, src_len, dec_hidden_dim)
-            energy = torch.tanh(self.attn(concated, encoder_mask))
+                concated = concated * encoder_mask.unsqueeze(-1)  # (batch_size, src_len, dec_hidden_dim + enc_hidden_dim)
+            energy = torch.tanh(self.attn(concated, encoder_mask))  # (batch_size, src_len, dec_hidden_dim)
             if encoder_mask is not None:
-                # (batch_size, src_len, dec_hidden_dim)
-                energy = energy * encoder_mask.unsqueeze(-1)
-            # (batch_size, src_len)
-            energy = self.v(energy, encoder_mask).squeeze(-1)
+                energy = energy * encoder_mask.unsqueeze(-1)  # (batch_size, src_len, dec_hidden_dim)
+            energy = self.v(energy, encoder_mask).squeeze(-1)  # (batch_size, src_len)
             energies.append(energy)
-        # (batch_size, trg_len, src_len)
-        energies = torch.stack(energies, dim=1)
+        energies = torch.stack(energies, dim=1)  # (batch_size, trg_len, src_len)
         if encoder_mask is not None:
             energies = energies * encoder_mask.unsqueeze(1)
         return energies.contiguous()
@@ -64,40 +57,21 @@ class Attention(nn.Module):
         :param encoder_outputs: (batch_size, src_len, trg_hidden_dim), if this is dot attention, you have to convert enc_dim to as same as trg_dim first
         :return:
             h_tilde (batch_size, trg_len, trg_hidden_dim)
-            attn_weights (batch_size, trg_len, src_len)
-            attn_energies  (batch_size, trg_len, src_len): the attention energies before softmax
+            weighted_context (batch_size, trg_len, src_hidden_dim)
+            attn_weights  (batch_size, trg_len, src_len)
         '''
         batch_size = hidden.size(0)
-        # src_len = encoder_outputs.size(1)
         trg_len = hidden.size(1)
         context_dim = encoder_outputs.size(2)
         trg_hidden_dim = hidden.size(2)
 
-        # hidden (batch_size, trg_len, trg_hidden_dim) * encoder_outputs
-        # (batch, src_len, src_hidden_dim).transpose(1, 2) -> (batch, trg_len,
-        # src_len)
-        attn_energies = self.score(hidden, encoder_outputs)
-
-        # Normalize energies to weights in range 0 to 1, with consideration of
-        # masks
-        # if encoder_mask is None:
-        #     attn_weights = torch.nn.functional.softmax(attn_energies.view(-1, src_len), dim=1).view(batch_size, trg_len, src_len)  # (batch_size, trg_len, src_len)
-        attn_energies = attn_energies * encoder_mask.unsqueeze(1)  # (batch, trg_len, src_len)
+        attn_energies = self.get_energy(hidden, encoder_outputs)  # (batch_size, trg_len, src_len)
+        attn_energies = attn_energies * encoder_mask.unsqueeze(1)  # (batch_size, trg_len, src_len)
         attn_weights = masked_softmax(attn_energies, encoder_mask.unsqueeze(1), -1)  # (batch_size, trg_len, src_len)
+        weighted_context = torch.bmm(attn_weights, encoder_outputs)  # (batch_size, trg_len, src_hidden_dim)
 
-        # reweighting context, attn (batch_size, trg_len, src_len) *
-        # encoder_outputs (batch_size, src_len, src_hidden_dim) = (batch_size,
-        # trg_len, src_hidden_dim)
-        weighted_context = torch.bmm(attn_weights, encoder_outputs)
-
-        # get h_tilde by = tanh(W_c[c_t, h_t]), both hidden and h_tilde are (batch_size, trg_hidden_dim)
-        # (batch_size, trg_len=1, src_hidden_dim + trg_hidden_dim)
-        h_tilde = torch.cat((weighted_context, hidden), 2)
-        # (batch_size * trg_len, src_hidden_dim + trg_hidden_dim) -> (batch_size * trg_len, trg_hidden_dim)
-        h_tilde = torch.tanh(self.linear_out(h_tilde.view(-1, context_dim + trg_hidden_dim)))
-
-        # return h_tilde (batch_size, trg_len, trg_hidden_dim), attn
-        # (batch_size, trg_len, src_len) and energies (before softmax)
+        h_tilde = torch.cat((weighted_context, hidden), 2)  # (batch_size, trg_len, src_hidden_dim + trg_hidden_dim)
+        h_tilde = torch.tanh(self.linear_out(h_tilde.view(-1, context_dim + trg_hidden_dim)))  # (batch_size * trg_len, trg_hidden_dim)
         return h_tilde.view(batch_size, trg_len, trg_hidden_dim), weighted_context, attn_weights
 
 
