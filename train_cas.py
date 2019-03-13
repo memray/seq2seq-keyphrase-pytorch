@@ -313,7 +313,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
 def load_data_vocab(config, load_train=True):
 
     logging.info("Loading vocab from disk: %s" % (config['general']['vocab_path']))
-    word2id, id2word, vocab = torch.load(config['general']['vocab_path'], 'wb')
+    word2id, id2word, _ = torch.load(config['general']['vocab_path'], 'wb')
     tmp = []
     for i in range(len(id2word)):
         tmp.append(id2word[i])
@@ -325,6 +325,10 @@ def load_data_vocab(config, load_train=True):
     # one2many data loader
     if load_train:
         train_one2seq = torch.load(config['general']['data_path'] + '.train.one2many.pt', 'wb')
+
+        if config['evaluate']['test_2k']:
+            train_one2seq = train_one2seq[:2000]
+
         train_one2seq_dataset = KeyphraseDataset(train_one2seq, word2id=word2id, id2word=id2word, type='one2seq', ordering=config['preproc']['keyphrase_ordering'])
         train_one2seq_loader = KeyphraseDataLoader(dataset=train_one2seq_dataset, collate_fn=train_one2seq_dataset.collate_fn_one2seq,
                                                    num_workers=4, max_batch_example=1024, max_batch_pair=config['training']['batch_size'], pin_memory=True, shuffle=True)
