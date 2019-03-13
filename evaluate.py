@@ -1,7 +1,8 @@
 import math
+import os
 import logging
 import string
-
+import sys
 import nltk
 import scipy
 import torch
@@ -9,16 +10,39 @@ from nltk.stem.porter import *
 import numpy as np
 from collections import Counter
 
-import os
-
 from torch.autograd import Variable
 
 import pykp
 from pykp.io import EOS_WORD, SEP_WORD, UNK_WORD
 from utils import Progbar
 from pykp.metric.bleu import bleu
-
 stemmer = PorterStemmer()
+
+
+def init_logging(logger_name, log_file, stdout=False):
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s',
+                                  datefmt='%m/%d/%Y %H:%M:%S')
+
+    print('Making log output file: %s' % log_file)
+    print(log_file[: log_file.rfind(os.sep)])
+    if not os.path.exists(log_file[: log_file.rfind(os.sep)]):
+        os.makedirs(log_file[: log_file.rfind(os.sep)])
+
+    fh = logging.FileHandler(log_file)
+    fh.setFormatter(formatter)
+    fh.setLevel(logging.INFO)
+
+    logger = logging.getLogger(logger_name)
+    logger.addHandler(fh)
+    logger.setLevel(logging.INFO)
+
+    if stdout:
+        ch = logging.StreamHandler(sys.stdout)
+        ch.setFormatter(formatter)
+        ch.setLevel(logging.INFO)
+        logger.addHandler(ch)
+
+    return logger
 
 
 def has_special_token(seq, special_tokens):
@@ -177,7 +201,7 @@ def clean_list_of_list(list_of_list):
 
 
 def evaluate_beam_search(generator, data_loader, config, word2id, id2word, title='', epoch=1, save_path=None):
-    logging = config.init_logging(title, save_path + '/%s.log' % title)
+    logging = init_logging(title, save_path + '/%s.log' % title)
     progbar = Progbar(logger=logging, title=title, target=len(data_loader.dataset.examples), batch_size=data_loader.batch_size,
                       total_examples=len(data_loader.dataset.examples))
 

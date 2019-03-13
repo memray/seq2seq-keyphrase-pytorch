@@ -327,7 +327,7 @@ def load_data_vocab(config, load_train=True):
         train_one2seq = torch.load(config['general']['data_path'] + '.train.one2many.pt', 'wb')
 
         if config['evaluate']['test_2k']:
-            train_one2seq = train_one2seq[:2000]
+            train_one2seq = train_one2seq[:200]
 
         train_one2seq_dataset = KeyphraseDataset(train_one2seq, word2id=word2id, id2word=id2word, type='one2seq', ordering=config['preproc']['keyphrase_ordering'])
         train_one2seq_loader = KeyphraseDataLoader(dataset=train_one2seq_dataset, collate_fn=train_one2seq_dataset.collate_fn_one2seq,
@@ -341,8 +341,8 @@ def load_data_vocab(config, load_train=True):
     test_one2seq = torch.load(config['general']['data_path'] + '.test.one2many.pt', 'wb')
 
     if config['evaluate']['test_2k']:
-        valid_one2seq = valid_one2seq[:2000]
-        test_one2seq = test_one2seq[:2000]
+        valid_one2seq = valid_one2seq[:200]
+        test_one2seq = test_one2seq[:200]
 
     valid_one2seq_dataset = KeyphraseDataset(valid_one2seq, word2id=word2id, id2word=id2word, type='one2seq', include_original=True, ordering=config['preproc']['keyphrase_ordering'])
     test_one2seq_dataset = KeyphraseDataset(test_one2seq, word2id=word2id, id2word=id2word, type='one2seq', include_original=True, ordering=config['preproc']['keyphrase_ordering'])
