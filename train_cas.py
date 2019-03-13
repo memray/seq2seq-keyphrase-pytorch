@@ -224,6 +224,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
     for epoch in range(config['training']['epochs']):
         progbar = Progbar(logger=logging, title='Training', target=len(train_data_loader), batch_size=train_data_loader.batch_size, total_examples=len(train_data_loader.dataset.examples))
 
+        print('*' * 20)
         print("Training @ Epoch=%d" % (epoch))
         for batch_i, batch in enumerate(tqdm(train_data_loader)):
             model.train()
