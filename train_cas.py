@@ -200,8 +200,8 @@ def train_batch(_batch, model, optimizer, criterion, replay_memory, config, word
     trg_copy_target_np = copy.copy(trg_copy_target)
     trg_copy_np = copy.copy(trg)
 
-    print("src size - ", src.size())
-    print("target size - ", trg.size())
+    # print("src size - ", src.size())
+    # print("target size - ", trg.size())
 
     optimizer.zero_grad()
     if torch.cuda.is_available():
@@ -226,12 +226,12 @@ def train_batch(_batch, model, optimizer, criterion, replay_memory, config, word
 
     nll_loss = criterion(decoder_log_probs.contiguous().view(-1, len(word2id) + max_oov_number),
                          trg_copy_target.contiguous().view(-1))
-    print("--loss calculation- %s seconds ---" % (time.time() - start_time))
+    # print("--loss calculation- %s seconds ---" % (time.time() - start_time))
     loss = nll_loss + penalties + te_loss
 
     start_time = time.time()
     loss.backward(retain_graph=True)
-    print("--backward- %s seconds ---" % (time.time() - start_time))
+    # print("--backward- %s seconds ---" % (time.time() - start_time))
     torch.nn.utils.clip_grad_norm_(model.parameters(), config['training']['optimizer']['clip_grad_norm'])
     optimizer.step()
 
@@ -365,7 +365,7 @@ def init_optimizer_criterion(model, config, pad_word):
     return optimizer, criterion
 
 
-def init_model(config, word2id, id2word, vocab):
+def init_model(config, word2id, id2word):
     logging.info('======================  Model Parameters  =========================')
 
     model = Seq2SeqLSTMAttention(config, word2id, id2word)
@@ -433,7 +433,7 @@ def main():
     logging = logger.init_logging(logger_name=None, log_file=config['evaluate']['log_path'] + '/output.log', stdout=True)
     try:
         train_data_loader, valid_data_loader, test_data_loader, word2id, id2word = load_data_vocab(config)
-        model = init_model(config, word2id, id2word, vocab)
+        model = init_model(config, word2id, id2word)
         optimizer, criterion = init_optimizer_criterion(model, config, pad_word=word2id[pykp.io.PAD_WORD])
         train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, config, word2id, id2word)
     except Exception as e:
