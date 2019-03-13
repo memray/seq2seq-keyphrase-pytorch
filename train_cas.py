@@ -246,11 +246,11 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
         logging.info('Run validing and testing @Epoch=%d' % (epoch))
         print("Validation @ Epoch=%d" % (epoch))
         valid_score_dict = evaluate_beam_search(generator, valid_data_loader, config, word2id, id2word, title='Validating, epoch=%d' % (epoch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d' % (epoch))
-        print(valid_score_dict)
+        print("validation f score exact:", np.average(valid_score_dict['f_score_exact']))
         logging.info("NOW TEST...")
         print("Test @ Epoch=%d" % (epoch))
         test_score_dict = evaluate_beam_search(generator, test_data_loader, config, word2id, id2word, title='Testing, epoch=%d' % (epoch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d' % (epoch))
-        print(test_score_dict)
+        print("test f score exact:", np.average(test_score_dict['f_score_exact']))
 
         train_ml_history_losses.append(copy.copy(train_losses))
         train_losses = []
