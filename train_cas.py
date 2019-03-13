@@ -21,6 +21,7 @@ import utils
 import copy
 import random
 
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 from torch import cuda
@@ -264,7 +265,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
 
         progbar = Progbar(logger=logging, title='Training', target=len(train_data_loader), batch_size=train_data_loader.batch_size, total_examples=len(train_data_loader.dataset.examples))
 
-        for batch_i, batch in enumerate(train_data_loader):
+        for batch_i, batch in enumerate(tqdm(train_data_loader)):
             model.train()
             total_batch += 1
             one2seq_batch, _ = batch
@@ -287,6 +288,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                     epoch, total_batch))
                 valid_score_dict = evaluate_beam_search(generator, valid_data_loader, config, word2id, id2word, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (
                     epoch, batch_i, total_batch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                logging.info("NOW TEST...")
                 test_score_dict = evaluate_beam_search(generator, test_data_loader, config, word2id, id2word, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (
                     epoch, batch_i, total_batch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
 
@@ -430,7 +432,7 @@ def main():
     if not os.path.exists(config['checkpoint']['checkpoint_path']):
         os.mkdir(config['checkpoint']['checkpoint_path'])
 
-    logging = logger.init_logging(logger_name=None, log_file=config['evaluate']['log_path'] + '/output.log', stdout=True)
+    logging = logger.init_logging(logger_name=None, log_file=config['evaluate']['log_path'] + '/output.log', stdout=False)
     try:
         train_data_loader, valid_data_loader, test_data_loader, word2id, id2word = load_data_vocab(config)
         model = init_model(config, word2id, id2word)

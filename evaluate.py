@@ -6,6 +6,7 @@ import sys
 import nltk
 import scipy
 import torch
+from tqdm import tqdm
 from nltk.stem.porter import *
 import numpy as np
 from collections import Counter
@@ -20,8 +21,7 @@ stemmer = PorterStemmer()
 
 
 def init_logging(logger_name, log_file, stdout=False):
-    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s',
-                                  datefmt='%m/%d/%Y %H:%M:%S')
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s', datefmt='%m/%d/%Y %H:%M:%S')
 
     print('Making log output file: %s' % log_file)
     print(log_file[: log_file.rfind(os.sep)])
@@ -206,9 +206,9 @@ def evaluate_beam_search(generator, data_loader, config, word2id, id2word, title
                       total_examples=len(data_loader.dataset.examples))
 
     example_idx = 0
-    score_dict = {}  # {'precision@5':[],'recall@5':[],'f1score@5':[], 'precision@10':[],'recall@10':[],'f1score@10':[]}
+    score_dict = {}
 
-    for i, batch in enumerate(data_loader):
+    for i, batch in enumerate(tqdm(data_loader)):
 
         one2many_batch, one2one_batch = batch
         src_list, src_len, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
@@ -217,7 +217,7 @@ def evaluate_beam_search(generator, data_loader, config, word2id, id2word, title
             src_list = src_list.cuda()
             src_oov_map_list = src_oov_map_list.cuda()
 
-        print("batch size - %s" % str(src_list.size(0)))
+        # print("batch size - %s" % str(src_list.size(0)))
         # print("src size - %s" % str(src_list.size()))
         # print("target size - %s" % len(trg_copy_target_list))
 
@@ -317,7 +317,6 @@ def evaluate_beam_search(generator, data_loader, config, word2id, id2word, title
                 example_idx += 1
             logging.info(print_out)
 
-    logging.info("NOW TEST...")
     if save_path:
         # export scores. Each row is scores (precision, recall and f-score) of
         # different way of filtering predictions (how many one-word predictions
@@ -336,65 +335,8 @@ def evaluate_beam_search(generator, data_loader, config, word2id, id2word, title
     return score_dict
 
 
-def evaluate_greedy(model, data_loader, test_examples, opt):
-    model.eval()
-
-    logging.info(
-        '======================  Checking GPU Availability  =========================')
-    if torch.cuda.is_available():
-        logging.info('Running on GPU!')
-        model.cuda()
-    else:
-        logging.info('Running on CPU!')
-
-    logging.info(
-        '======================  Start Predicting  =========================')
-    progbar = Progbar(title='Testing', target=len(data_loader), batch_size=data_loader.batch_size,
-                      total_examples=len(data_loader.dataset))
-
-    '''
-    Note here each batch only contains one data example, thus decoder_probs is flattened
-    '''
-    for i, (batch, example) in enumerate(zip(data_loader, test_examples)):
-        src = batch.src
-
-        logging.info(
-            '======================  %d  =========================' % (i + 1))
-        logging.info('\nSource text: \n %s\n' %
-                     (' '.join([opt.id2word[wi] for wi in src.data.numpy()[0]])))
-
-        if torch.cuda.is_available():
-            src.cuda()
-
-        # trg = Variable(torch.from_numpy(np.zeros((src.size(0), opt.max_sent_length), dtype='int64')))
-        trg = Variable(torch.LongTensor(
-            [[opt.word2id[pykp.io.BOS_WORD]] * opt.max_sent_length]))
-
-        max_words_pred = model.greedy_predict(src, trg)
-        progbar.update(None, i, [])
-
-        sentence_pred = [opt.id2word[x] for x in max_words_pred]
-        sentence_real = example['trg_str']
-
-        if '</s>' in sentence_real:
-            index = sentence_real.index('</s>')
-            sentence_pred = sentence_pred[:index]
-
-        logging.info('\t\tPredicted : %s ' % (' '.join(sentence_pred)))
-        logging.info('\t\tReal : %s ' % (sentence_real))
-
-
 def stem_word_list(word_list):
     return [stemmer.stem(w.strip().lower()) for w in word_list]
-
-
-def macro_averaged_score(precisionlist, recalllist):
-    precision = np.average(precisionlist)
-    recall = np.average(recalllist)
-    f_score = 0
-    if(precision or recall):
-        f_score = round((2 * (precision * recall)) / (precision + recall), 2)
-    return precision, recall, f_score
 
 
 def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
@@ -467,10 +409,8 @@ def evaluate(match_list, predicted_list, true_list, topk=5):
         predicted_list = predicted_list[:topk]
 
     # Micro-Averaged  Method
-    micropk = float(sum(match_list)) / float(len(predicted_list)
-                                             ) if len(predicted_list) > 0 else 0.0
-    micrork = float(sum(match_list)) / float(len(true_list)
-                                             ) if len(true_list) > 0 else 0.0
+    micropk = float(sum(match_list)) / float(len(predicted_list)) if len(predicted_list) > 0 else 0.0
+    micrork = float(sum(match_list)) / float(len(true_list)) if len(true_list) > 0 else 0.0
 
     if micropk + micrork > 0:
         microf1 = float(2 * (micropk * micrork)) / (micropk + micrork)
@@ -478,36 +418,3 @@ def evaluate(match_list, predicted_list, true_list, topk=5):
         microf1 = 0.0
 
     return micropk, micrork, microf1
-
-
-def f1_score(prediction, ground_truth):
-    # both prediction and grount_truth should be list of words
-    common = Counter(prediction) & Counter(ground_truth)
-    num_same = sum(common.values())
-    if num_same == 0:
-        return 0
-    precision = 1.0 * num_same / len(prediction)
-    recall = 1.0 * num_same / len(ground_truth)
-    f1 = (2 * precision * recall) / (precision + recall)
-    return f1
-
-
-def self_redundancy(_input):
-    # _input shoule be list of list of words
-    if len(_input) == 0:
-        return None
-    _len = len(_input)
-    scores = np.ones((_len, _len), dtype="float32") * -1.0
-    for i in range(_len):
-        for j in range(_len):
-            if scores[i][j] != -1:
-                continue
-            elif i == j:
-                scores[i][j] = 0.0
-            else:
-                f1 = f1_score(_input[i], _input[j])
-                scores[i][j] = f1
-                scores[j][i] = f1
-    res = np.max(scores, 1)
-    res = np.mean(res)
-    return res
