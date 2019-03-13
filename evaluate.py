@@ -1,29 +1,23 @@
-import math
 import os
 import logging
 import string
 import sys
 import nltk
-import scipy
 import torch
 from tqdm import tqdm
 from nltk.stem.porter import *
 import numpy as np
-from collections import Counter
-
-from torch.autograd import Variable
 
 import pykp
 from pykp.io import EOS_WORD, SEP_WORD, UNK_WORD
 from utils import Progbar
-from pykp.metric.bleu import bleu
 stemmer = PorterStemmer()
 
 
 def init_logging(logger_name, log_file, stdout=False):
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s', datefmt='%m/%d/%Y %H:%M:%S')
 
-    print('Making log output file: %s' % log_file)
+    # print('Making log output file: %s' % log_file)
     # print(log_file[: log_file.rfind(os.sep)])
     if not os.path.exists(log_file[: log_file.rfind(os.sep)]):
         os.makedirs(log_file[: log_file.rfind(os.sep)])
@@ -77,32 +71,6 @@ def process_predseqs(seq_sentence_np, oov, id2word, word2id):
         s) > 0 and not has_special_token(s, [",", ".", UNK_WORD, EOS_WORD])]
 
     return processed_strings
-
-
-def post_process_predseqs(seqs, num_oneword_seq=1):
-    processed_seqs = []
-
-    # -1 means no filter applied
-    if num_oneword_seq == -1:
-        return seqs
-
-    for seq, str_seq, score in zip(*seqs):
-        keep_flag = True
-
-        if len(str_seq) == 1 and num_oneword_seq <= 0:
-            keep_flag = False
-
-        if keep_flag:
-            processed_seqs.append((seq, str_seq, score))
-            # update the number of one-word sequeces to keep
-            if len(str_seq) == 1:
-                num_oneword_seq -= 1
-
-    unzipped = list(zip(*(processed_seqs)))
-    if len(unzipped) != 3:
-        return ([], [], [])
-    else:
-        return unzipped
 
 
 def if_present_duplicate_phrase(src_str, phrase_seqs):
@@ -274,10 +242,8 @@ def evaluate_beam_search(generator, data_loader, config, word2id, id2word, title
                 Evaluate predictions w.r.t different filterings and metrics
                 '''
                 score_names = ['precision', 'recall', 'f_score']
-                match_list_exact = get_match_result(
-                    true_seqs=trg_str_seqs, pred_seqs=processed_strings, type="exact")
-                match_list_soft = get_match_result(
-                    true_seqs=trg_str_seqs, pred_seqs=processed_strings, type="partial")
+                match_list_exact = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_strings, type="exact")
+                match_list_soft = get_match_result(true_seqs=trg_str_seqs, pred_seqs=processed_strings, type="partial")
 
                 # exact scores
                 results_exact = evaluate(
@@ -392,11 +358,6 @@ def get_match_result(true_seqs, pred_seqs, do_stem=True, type='exact'):
                 if jaccard > max_similarity:
                     max_similarity = jaccard
             match_score[pred_id] = max_similarity
-
-        elif type == 'bleu':
-            # account for the match of subsequences, like n-gram-based (BLEU)
-            # or LCS-based
-            match_score[pred_id] = bleu(pred_seq, true_seqs, [0.1, 0.3, 0.6])
 
     return match_score
 
