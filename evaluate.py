@@ -13,7 +13,6 @@ import os
 
 from torch.autograd import Variable
 
-import config
 import pykp
 from pykp.io import EOS_WORD, SEP_WORD, UNK_WORD
 from utils import Progbar
