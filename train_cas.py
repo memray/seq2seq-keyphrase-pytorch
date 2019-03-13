@@ -306,8 +306,8 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                 # only store the checkpoints that make better validation performances
                 if is_best_performance:
                     # Save the checkpoint
-                    logging.info('Saving checkpoint to: %s' % os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'], '%s.epoch=%d.model' % (config['general']['exp'], epoch)))
-                    model.save_model_to_path(os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'], '%s.epoch=%d.model' % (config['general']['exp'], epoch)))
+                    logging.info('Saving checkpoint to: %s' % os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '%s.epoch=%d.model.pt' % (config['general']['exp'], epoch)))
+                    model.save_model_to_path(os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '%s.epoch=%d.model.pt' % (config['general']['exp'], epoch)))
                 logging.info('*' * 50)
 
 def load_data_vocab(config, load_train=True):
@@ -371,8 +371,8 @@ def init_model(config, word2id, id2word):
     model = Seq2SeqLSTMAttention(config, word2id, id2word)
 
     if config['checkpoint']['load_pretrained']:
-        logging.info("loading previous checkpoint from %s" % config['checkpoint']['experiment_tag'])
-        model.load_pretrained_model(config['checkpoint']['experiment_tag'])
+        logging.info("loading previous checkpoint from %s.pt" % config['checkpoint']['experiment_tag'])
+        model.load_pretrained_model(config['checkpoint']['experiment_tag'] + ".pt")
 
     if torch.cuda.is_available():
         model = model.cuda()

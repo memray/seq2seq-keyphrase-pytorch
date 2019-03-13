@@ -37,7 +37,7 @@ evaluate:
 checkpoint:
   checkpoint_path: "checkpoints"
   save_frequency: 1  # epoch
-  experiment_tag: 'name_your_current_experiment_here.pt'
+  experiment_tag: 'name_your_current_experiment_here'
   load_pretrained: False  # during test, enable this so that the agent load your pretrained model
 
 model:
