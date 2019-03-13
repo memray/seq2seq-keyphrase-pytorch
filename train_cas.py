@@ -239,15 +239,18 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
             report_loss.append(('penalty', penalty))
             report_loss.append(('te_loss', te_loss))
             progbar.update(epoch, batch_i, report_loss)
+        print(report_loss)
 
         # Validate and save checkpoint at end of epoch
         logging.info('*' * 50)
         logging.info('Run validing and testing @Epoch=%d' % (epoch))
         print("Validation @ Epoch=%d" % (epoch))
         valid_score_dict = evaluate_beam_search(generator, valid_data_loader, config, word2id, id2word, title='Validating, epoch=%d' % (epoch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d' % (epoch))
+        print(valid_score_dict)
         logging.info("NOW TEST...")
         print("Test @ Epoch=%d" % (epoch))
         test_score_dict = evaluate_beam_search(generator, test_data_loader, config, word2id, id2word, title='Testing, epoch=%d' % (epoch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d' % (epoch))
+        print(test_score_dict)
 
         train_ml_history_losses.append(copy.copy(train_losses))
         train_losses = []
