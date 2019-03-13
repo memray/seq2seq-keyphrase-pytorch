@@ -10,7 +10,6 @@ import yaml
 
 import logging
 import numpy as np
-import time
 import torchtext
 from torch.autograd import Variable
 from torch.optim import Adam
@@ -23,44 +22,16 @@ import random
 
 from tqdm import tqdm
 import torch
-import torch.nn as nn
-from torch import cuda
 
 import logger
 from beam_search import SequenceGenerator
-from evaluate import evaluate_beam_search, get_match_result, self_redundancy
+from evaluate import evaluate_beam_search
 from pykp.dataloader import KeyphraseDataLoader
-from utils import Progbar, plot_learning_curve
+from utils import Progbar
 
 import pykp
 from pykp.io import KeyphraseDataset
 from pykp.model import Seq2SeqLSTMAttention
-
-import time
-
-
-def to_cpu_list(input):
-    assert isinstance(input, list)
-    output = [int(item.data.cpu().numpy()) for item in input]
-    return output
-
-
-def time_usage(func):
-    # argnames = func.func_code.co_varnames[:func.func_code.co_argcount]
-    fname = func.__name__
-
-    def wrapper(*args, **kwargs):
-        beg_ts = time.time()
-        retval = func(*args, **kwargs)
-        end_ts = time.time()
-        print(fname, "elapsed time: %f" % (end_ts - beg_ts))
-        return retval
-
-    return wrapper
-
-
-__author__ = "Rui Meng"
-__email__ = "rui.meng@pitt.edu"
 
 
 def to_np(x):
@@ -219,20 +190,10 @@ def train_batch(_batch, model, optimizer, criterion, replay_memory, config, word
     if config['model']['orthogonal_regularization']['orth_reg_mode'] == 1:
         penalties = penalties + get_orthogonal_penalty(trg_copy_target_np, target_representations.permute(1, 0, 2), config, word2id)
 
-    # simply average losses of all the predicitons
-    # IMPORTANT, must use logits instead of probs to compute the loss,
-    # otherwise it's super super slow at the beginning (grads of probs are
-    # small)!
-    start_time = time.time()
-
     nll_loss = criterion(decoder_log_probs.contiguous().view(-1, len(word2id) + max_oov_number),
                          trg_copy_target.contiguous().view(-1))
-    # print("--loss calculation- %s seconds ---" % (time.time() - start_time))
     loss = nll_loss + penalties + te_loss
-
-    start_time = time.time()
     loss.backward(retain_graph=True)
-    # print("--backward- %s seconds ---" % (time.time() - start_time))
     torch.nn.utils.clip_grad_norm_(model.parameters(), config['training']['optimizer']['clip_grad_norm'])
     optimizer.step()
 
@@ -312,6 +273,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                     model.save_model_to_path(os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '%s.epoch=%d.model.pt' % (config['general']['exp'], epoch)))
                 logging.info('*' * 50)
 
+
 def load_data_vocab(config, load_train=True):
 
     logging.info("Loading vocab from disk: %s" % (config['general']['vocab_path']))
@@ -380,46 +342,6 @@ def init_model(config, word2id, id2word):
         model = model.cuda()
     utils.tally_parameters(model)
     return model
-
-
-def process_opt(opt):
-    if opt.seed > 0:
-        torch.manual_seed(opt.seed)
-
-    if torch.cuda.is_available() and not opt.gpuid:
-        opt.gpuid = 0
-
-    if hasattr(opt, 'train_ml') and opt.train_ml:
-        opt.exp += '.ml'
-
-    if hasattr(opt, 'copy_attention') and opt.copy_attention:
-        opt.exp += '.copy'
-
-    if hasattr(opt, 'bidirectional') and opt.bidirectional:
-        opt.exp += '.bi-directional'
-    else:
-        opt.exp += '.uni-directional'
-
-    # fill time into the name
-    if opt.exp_path.find('%s') > 0:
-        opt.exp_path = opt.exp_path % (opt.exp, opt.timemark)
-        opt.pred_path = opt.pred_path % (opt.exp, opt.timemark)
-        opt.model_path = opt.model_path % (opt.exp, opt.timemark)
-
-    if not os.path.exists(opt.exp_path):
-        os.makedirs(opt.exp_path)
-    if not os.path.exists(opt.pred_path):
-        os.makedirs(opt.pred_path)
-    if not os.path.exists(opt.model_path):
-        os.makedirs(opt.model_path)
-
-    logging.info('EXP_PATH : ' + opt.exp_path)
-
-    # dump the setting (opt) to disk in order to reuse easily
-    json.dump(vars(opt), open(os.path.join(
-        opt.model_path, opt.exp + '.initial.json'), 'w'))
-
-    return opt
 
 
 def main():
