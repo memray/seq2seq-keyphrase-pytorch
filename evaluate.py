@@ -29,21 +29,22 @@ def has_special_token(seq, special_tokens):
     return False
 
 
-def process_predseqs(seq_sentence_np, oov, id2word, opt):
+def process_predseqs(seq_sentence_np, oov, id2word, word2id):
     # pred_seq is a sequence of word indices, key phrases are separated by
     # special token
-    if len(seq_sentence_np) > 0 and opt.word2id[EOS_WORD] in seq_sentence_np:
+    vocab_size = len(id2word)
+    if len(seq_sentence_np) > 0 and word2id[EOS_WORD] in seq_sentence_np:
         which = 0
         for i in range(len(seq_sentence_np)):
-            if seq_sentence_np[i] == opt.word2id[EOS_WORD]:
+            if seq_sentence_np[i] == word2id[EOS_WORD]:
                 which = i
                 break
         seq_sentence_np = seq_sentence_np[:which]
     if len(seq_sentence_np) == 0:
         return []
 
-    processed_seq = [id2word[x] if x < opt.vocab_size else oov[
-        x - opt.vocab_size] for x in seq_sentence_np]
+    processed_seq = [id2word[x] if x < vocab_size else oov[
+        x - vocab_size] for x in seq_sentence_np]
     processed_string = " ".join(processed_seq)
     processed_strings = processed_string.split(SEP_WORD)
     processed_strings = [item.strip() for item in processed_strings]
@@ -176,7 +177,7 @@ def clean_list_of_list(list_of_list):
     return output
 
 
-def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_path=None):
+def evaluate_beam_search(generator, data_loader, config, word2id, id2word, title='', epoch=1, save_path=None):
     logging = config.init_logging(title, save_path + '/%s.log' % title)
     progbar = Progbar(logger=logging, title=title, target=len(data_loader.dataset.examples), batch_size=data_loader.batch_size,
                       total_examples=len(data_loader.dataset.examples))
@@ -198,13 +199,13 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
         # print("target size - %s" % len(trg_copy_target_list))
 
         # list(batch) of list(beam size) of Sequence
-        if opt.eval_method in ["beam_search", "beam_first"]:
+        if config['evaluate']['eval_method'] in ["beam_search", "beam_first"]:
             pred_seq_list = generator.beam_search(
-                src_list, src_len, src_oov_map_list, oov_list, opt.word2id)
+                src_list, src_len, src_oov_map_list, oov_list, word2id)
             best_pred_seq = pred_seq_list
             eval_topk = 5
-        elif opt.eval_method in ["greedy"]:
-            pred_seq_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, opt.word2id)
+        elif config['evaluate']['eval_method'] in ["greedy"]:
+            pred_seq_list = generator.sample(src_list, src_len, src_oov_map_list, oov_list, word2id)
             best_pred_seq = [b[0]
                              for b in pred_seq_list]  # list(batch) of Sequence
             eval_topk = 1000
@@ -219,15 +220,15 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
             print_out = ''
 
             # 1st filtering
-            if opt.eval_method == "beam_search":
+            if config['evaluate']['eval_method'] == "beam_search":
                 pred_seq = [extract_to_list(seq) for seq in pred_seq]
-                pred_seq = keyphrase_ranking(pred_seq, sep_ids=[opt.word2id[pykp.io.SEP_WORD]])
-            elif opt.eval_method == "beam_first":
+                pred_seq = keyphrase_ranking(pred_seq, sep_ids=[word2id[SEP_WORD]])
+            elif config['evaluate']['eval_method'] == "beam_first":
                 pred_seq = [extract_to_list(pred_seq[0])]
-                pred_seq = keyphrase_ranking(pred_seq, sep_ids=[opt.word2id[pykp.io.SEP_WORD]])
+                pred_seq = keyphrase_ranking(pred_seq, sep_ids=[word2id[SEP_WORD]])
             else:
                 pred_seq = extract_to_list(pred_seq)
-            processed_strings = process_predseqs(pred_seq, oov, opt.id2word, opt)
+            processed_strings = process_predseqs(pred_seq, oov, id2word, word2id)
 
             print_out += "\n ======================================================="
             print_processed_strings = [" ".join(item) for item in processed_strings]
@@ -286,11 +287,6 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 print_out += "\n --- total precision, recall, fscore: " + str(np.average(score_dict['precision_soft'])) + " , " +\
                             str(np.average(score_dict['recall_soft'])) + " , " +\
                             str(np.average(score_dict['f_score_soft']))
-                # if save_path:
-                #     if not os.path.exists(os.path.join(save_path, title + '_detail')):
-                #         os.makedirs(os.path.join(save_path, title + '_detail'))
-                #     with open(os.path.join(save_path, title + '_detail', str(example_idx) + '_print.txt'), 'w') as f_:
-                #         f_.write(print_out)
 
                 progbar.update(epoch, example_idx, [('f_score_exact', np.average(score_dict['f_score_exact'])),
                                                     ('f_score_soft', np.average(score_dict['f_score_soft']))])
@@ -313,12 +309,6 @@ def evaluate_beam_search(generator, data_loader, opt, title='', epoch=1, save_pa
                 csv_lines.append(csv_line + '\n')
 
             result_csv.writelines(csv_lines)
-
-    # precision, recall, f_score = macro_averaged_score(precisionlist=score_dict['precision'], recalllist=score_dict['recall'])
-    # logging.info("Macro@5\n\t\tprecision %.4f\n\t\tmacro recall %.4f\n\t\tmacro fscore %.4f " % (np.average(score_dict['precision@5']), np.average(score_dict['recall@5']), np.average(score_dict['f1score@5'])))
-    # logging.info("Macro@10\n\t\tprecision %.4f\n\t\tmacro recall %.4f\n\t\tmacro fscore %.4f " % (np.average(score_dict['precision@10']), np.average(score_dict['recall@10']), np.average(score_dict['f1score@10'])))
-    # precision, recall, f_score = evaluate(true_seqs=target_all, pred_seqs=prediction_all, topn=5)
-    # logging.info("micro precision %.4f , micro recall %.4f, micro fscore %.4f " % (precision, recall, f_score))
 
     return score_dict
 

@@ -27,6 +27,7 @@ training:
     clip_grad_norm: 5
 
 evaluate:
+  log_path: "logs"
   test_2k: True
   eval_method: "greedy"
   max_sent_length: 20
@@ -34,7 +35,8 @@ evaluate:
   batch_size: 16
 
 checkpoint:
-  save_frequency: 100  # epoch
+  checkpoint_path: "checkpoints"
+  save_frequency: 1  # epoch
   experiment_tag: 'name_your_current_experiment_here.pt'
   load_pretrained: False  # during test, enable this so that the agent load your pretrained model
 

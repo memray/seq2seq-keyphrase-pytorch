@@ -104,12 +104,12 @@ class Attention(nn.Module):
 class Seq2SeqLSTMAttention(nn.Module):
     """Container module with an encoder, deocder, embeddings."""
 
-    def __init__(self, config, word2id, id2word, vocab):
+    def __init__(self, config, word2id, id2word):
         """Initialize model."""
         super(Seq2SeqLSTMAttention, self).__init__()
 
         self.config = config
-        self.vocab_size = len(vocab)
+        self.vocab_size = len(id2word)
         self.pad_token_src = word2id[pykp.io.PAD_WORD]
         self.pad_token_trg = word2id[pykp.io.PAD_WORD]
         self.unk_word = word2id[pykp.io.UNK_WORD]

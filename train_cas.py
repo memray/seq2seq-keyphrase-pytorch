@@ -239,7 +239,7 @@ def train_batch(_batch, model, optimizer, criterion, replay_memory, config, word
     return to_np(loss), decoder_log_probs, to_np(nll_loss), to_np(penalties), to_np(te_loss)
 
 
-def train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, config, word2id):
+def train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, config, word2id, id2word):
     generator = SequenceGenerator(model,
                                   eos_id=word2id[pykp.io.EOS_WORD],
                                   bos_id=word2id[pykp.io.BOS_WORD],
@@ -249,18 +249,13 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                                   )
 
     logging.info('======================  Checking GPU Availability  =========================')
-    
     logging.info('Running on GPU!' if torch.cuda.is_available() else 'Running on CPU!')
-
     logging.info('======================  Start Training  =========================')
 
     train_ml_history_losses = []
     valid_history_losses = []
     test_history_losses = []
-    # best_loss = sys.float_info.max # for normal training/testing loss
-    # (likelihood)
-    best_loss = 0.0  # for f-score
-    stop_increasing = 0
+    best_performance = 0.0
 
     train_losses = []
     total_batch = -1
@@ -286,21 +281,15 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
             report_loss.append(('te_loss', te_loss))
             progbar.update(epoch, batch_i, report_loss)
 
-            #################################
-            #################################
-            #################################
-            #################################
-            #################################
             # Validate and save checkpoint at end of epoch
             if (batch_i == len(train_data_loader) - 1):
                 logging.info('*' * 50)
                 logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (
                     epoch, total_batch))
-                valid_score_dict = evaluate_beam_search(generator, valid_data_loader, opt, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (
-                    epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
-                test_score_dict = evaluate_beam_search(generator, test_data_loader, opt, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (
-                    epoch, batch_i, total_batch), epoch=epoch, save_path=opt.pred_path + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
-
+                valid_score_dict = evaluate_beam_search(generator, valid_data_loader, config, word2id, id2word, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (
+                    epoch, batch_i, total_batch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                test_score_dict = evaluate_beam_search(generator, test_data_loader, config, word2id, id2word, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (
+                    epoch, batch_i, total_batch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
 
                 train_ml_history_losses.append(copy.copy(train_losses))
                 train_losses = []
@@ -311,46 +300,25 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
                 '''
                 determine if early stop training (whether f-score increased, before is if valid error decreased)
                 '''
-                valid_loss = np.average(
-                    valid_history_losses[-1][opt.report_score_names[0]])
-                is_best_loss = valid_loss > best_loss
-                rate_of_change = float(
-                    valid_loss - best_loss) / float(best_loss) if float(best_loss) > 0 else 0.0
+                valid_performance = np.average(valid_history_losses[-1]['f_score_exact'])
+                is_best_performance = valid_performance > best_performance
+                best_performance = max(valid_performance, best_performance)
 
-                # valid error doesn't increase
-                if rate_of_change <= 0:
-                    stop_increasing += 1
-                else:
-                    stop_increasing = 0
-
-                if is_best_loss:
-                    logging.info('Validation: update best loss (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
-                        best_loss, valid_loss, rate_of_change * 100))
-                else:
-                    logging.info('Validation: best loss is not updated for %d times (%.4f --> %.4f), rate of change (ROC)=%.2f' % (
-                        stop_increasing, best_loss, valid_loss, rate_of_change * 100))
-
-                best_loss = max(valid_loss, best_loss)
-
-                # only store the checkpoints that make better validation
-                # performances
-                # epoch >= opt.start_checkpoint_at and
-                if total_batch > 1 and (total_batch % opt.save_model_every == 0 or is_best_loss):
+                # only store the checkpoints that make better validation performances
+                if is_best_performance:
                     # Save the checkpoint
-                    logging.info('Saving checkpoint to: %s' % os.path.join(opt.model_path, '%s.epoch=%d.batch=%d.total_batch=%d.error=%f' % (
-                        opt.exp, epoch, batch_i, total_batch, valid_loss) + '.model'))
-                    torch.save(
-                        model.state_dict(),
-                        os.path.join(opt.model_path, '%s.epoch=%d.batch=%d.total_batch=%d' % (
-                            opt.exp, epoch, batch_i, total_batch) + '.model')
-                    )
+                    logging.info('Saving checkpoint to: %s' % os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'], '%s.epoch=%d.model' % (config['general']['exp'], epoch)))
+                    model.save_model_to_path(os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'], '%s.epoch=%d.model' % (config['general']['exp'], epoch)))
                 logging.info('*' * 50)
-
 
 def load_data_vocab(config, load_train=True):
 
     logging.info("Loading vocab from disk: %s" % (config['general'].vocab_path))
     word2id, id2word, vocab = torch.load(config['general'].vocab_path, 'wb')
+    tmp = []
+    for i in range(len(id2word)):
+        tmp.append(id2word[i])
+    id2word = tmp
 
     # one2one data loader
     logging.info("Loading train and validate data from '%s'" % config['general'].data_path)
@@ -381,8 +349,8 @@ def load_data_vocab(config, load_train=True):
     test_one2seq_loader = KeyphraseDataLoader(dataset=test_one2seq_dataset, collate_fn=test_one2seq_dataset.collate_fn_one2seq, num_workers=4,
                                               max_batch_example=config['evaluate'].batch_size, max_batch_pair=config['evaluate'].batch_size, pin_memory=True, shuffle=False)
 
-    logging.info('#(vocab)=%d' % len(vocab))
-    return train_one2seq_loader, valid_one2seq_loader, test_one2seq_loader, word2id, id2word, vocab
+    logging.info('#(vocab)=%d' % len(id2word))
+    return train_one2seq_loader, valid_one2seq_loader, test_one2seq_loader, word2id, id2word
 
 
 def init_optimizer_criterion(model, config, pad_word):
@@ -397,7 +365,7 @@ def init_optimizer_criterion(model, config, pad_word):
 def init_model(config, word2id, id2word, vocab):
     logging.info('======================  Model Parameters  =========================')
 
-    model = Seq2SeqLSTMAttention(config, word2id, id2word, vocab)
+    model = Seq2SeqLSTMAttention(config, word2id, id2word)
 
     if config['checkpoint']['load_pretrained']:
         logging.info("loading previous checkpoint from %s" % config['checkpoint']['experiment_tag'])
@@ -454,12 +422,17 @@ def main():
     with open("config.yaml") as reader:
         config = yaml.safe_load(reader)
     print(config)
-    logging = logger.init_logging(logger_name=None, log_file='output.log', stdout=True)
+    if not os.path.exists(config['evaluate']['log_path']):
+        os.mkdir(config['evaluate']['log_path'])
+    if not os.path.exists(config['checkpoint']['checkpoint_path']):
+        os.mkdir(config['checkpoint']['checkpoint_path'])
+
+    logging = logger.init_logging(logger_name=None, log_file=config['evaluate']['log_path'] + '/output.log', stdout=True)
     try:
-        train_data_loader, valid_data_loader, test_data_loader, word2id, id2word, vocab = load_data_vocab(config)
+        train_data_loader, valid_data_loader, test_data_loader, word2id, id2word = load_data_vocab(config)
         model = init_model(config, word2id, id2word, vocab)
         optimizer, criterion = init_optimizer_criterion(model, config, pad_word=word2id[pykp.io.PAD_WORD])
-        train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, config)
+        train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, config, word2id, id2word)
     except Exception as e:
         logging.exception("message")
 
