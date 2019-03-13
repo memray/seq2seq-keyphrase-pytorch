@@ -240,35 +240,31 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
             report_loss.append(('te_loss', te_loss))
             progbar.update(epoch, batch_i, report_loss)
 
-            # Validate and save checkpoint at end of epoch
-            if (batch_i == len(train_data_loader) - 1):
-                logging.info('*' * 50)
-                logging.info('Run validing and testing @Epoch=%d' % (epoch))
-                print("Validation @ Epoch=%d" % (epoch))
-                valid_score_dict = evaluate_beam_search(generator, valid_data_loader, config, word2id, id2word, title='Validating, epoch=%d' % (epoch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d' % (epoch))
-                logging.info("NOW TEST...")
-                print("Test @ Epoch=%d" % (epoch))
-                test_score_dict = evaluate_beam_search(generator, test_data_loader, config, word2id, id2word, title='Testing, epoch=%d' % (epoch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d' % (epoch))
+        # Validate and save checkpoint at end of epoch
+        logging.info('*' * 50)
+        logging.info('Run validing and testing @Epoch=%d' % (epoch))
+        print("Validation @ Epoch=%d" % (epoch))
+        valid_score_dict = evaluate_beam_search(generator, valid_data_loader, config, word2id, id2word, title='Validating, epoch=%d' % (epoch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d' % (epoch))
+        logging.info("NOW TEST...")
+        print("Test @ Epoch=%d" % (epoch))
+        test_score_dict = evaluate_beam_search(generator, test_data_loader, config, word2id, id2word, title='Testing, epoch=%d' % (epoch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d' % (epoch))
 
-                train_ml_history_losses.append(copy.copy(train_losses))
-                train_losses = []
+        train_ml_history_losses.append(copy.copy(train_losses))
+        train_losses = []
 
-                valid_history_losses.append(valid_score_dict)
-                test_history_losses.append(test_score_dict)
+        valid_history_losses.append(valid_score_dict)
+        test_history_losses.append(test_score_dict)
 
-                '''
-                determine if early stop training (whether f-score increased, before is if valid error decreased)
-                '''
-                valid_performance = np.average(valid_history_losses[-1]['f_score_exact'])
-                is_best_performance = valid_performance > best_performance
-                best_performance = max(valid_performance, best_performance)
+        valid_performance = np.average(valid_history_losses[-1]['f_score_exact'])
+        is_best_performance = valid_performance > best_performance
+        best_performance = max(valid_performance, best_performance)
 
-                # only store the checkpoints that make better validation performances
-                if is_best_performance:
-                    # Save the checkpoint
-                    logging.info('Saving checkpoint to: %s' % os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '%s.epoch=%d.model.pt' % (config['general']['exp'], epoch)))
-                    model.save_model_to_path(os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '%s.epoch=%d.model.pt' % (config['general']['exp'], epoch)))
-                logging.info('*' * 50)
+        # only store the checkpoints that make better validation performances
+        if is_best_performance:
+            # Save the checkpoint
+            logging.info('Saving checkpoint to: %s' % os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '%s.epoch=%d.model.pt' % (config['general']['exp'], epoch)))
+            model.save_model_to_path(os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '%s.epoch=%d.model.pt' % (config['general']['exp'], epoch)))
+        logging.info('*' * 50)
 
 
 def load_data_vocab(config, load_train=True):
