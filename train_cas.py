@@ -219,16 +219,14 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
     best_performance = 0.0
 
     train_losses = []
-    total_batch = -1
     replay_memory = ReplayMemory(config['model']['orthogonal_regularization']['replay_buffer_capacity'])
 
     for epoch in range(config['training']['epochs']):
-
         progbar = Progbar(logger=logging, title='Training', target=len(train_data_loader), batch_size=train_data_loader.batch_size, total_examples=len(train_data_loader.dataset.examples))
 
         for batch_i, batch in enumerate(tqdm(train_data_loader)):
+            print("Training @ Epoch=%d" % (epoch))
             model.train()
-            total_batch += 1
             one2seq_batch, _ = batch
             report_loss = []
 
@@ -245,13 +243,12 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
             # Validate and save checkpoint at end of epoch
             if (batch_i == len(train_data_loader) - 1):
                 logging.info('*' * 50)
-                logging.info('Run validing and testing @Epoch=%d,#(Total batch)=%d' % (
-                    epoch, total_batch))
-                valid_score_dict = evaluate_beam_search(generator, valid_data_loader, config, word2id, id2word, title='Validating, epoch=%d, batch=%d, total_batch=%d' % (
-                    epoch, batch_i, total_batch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                logging.info('Run validing and testing @Epoch=%d' % (epoch))
+                print("Validation @ Epoch=%d" % (epoch))
+                valid_score_dict = evaluate_beam_search(generator, valid_data_loader, config, word2id, id2word, title='Validating, epoch=%d' % (epoch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d' % (epoch))
                 logging.info("NOW TEST...")
-                test_score_dict = evaluate_beam_search(generator, test_data_loader, config, word2id, id2word, title='Testing, epoch=%d, batch=%d, total_batch=%d' % (
-                    epoch, batch_i, total_batch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d_batch%d_total_batch%d' % (epoch, batch_i, total_batch))
+                print("Test @ Epoch=%d" % (epoch))
+                test_score_dict = evaluate_beam_search(generator, test_data_loader, config, word2id, id2word, title='Testing, epoch=%d' % (epoch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d' % (epoch))
 
                 train_ml_history_losses.append(copy.copy(train_losses))
                 train_losses = []
