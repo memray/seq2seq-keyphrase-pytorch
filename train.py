@@ -7,6 +7,7 @@ import os
 import sys
 import argparse
 import yaml
+from os.path import join as pjoin
 
 import logging
 import numpy as np
@@ -337,6 +338,18 @@ def main():
     with open("config.yaml") as reader:
         config = yaml.safe_load(reader)
     print(config)
+    if config['general']['philly']:
+        output_dir = os.getenv('PT_OUTPUT_DIR', '/tmp')
+        data_dir = os.getenv('PT_DATA_DIR')
+
+        config['evaluate']['log_path'] = pjoin(output_dir, config['evaluate']['log_path'])
+        config['checkpoint']['checkpoint_path'] = pjoin(output_dir, config['checkpoint']['checkpoint_path'])
+        
+        config['general']['data_path'] = pjoin(data_dir, config['general']['data_path'])
+        config['general']['vocab_path'] = pjoin(data_dir, config['general']['vocab_path'])
+    else:
+        pass
+
     if not os.path.exists(config['evaluate']['log_path']):
         os.mkdir(config['evaluate']['log_path'])
     if not os.path.exists(config['checkpoint']['checkpoint_path']):

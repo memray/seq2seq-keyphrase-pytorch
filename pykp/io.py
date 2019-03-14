@@ -258,7 +258,7 @@ def copyseq_tokenize(text):
     return tokens
 
 
-def tokenize_filter_data(src_trgs_pairs, tokenize, config, valid_check=False):
+def tokenize_filter_data(src_trgs_pairs, tokenize, config, valid_check=False, verbose=False):
     '''
     tokenize and truncate data, filter examples that exceed the length limit
     :param src_trgs_pairs:
@@ -303,9 +303,10 @@ def tokenize_filter_data(src_trgs_pairs, tokenize, config, valid_check=False):
             trg_tokens = tokenize(trg)
 
             if len(puncts) > 0:
-                print('-' * 50)
-                print('Find punctuations in keyword: %s' % trg)
-                print('- tokens: %s' % str(trg_tokens))
+                if verbose:
+                    print('-' * 50)
+                    print('Find punctuations in keyword: %s' % trg)
+                    print('- tokens: %s' % str(trg_tokens))
                 continue
 
             # FILTER 3.2: if length of trg exceeds limit, discard
@@ -325,27 +326,29 @@ def tokenize_filter_data(src_trgs_pairs, tokenize, config, valid_check=False):
                     filtered_by_heuristic_rule = True
 
             if valid_check and (trg_filter_flag or filtered_by_heuristic_rule):
-                print('*' * 50)
-                if filtered_by_heuristic_rule:
-                    print('INVALID by heuristic_rule')
-                else:
-                    print('VALID by heuristic_rule')
-                print('length of src/trg exceeds limit: len(src)=%d, len(trg)=%d' % (len(src_tokens), len(trg_tokens)))
-                print('src: %s' % str(src))
-                print('trg: %s' % str(trg))
-                print('*' * 50)
+                if verbose:
+                    print('*' * 50)
+                    if filtered_by_heuristic_rule:
+                        print('INVALID by heuristic_rule')
+                    else:
+                        print('VALID by heuristic_rule')
+                    print('length of src/trg exceeds limit: len(src)=%d, len(trg)=%d' % (len(src_tokens), len(trg_tokens)))
+                    print('src: %s' % str(src))
+                    print('trg: %s' % str(trg))
+                    print('*' * 50)
                 continue
 
             # FILTER 5: filter keywords like primary 75v05;secondary 76m10;65n30
             if (len(trg_tokens) > 0 and re.match(r'\d\d[a-zA-Z\-]\d\d', trg_tokens[0].strip())) or (len(trg_tokens) > 1 and re.match(r'\d\d\w\d\d', trg_tokens[1].strip())):
-                print('Find dirty keyword of type \d\d[a-z]\d\d: %s' % trg)
+                if verbose:
+                    print('Find dirty keyword of type \d\d[a-z]\d\d: %s' % trg)
                 continue
 
             trgs_tokens.append(trg_tokens)
 
         return_pairs.append((src_tokens, trgs_tokens))
 
-        if idx % 2000 == 0:
+        if verbose and idx % 2000 == 0:
             print('-------------------- %s: %d ---------------------------' % (inspect.getframeinfo(inspect.currentframe()).function, idx))
             print(src)
             print(src_tokens)

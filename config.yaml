@@ -1,4 +1,5 @@
 general:
+  philly: False
   random_seed: 42
   test_200: False
   dataset: "kp20k"
