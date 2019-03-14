@@ -221,8 +221,9 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
 
         print('*' * 20)
         print("Training @ Epoch=%d" % (epoch))
-        disable_tqdm = True if config['general']['philly'] else False
-        for batch_i, batch in enumerate(tqdm(train_data_loader, disable=disable_tqdm)):
+
+        enumerate_this = train_data_loader if config['general']['philly'] else tqdm(train_data_loader)
+        for batch_i, batch in enumerate(enumerate_this):
             model.train()
             report_loss = []
 
