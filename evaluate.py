@@ -176,7 +176,8 @@ def evaluate_beam_search(generator, data_loader, config, word2id, id2word, title
     example_idx = 0
     score_dict = {}
 
-    for i, batch in enumerate(tqdm(data_loader)):
+    disable_tqdm = True if config['general']['philly'] else False
+    for i, batch in enumerate(tqdm(data_loader, disable=disable_tqdm)):
 
         src_list, src_len, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = batch
 
