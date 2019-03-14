@@ -222,11 +222,10 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
         print("Training @ Epoch=%d" % (epoch))
         for batch_i, batch in enumerate(tqdm(train_data_loader)):
             model.train()
-            one2seq_batch, _ = batch
             report_loss = []
 
             # Training
-            loss_ml, nll_loss, penalty, te_loss = train_batch(one2seq_batch, model, optimizer, criterion, replay_memory, config, word2id)
+            loss_ml, nll_loss, penalty, te_loss = train_batch(batch, model, optimizer, criterion, replay_memory, config, word2id)
             train_losses.append(loss_ml)
             report_loss.append(('train_ml_loss', loss_ml))
             report_loss.append(('PPL', loss_ml))
@@ -260,12 +259,12 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
         # only store the checkpoints that make better validation performances
         if is_best_performance:
             # Save the checkpoint
-            logging.info('Saving checkpoint to: %s' % os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '%s.epoch=%d.model.pt' % (config['general']['exp'], epoch)))
-            model.save_model_to_path(os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '%s.epoch=%d.model.pt' % (config['general']['exp'], epoch)))
+            logging.info('Saving checkpoint to: %s' % os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '%s.epoch=%d.model.pt' % (config['general']['dataset'], epoch)))
+            model.save_model_to_path(os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '%s.epoch=%d.model.pt' % (config['general']['dataset'], epoch)))
         logging.info('*' * 50)
 
 
-def load_data_vocab(config, load_train=True):
+def load_data_and_vocab(config, load_train=True):
 
     logging.info("Loading vocab from disk: %s" % (config['general']['vocab_path']))
     word2id, id2word, _ = torch.load(config['general']['vocab_path'], 'wb')
@@ -274,41 +273,39 @@ def load_data_vocab(config, load_train=True):
         tmp.append(id2word[i])
     id2word = tmp
 
-    # one2one data loader
     logging.info("Loading train and validate data from '%s'" % config['general']['data_path'])
     logging.info('======================  Dataset  =========================')
-    # one2many data loader
+    # data loader
     if load_train:
-        train_one2seq = torch.load(config['general']['data_path'] + '.train.one2many.pt', 'wb')
+        train_dump = torch.load(config['general']['data_path'] + '.train_dump.pt', 'wb')
 
         if config['evaluate']['test_2k']:
-            train_one2seq = train_one2seq[:200]
+            train_dump = train_dump[:200]
 
-        train_one2seq_dataset = KeyphraseDataset(train_one2seq, word2id=word2id, id2word=id2word, type='one2seq', ordering=config['preproc']['keyphrase_ordering'])
-        train_one2seq_loader = KeyphraseDataLoader(dataset=train_one2seq_dataset, collate_fn=train_one2seq_dataset.collate_fn_one2seq,
-                                                   num_workers=4, max_batch_example=1024, max_batch_pair=config['training']['batch_size'], pin_memory=True, shuffle=True)
-        logging.info('#(train data size: #(one2many pair)=%d, #(one2one pair)=%d, #(batch)=%d, #(average examples/batch)=%.3f' % (len(train_one2seq_loader.dataset),
-                                                                                                                                  train_one2seq_loader.one2one_number(), len(train_one2seq_loader), train_one2seq_loader.one2one_number() / len(train_one2seq_loader)))
+        train_dataset = KeyphraseDataset(train_dump, word2id=word2id, id2word=id2word, ordering=config['preproc']['keyphrase_ordering'])
+        train_loader = KeyphraseDataLoader(dataset=train_dataset, collate_fn=train_dataset.collate_fn,
+                                           num_workers=4, max_batch_example=1024, max_batch_pair=config['training']['batch_size'], pin_memory=True, shuffle=True)
+        logging.info('train data size: %d' % (len(train_loader.dataset)))
     else:
-        train_one2seq_loader = None
+        train_loader = None
 
-    valid_one2seq = torch.load(config['general']['data_path'] + '.valid.one2many.pt', 'wb')
-    test_one2seq = torch.load(config['general']['data_path'] + '.test.one2many.pt', 'wb')
+    valid_dump = torch.load(config['general']['data_path'] + '.valid_dump.pt', 'wb')
+    test_dump = torch.load(config['general']['data_path'] + '.test_dump.pt', 'wb')
 
     if config['evaluate']['test_2k']:
-        valid_one2seq = valid_one2seq[:200]
-        test_one2seq = test_one2seq[:200]
+        valid_dump = valid_dump[:200]
+        test_dump = test_dump[:200]
 
-    valid_one2seq_dataset = KeyphraseDataset(valid_one2seq, word2id=word2id, id2word=id2word, type='one2seq', include_original=True, ordering=config['preproc']['keyphrase_ordering'])
-    test_one2seq_dataset = KeyphraseDataset(test_one2seq, word2id=word2id, id2word=id2word, type='one2seq', include_original=True, ordering=config['preproc']['keyphrase_ordering'])
+    valid_dataset = KeyphraseDataset(valid_dump, word2id=word2id, id2word=id2word, include_original=True, ordering=config['preproc']['keyphrase_ordering'])
+    test_dataset = KeyphraseDataset(test_dump, word2id=word2id, id2word=id2word, include_original=True, ordering=config['preproc']['keyphrase_ordering'])
 
-    valid_one2seq_loader = KeyphraseDataLoader(dataset=valid_one2seq_dataset, collate_fn=valid_one2seq_dataset.collate_fn_one2seq, num_workers=4,
-                                               max_batch_example=config['evaluate']['batch_size'], max_batch_pair=config['evaluate']['batch_size'], pin_memory=True, shuffle=False)
-    test_one2seq_loader = KeyphraseDataLoader(dataset=test_one2seq_dataset, collate_fn=test_one2seq_dataset.collate_fn_one2seq, num_workers=4,
-                                              max_batch_example=config['evaluate']['batch_size'], max_batch_pair=config['evaluate']['batch_size'], pin_memory=True, shuffle=False)
+    valid_loader = KeyphraseDataLoader(dataset=valid_dataset, collate_fn=valid_dataset.collate_fn, num_workers=4,
+                                       max_batch_example=config['evaluate']['batch_size'], max_batch_pair=config['evaluate']['batch_size'], pin_memory=True, shuffle=False)
+    test_loader = KeyphraseDataLoader(dataset=test_dataset, collate_fn=test_dataset.collate_fn, num_workers=4,
+                                      max_batch_example=config['evaluate']['batch_size'], max_batch_pair=config['evaluate']['batch_size'], pin_memory=True, shuffle=False)
 
     logging.info('#(vocab)=%d' % len(id2word))
-    return train_one2seq_loader, valid_one2seq_loader, test_one2seq_loader, word2id, id2word
+    return train_loader, valid_loader, test_loader, word2id, id2word
 
 
 def init_optimizer_criterion(model, config, pad_word):
@@ -347,7 +344,7 @@ def main():
 
     logging = logger.init_logging(logger_name=None, log_file=config['evaluate']['log_path'] + '/output.log', stdout=False)
     try:
-        train_data_loader, valid_data_loader, test_data_loader, word2id, id2word = load_data_vocab(config)
+        train_data_loader, valid_data_loader, test_data_loader, word2id, id2word = load_data_and_vocab(config)
         model = init_model(config, word2id, id2word)
         optimizer, criterion = init_optimizer_criterion(model, config, pad_word=word2id[pykp.io.PAD_WORD])
         train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, config, word2id, id2word)

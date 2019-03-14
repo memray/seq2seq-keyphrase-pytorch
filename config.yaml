@@ -1,6 +1,6 @@
 general:
   random_seed: 42
-  exp: "kp20k"
+  dataset: "kp20k"
   data_path: "data/kp20k/kp20k"
   vocab_path: "data/kp20k/kp20k.vocab.pt"
 
@@ -11,9 +11,9 @@ preproc:
   max_src_seq_length: 300
   min_src_seq_length: 20
   max_trg_seq_length: 8
-  min_trg_seq_length: None
-  src_seq_length_trunc: None
-  trg_seq_length_trunc: None
+  min_trg_seq_length:  # None
+  src_seq_length_trunc:  # None
+  trg_seq_length_trunc:  # None
   shuffle: False
   lower: True
   keyphrase_ordering: "source"  # origin, source, alphabet, shuffle

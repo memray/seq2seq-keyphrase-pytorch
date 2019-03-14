@@ -1,50 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import argparse
-
+import yaml
 import torch
-
-import config
 import pykp.io
 
-parser = argparse.ArgumentParser(
-    description='preprocess.py',
-    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-# **Preprocess Options**
-parser.add_argument('-config', help="Read options from this file")
+with open("config.yaml") as reader:
+    config = yaml.safe_load(reader)
 
-
-parser.add_argument('-dataset', required=True,
-                    help="Name of dataset")
-parser.add_argument('-save_data', required=True,
-                    help="Output file for the prepared data")
-
-'''
-parser.add_argument('-train_path', required=True,
-                    help="Path to the training data")
-parser.add_argument('-valid_path', required=True,
-                    help="Path to the validation data")
-parser.add_argument('-test_path', required=True,
-                    help="Path to the test data")
-'''
-
-parser.add_argument('-src_vocab',
-                    help="Path to an existing source vocabulary")
-parser.add_argument('-features_vocabs_prefix', type=str, default='',
-                    help="Path prefix to existing features vocabularies")
-parser.add_argument('-seed', type=int, default=9527,
-                    help="Random seed")
-parser.add_argument('-report_every', type=int, default=100000,
-                    help="Report status every this many sentences")
-
-config.preprocess_opts(parser)
-opt = parser.parse_args()
-opt.train_path = 'data/%s/%s_training.json'     % (opt.dataset, opt.dataset)
-opt.valid_path = 'data/%s/%s_validation.json'   % (opt.dataset, opt.dataset)
-opt.test_path  = 'data/%s/%s_testing.json'      % (opt.dataset, opt.dataset)
-opt.save_data  = 'data/%s/%s' % (opt.save_data, opt.dataset)
+config['train_path'] = 'data/%s/%s_training.json' % (config['general']['dataset'], config['general']['dataset'])
+config['valid_path'] = 'data/%s/%s_validation.json' % (config['general']['dataset'], config['general']['dataset'])
+config['test_path'] = 'data/%s/%s_testing.json' % (config['general']['dataset'], config['general']['dataset'])
+config['save_data']  = 'data/%s/%s' % (config['general']['dataset'], config['general']['dataset'])
 
 def main():
     '''
@@ -52,85 +20,60 @@ def main():
     '''
     # load keyphrase data from file, each data example is a pair of (src_str, [kp_1, kp_2 ... kp_m])
 
-    if opt.dataset == 'kp20k':
+    if config['general']['dataset'] == 'kp20k':
         src_fields = ['title', 'abstract']
         trg_fields = ['keyword']
-    elif opt.dataset == 'stackexchange':
+    elif config['general']['dataset'] == 'stackexchange':
         src_fields = ['title', 'question']
         trg_fields = ['tags']
-    elif opt.dataset == 'twacg':
+    elif config['general']['dataset'] == 'twacg':
         src_fields = ['title', 'observation']
         trg_fields = ['admissible_commands']
     else:
-        raise Exception('Unsupported dataset name=%s' % opt.dataset)
+        raise Exception('Unsupported dataset name=%s' % config['general']['dataset'])
 
     print("Loading training data...")
-    src_trgs_pairs = pykp.io.load_json_data(opt.train_path, name=opt.dataset, src_fields=src_fields, trg_fields=trg_fields, trg_delimiter=';')
+    src_trgs_pairs = pykp.io.load_json_data(config['train_path'], name=config['general']['dataset'], src_fields=src_fields, trg_fields=trg_fields, trg_delimiter=';')
 
     print("Processing training data...")
-    tokenized_train_pairs = pykp.io.tokenize_filter_data(
-        src_trgs_pairs,
-        tokenize = pykp.io.copyseq_tokenize, opt=opt, valid_check=True)
+    tokenized_train_pairs = pykp.io.tokenize_filter_data(src_trgs_pairs, tokenize=pykp.io.copyseq_tokenize, config=config, valid_check=True)
 
     print("Building Vocab...")
-    word2id, id2word, vocab = pykp.io.build_vocab(tokenized_train_pairs, opt)
-
-    print('Vocab size = %d' % len(vocab))
+    word2id, id2word = pykp.io.build_vocab(tokenized_train_pairs)
+    print('Vocab size = %d' % len(id2word))
 
     print("Building training...")
-    train_one2one = pykp.io.build_dataset(tokenized_train_pairs, word2id, id2word, opt, mode='one2one')
-    print('#pairs of train_one2one = %d' % len(train_one2one))
-    print("Dumping train one2one to disk: %s" % (opt.save_data + '.train.one2one.pt'))
-    torch.save(train_one2one, open(opt.save_data + '.train.one2one.pt', 'wb'))
-    len_train_one2one = len(train_one2one)
-    train_one2one = None
-
-    train_one2many = pykp.io.build_dataset(tokenized_train_pairs, word2id, id2word, opt, mode='one2many')
-    print('#pairs of train_one2many = %d' % len(train_one2many))
-    print("Dumping train one2many to disk: %s" % (opt.save_data + '.train.one2many.pt'))
-    torch.save(train_one2many, open(opt.save_data + '.train.one2many.pt', 'wb'))
-    len_train_one2many = len(train_one2many)
-    train_one2many = None
+    train_dump = pykp.io.build_dataset(tokenized_train_pairs, word2id, id2word, config)
+    print("Dumping train dump to disk: %s" % (config['save_data'] + '.train_dump.pt'))
+    torch.save(train_dump, open(config['save_data'] + '.train_dump.pt', 'wb'))
+    len_train_dump = len(train_dump)
+    train_dump = None
 
     '''
     Load and process validation data
     '''
     print("Loading validation data...")
-    src_trgs_pairs = pykp.io.load_json_data(opt.valid_path, name=opt.dataset, src_fields=src_fields, trg_fields=trg_fields, trg_delimiter=';')
+    src_trgs_pairs = pykp.io.load_json_data(config['valid_path'], name=config['general']['dataset'], src_fields=src_fields, trg_fields=trg_fields, trg_delimiter=';')
 
     print("Processing validation data...")
-    tokenized_valid_pairs = pykp.io.tokenize_filter_data(
-        src_trgs_pairs,
-        tokenize=pykp.io.copyseq_tokenize, opt=opt, valid_check=True)
-
+    tokenized_valid_pairs = pykp.io.tokenize_filter_data(src_trgs_pairs, tokenize=pykp.io.copyseq_tokenize, config=config, valid_check=True)
     print("Building validation...")
-    valid_one2one = pykp.io.build_dataset(
-        tokenized_valid_pairs, word2id, id2word, opt, mode='one2one', include_original=True)
-    valid_one2many = pykp.io.build_dataset(
-        tokenized_valid_pairs, word2id, id2word, opt, mode='one2many', include_original=True)
+    valid_dump = pykp.io.build_dataset(tokenized_valid_pairs, word2id, id2word, config, include_original=True)
 
     '''
     Load and process test data
     '''
     print("Loading test data...")
-    src_trgs_pairs = pykp.io.load_json_data(opt.test_path, name=opt.dataset, src_fields=src_fields, trg_fields=trg_fields, trg_delimiter=';')
+    src_trgs_pairs = pykp.io.load_json_data(config['test_path'], name=config['general']['dataset'], src_fields=src_fields, trg_fields=trg_fields, trg_delimiter=';')
 
     print("Processing test data...")
-    tokenized_test_pairs = pykp.io.tokenize_filter_data(
-        src_trgs_pairs,
-        tokenize=pykp.io.copyseq_tokenize, opt=opt, valid_check=True)
+    tokenized_test_pairs = pykp.io.tokenize_filter_data(src_trgs_pairs, tokenize=pykp.io.copyseq_tokenize, config=config, valid_check=True)
     print("Building testing...")
-    test_one2one = pykp.io.build_dataset(
-        tokenized_test_pairs, word2id, id2word, opt, mode='one2one', include_original=True)
-    test_one2many = pykp.io.build_dataset(
-        tokenized_test_pairs, word2id, id2word, opt, mode='one2many', include_original=True)
+    test_dump = pykp.io.build_dataset(tokenized_test_pairs, word2id, id2word, config, include_original=True)
 
-    print('#pairs of train_one2one  = %d' % len_train_one2one)
-    print('#pairs of train_one2many = %d' % len_train_one2many)
-    print('#pairs of valid_one2one  = %d' % len(valid_one2one))
-    print('#pairs of valid_one2many = %d' % len(valid_one2many))
-    print('#pairs of test_one2one   = %d' % len(test_one2one))
-    print('#pairs of test_one2many  = %d' % len(test_one2many))
+    print('#pairs of train_dump = %d' % len_train_dump)
+    print('#pairs of valid_dump = %d' % len(valid_dump))
+    print('#pairs of test_dump  = %d' % len(test_dump))
 
     print("***************** Source Length Statistics ******************")
     len_counter = {}
@@ -157,15 +100,12 @@ def main():
     '''
     dump to disk
     '''
-    print("Dumping dict to disk: %s" % opt.save_data + '.vocab.pt')
-    torch.save([word2id, id2word, vocab],
-               open(opt.save_data + '.vocab.pt', 'wb'))
-    print("Dumping valid to disk: %s" % (opt.save_data + '.valid.pt'))
-    torch.save(valid_one2one, open(opt.save_data + '.valid.one2one.pt', 'wb'))
-    torch.save(valid_one2many, open(opt.save_data + '.valid.one2many.pt', 'wb'))
-    print("Dumping test to disk: %s" % (opt.save_data + '.valid.pt'))
-    torch.save(test_one2one, open(opt.save_data + '.test.one2one.pt', 'wb'))
-    torch.save(test_one2many, open(opt.save_data + '.test.one2many.pt', 'wb'))
+    print("Dumping dict to disk: %s" % config['save_data'] + '.vocab.pt')
+    torch.save([word2id, id2word], open(config['save_data'] + '.vocab.pt', 'wb'))
+    print("Dumping valid to disk: %s" % (config['save_data'] + '.valid_dump.pt'))
+    torch.save(valid_dump, open(config['save_data'] + '.valid_dump.pt', 'wb'))
+    print("Dumping test to disk: %s" % (config['save_data'] + '.test_dump.pt'))
+    torch.save(test_dump, open(config['save_data'] + '.test_dump.pt', 'wb'))
     print("Dumping done!")
 
 if __name__ == "__main__":

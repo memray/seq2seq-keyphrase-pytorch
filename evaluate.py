@@ -178,8 +178,7 @@ def evaluate_beam_search(generator, data_loader, config, word2id, id2word, title
 
     for i, batch in enumerate(tqdm(data_loader)):
 
-        one2many_batch, one2one_batch = batch
-        src_list, src_len, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = one2many_batch
+        src_list, src_len, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = batch
 
         if torch.cuda.is_available():
             src_list = src_list.cuda()

@@ -169,11 +169,8 @@ class DataLoaderIter(object):
             self.rcvd_idx = 0
             self.reorder_dict = {}
 
-            self.workers = [
-                multiprocessing.Process(
-                    target=_worker_loop,
-                    args=(self.dataset, self.index_queue, self.data_queue, self.collate_fn))
-                for _ in range(self.num_workers)]
+            self.workers = [multiprocessing.Process(target=_worker_loop, args=(self.dataset, self.index_queue, self.data_queue, self.collate_fn))
+                            for _ in range(self.num_workers)]
 
             for w in self.workers:
                 w.daemon = True  # ensure that the worker exits on process exit
@@ -182,9 +179,7 @@ class DataLoaderIter(object):
             if self.pin_memory:
                 in_data = self.data_queue
                 self.data_queue = queue.Queue()
-                self.pin_thread = threading.Thread(
-                    target=_pin_memory_loop,
-                    args=(in_data, self.data_queue, self.done_event))
+                self.pin_thread = threading.Thread(target=_pin_memory_loop, args=(in_data, self.data_queue, self.done_event))
                 self.pin_thread.daemon = True
                 self.pin_thread.start()
 
@@ -328,8 +323,9 @@ class KeyphraseDataLoader(object):
     def __len__(self):
         return len(self.batch_sampler)
 
-    def one2one_number(self):
+    def target_number(self):
         return sum(self.num_trgs)
+
 
 class One2ManyBatchSampler(object):
     """Wraps another sampler to yield a mini-batch of indices.
@@ -370,11 +366,9 @@ class One2ManyBatchSampler(object):
             elif len(batch) == 0: # if the batch_size is very small, return a batch of only one data sample
                 batch.append(idx)
                 batches.append(batch)
-                # print('batch %d: #(src)=%d, #(trg)=%d \t\t %s' % (len(batches), len(batch), number_trgs, str(batch)))
                 batch = []
             else:
                 batches.append(batch)
-                # print('batch %d: #(src)=%d, #(trg)=%d \t\t %s' % (len(batches), len(batch), number_trgs, str(batch)))
                 batch = []
                 batch.append(idx)
 
