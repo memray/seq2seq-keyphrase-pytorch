@@ -1,5 +1,6 @@
 general:
   random_seed: 42
+  test_200: False
   dataset: "kp20k"
   data_path: "data/kp20k/kp20k"
   vocab_path: "data/kp20k/kp20k.vocab.pt"
@@ -28,7 +29,6 @@ training:
 
 evaluate:
   log_path: "logs"
-  test_2k: True
   eval_method: "greedy"
   max_sent_length: 20
   beam_size: 5

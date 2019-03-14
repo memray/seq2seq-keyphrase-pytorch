@@ -259,8 +259,8 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
         # only store the checkpoints that make better validation performances
         if is_best_performance:
             # Save the checkpoint
-            logging.info('Saving checkpoint to: %s' % os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '%s.epoch=%d.model.pt' % (config['general']['dataset'], epoch)))
-            model.save_model_to_path(os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '%s.epoch=%d.model.pt' % (config['general']['dataset'], epoch)))
+            logging.info('Saving checkpoint to: %s' % os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '_%s.epoch=%d.model.pt' % (config['general']['dataset'], epoch)))
+            model.save_model_to_path(os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '_%s.epoch=%d.model.pt' % (config['general']['dataset'], epoch)))
         logging.info('*' * 50)
 
 
@@ -279,7 +279,7 @@ def load_data_and_vocab(config, load_train=True):
     if load_train:
         train_dump = torch.load(config['general']['data_path'] + '.train_dump.pt', 'wb')
 
-        if config['evaluate']['test_2k']:
+        if config['general']['test_200']:
             train_dump = train_dump[:200]
 
         train_dataset = KeyphraseDataset(train_dump, word2id=word2id, id2word=id2word, ordering=config['preproc']['keyphrase_ordering'])
@@ -292,7 +292,7 @@ def load_data_and_vocab(config, load_train=True):
     valid_dump = torch.load(config['general']['data_path'] + '.valid_dump.pt', 'wb')
     test_dump = torch.load(config['general']['data_path'] + '.test_dump.pt', 'wb')
 
-    if config['evaluate']['test_2k']:
+    if config['general']['test_200']:
         valid_dump = valid_dump[:200]
         test_dump = test_dump[:200]
 
@@ -344,6 +344,11 @@ def main():
 
     logging = logger.init_logging(logger_name=None, log_file=config['evaluate']['log_path'] + '/output.log', stdout=False)
     try:
+        seed = config['general']['random_seed']
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
         train_data_loader, valid_data_loader, test_data_loader, word2id, id2word = load_data_and_vocab(config)
         model = init_model(config, word2id, id2word)
         optimizer, criterion = init_optimizer_criterion(model, config, pad_word=word2id[pykp.io.PAD_WORD])
