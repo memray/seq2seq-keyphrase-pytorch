@@ -90,7 +90,6 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         self.read_config()
         self._def_layers()
-        # self.init_weights()
 
     def read_config(self):
         # model config
@@ -116,35 +115,25 @@ class Seq2SeqLSTMAttention(nn.Module):
                                num_layers=self.nlayers_src,
                                bidirectional=True,
                                batch_first=True,
-                               dropout=self.dropout)
+                               dropout=self.dropout if self.nlayers_src > 1 else 0)
 
         self.decoder = nn.LSTM(input_size=self.embedding_size if not self.enable_target_encoder else self.embedding_size + self.target_encoding_mlp_hidden_dim[0],
                                hidden_size=self.trg_hidden_dim,
                                num_layers=self.nlayers_trg,
                                bidirectional=False,
                                batch_first=False,
-                               dropout=self.dropout)
+                               dropout=self.dropout if self.nlayers_trg > 1 else 0)
 
         self.target_encoder = UniLSTM(nemb=self.embedding_size, nhid=self.target_encoder_dim)
-
         self.target_encoding_merger = Concat()
-        self.target_encoding_mlp = MultilayerPerceptron(input_dim=self.target_encoder_dim,
-                                                        hidden_dim=self.target_encoding_mlp_hidden_dim)
-        self.bilinear_layer = nn.Bilinear(self.src_hidden_dim * 2,
-                                          self.target_encoding_mlp_hidden_dim[-1], 1)
-
+        self.target_encoding_mlp = MultilayerPerceptron(input_dim=self.target_encoder_dim, hidden_dim=self.target_encoding_mlp_hidden_dim)
+        self.bilinear_layer = nn.Bilinear(self.src_hidden_dim * 2, self.target_encoding_mlp_hidden_dim[-1], 1)
         self.attention_layer = Attention(self.src_hidden_dim * 2, self.trg_hidden_dim)
 
         if self.pointer_softmax_hidden_dim > 0:
-            self.pointer_softmax_context = TimeDistributedDense(mlp=nn.Linear(
-                self.src_hidden_dim * 2, self.pointer_softmax_hidden_dim
-            ))
-            self.pointer_softmax_target = TimeDistributedDense(mlp=nn.Linear(
-                self.trg_hidden_dim, self.pointer_softmax_hidden_dim
-            ))
-            self.pointer_softmax_squash = TimeDistributedDense(mlp=nn.Linear(
-                self.pointer_softmax_hidden_dim, 1
-            ))
+            self.pointer_softmax_context = TimeDistributedDense(mlp=nn.Linear(self.src_hidden_dim * 2, self.pointer_softmax_hidden_dim))
+            self.pointer_softmax_target = TimeDistributedDense(mlp=nn.Linear(self.trg_hidden_dim, self.pointer_softmax_hidden_dim))
+            self.pointer_softmax_squash = TimeDistributedDense(mlp=nn.Linear(self.pointer_softmax_hidden_dim, 1))
 
         self.encoder2decoder_hidden = nn.Linear(self.src_hidden_dim * 2, self.trg_hidden_dim)
         self.encoder2decoder_cell = nn.Linear(self.src_hidden_dim * 2, self.trg_hidden_dim)
@@ -171,30 +160,11 @@ class Seq2SeqLSTMAttention(nn.Module):
         torch.save(self.state_dict(), save_to)
         print("Saved checkpoint to %s..." % (save_to))
 
-    def init_weights(self):
-        """Initialize weights."""
-        initrange = 0.1
-        self.embedding.weight.data.uniform_(-initrange, initrange)
-        self.encoder2decoder_hidden.bias.data.fill_(0)
-        self.encoder2decoder_cell.bias.data.fill_(0)
-        self.decoder2vocab.bias.data.fill_(0)
-        if self.pointer_softmax_hidden_dim > 0:
-            self.pointer_softmax_context.mlp.weight.data.uniform_(-initrange, initrange)
-            self.pointer_softmax_target.mlp.weight.data.uniform_(-initrange, initrange)
-            self.pointer_softmax_squash.mlp.weight.data.uniform_(-initrange, initrange)
-
     def init_encoder_state(self, input):
         """Get cell states and hidden states."""
         batch_size = input.size(0)
-        h0_encoder = Variable(torch.zeros(self.encoder.num_layers * 2,
-                                          batch_size,
-                                          self.src_hidden_dim),
-                              requires_grad=False)
-
-        c0_encoder = Variable(torch.zeros(self.encoder.num_layers * 2,
-                                          batch_size,
-                                          self.src_hidden_dim),
-                              requires_grad=False)
+        h0_encoder = Variable(torch.zeros(self.encoder.num_layers * 2, batch_size, self.src_hidden_dim), requires_grad=False)
+        c0_encoder = Variable(torch.zeros(self.encoder.num_layers * 2, batch_size, self.src_hidden_dim), requires_grad=False)
         if torch.cuda.is_available():
             h0_encoder, c0_encoder = h0_encoder.cuda(), c0_encoder.cuda()
         return h0_encoder, c0_encoder
@@ -208,9 +178,9 @@ class Seq2SeqLSTMAttention(nn.Module):
         return h0_target_encoder, c0_target_encoder
 
     def init_decoder_state(self, enc_h, enc_c):
-        # prepare the init hidden vector for decoder, (batch_size, num_layers *
-        # num_directions * enc_hidden_dim) -> (num_layers * num_directions,
-        # batch_size, dec_hidden_dim)
+        # prepare the init hidden vector for decoder, 
+        # inputs are (batch_size, num_layers * 2 * enc_hidden_dim)
+        # outputs are (1 <num layers>, batch_size, dec_hidden_dim)
         decoder_init_hidden = nn.Tanh()(self.encoder2decoder_hidden(enc_h)).unsqueeze(0)
         decoder_init_cell = nn.Tanh()(self.encoder2decoder_cell(enc_c)).unsqueeze(0)
         return decoder_init_hidden, decoder_init_cell
@@ -222,12 +192,11 @@ class Seq2SeqLSTMAttention(nn.Module):
         if not trg_mask:
             trg_mask = self.get_mask(input_trg)  # same size as input_trg
         src_h, (src_h_t, src_c_t) = self.encode(input_src, input_src_len)
-
-        decoder_probs, decoder_hiddens, attn_weights, trg_encoding_h = self.decode(trg_inputs=input_trg, src_map=input_src_ext,
-                                                                                   oov_list=oov_lists, enc_context=src_h,
-                                                                                   enc_hidden=(src_h_t, src_c_t),
-                                                                                   trg_mask=trg_mask, ctx_mask=ctx_mask)
-        return decoder_probs, decoder_hiddens, attn_weights, src_h_t, trg_encoding_h
+        decoder_probs, decoder_hiddens, trg_encoding_h = self.decode(trg_inputs=input_trg, src_map=input_src_ext,
+                                                                     oov_list=oov_lists, enc_context=src_h,
+                                                                     enc_hidden=(src_h_t, src_c_t),
+                                                                     trg_mask=trg_mask, ctx_mask=ctx_mask)
+        return decoder_probs, decoder_hiddens, src_h_t, trg_encoding_h
 
     def encode(self, input_src, input_src_len):
 
@@ -274,7 +243,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         decoder_outputs = decoder_outputs.permute(1, 0, 2)  # (batch_size, trg_len, trg_hidden_dim)
         decoder_log_probs = self.merge_copy_probs(decoder_outputs, weighted_context, decoder_logits, attn_weights, src_map, oov_list, trg_mask)
 
-        return decoder_log_probs, decoder_outputs, attn_weights, trg_enc_h
+        return decoder_log_probs, decoder_outputs, trg_enc_h
 
     def merge_copy_probs(self, decoder_hidden, context_representations, decoder_logits, copy_probs, src_map, oov_list, trg_mask):
 
@@ -322,7 +291,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         expanded_src_map = src_map.unsqueeze(1).expand(batch_size, max_length, src_len).contiguous().view(batch_size * max_length, -1)  # (batch_size, src_len) -> (batch_size * trg_len, src_len)
 
         from_vocab = masked_softmax(flattened_decoder_logits, m=oov_mask, axis=1)
-
         from_source = torch.autograd.Variable(torch.zeros(flattened_decoder_logits.size()))
         if flattened_decoder_logits.is_cuda:
             from_source = from_source.cuda()
@@ -337,7 +305,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         epsilon = torch.le(merged, 0.0).float() * 1e-8
         log_merged = torch.log(merged + epsilon) * gt_zero
         log_merged = log_merged + oov_mask2
-
         # reshape to batch first before returning (batch_size, trg_len, src_len)
         decoder_log_probs = log_merged.view(batch_size, max_length, self.vocab_size + max_oov_number)
 

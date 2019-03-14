@@ -108,8 +108,7 @@ def get_target_encoder_loss(model, source_representations, target_representation
         replay_memory.push(source_representations[b])
     if len(batch_inputs_source) == 0:
         return 0.0
-    batch_inputs_source = torch.stack(
-        batch_inputs_source, 0)  # batch x n_neg+1 x hid
+    batch_inputs_source = torch.stack(batch_inputs_source, 0)  # batch x n_neg+1 x hid
     batch_inputs_target = torch.stack(batch_inputs_target, 0)  # batch x hid
     batch_labels = np.array(batch_labels)  # batch
     batch_labels = torch.autograd.Variable(
@@ -120,10 +119,8 @@ def get_target_encoder_loss(model, source_representations, target_representation
     # 3. prediction
     batch_inputs_target = model.target_encoding_mlp(
         batch_inputs_target)[-1]  # last layer, batch x mlp_hid
-    batch_inputs_target = torch.stack(
-        [batch_inputs_target] * batch_inputs_source.size(1), 1)
-    pred = model.bilinear_layer(
-        batch_inputs_source, batch_inputs_target).squeeze(-1)  # batch x n_neg+1
+    batch_inputs_target = torch.stack([batch_inputs_target] * batch_inputs_source.size(1), 1)
+    pred = model.bilinear_layer(batch_inputs_source, batch_inputs_target).squeeze(-1)  # batch x n_neg+1
     pred = torch.nn.functional.log_softmax(pred, dim=-1)  # batch x n_neg+1
     # 4. backprop & update
     loss = criterion(pred, batch_labels)
@@ -172,9 +169,6 @@ def train_batch(_batch, model, optimizer, criterion, replay_memory, config, word
     trg_copy_target_np = copy.copy(trg_copy_target)
     trg_copy_np = copy.copy(trg)
 
-    # print("src size - ", src.size())
-    # print("target size - ", trg.size())
-
     optimizer.zero_grad()
     if torch.cuda.is_available():
         src = src.cuda()
@@ -183,7 +177,7 @@ def train_batch(_batch, model, optimizer, criterion, replay_memory, config, word
         trg_copy_target = trg_copy_target.cuda()
         src_oov = src_oov.cuda()
 
-    decoder_log_probs, decoder_outputs, _, source_representations, target_representations = model.forward(src, src_len, trg, src_oov, oov_lists)
+    decoder_log_probs, decoder_outputs, source_representations, target_representations = model.forward(src, src_len, trg, src_oov, oov_lists)
 
     te_loss = get_target_encoder_loss(model, source_representations, target_representations, trg_copy_np, replay_memory, criterion, config, word2id)
     penalties = get_orthogonal_penalty(trg_copy_target_np, decoder_outputs, config, word2id)
@@ -197,7 +191,7 @@ def train_batch(_batch, model, optimizer, criterion, replay_memory, config, word
     torch.nn.utils.clip_grad_norm_(model.parameters(), config['training']['optimizer']['clip_grad_norm'])
     optimizer.step()
 
-    return to_np(loss), decoder_log_probs, to_np(nll_loss), to_np(penalties), to_np(te_loss)
+    return to_np(loss), to_np(nll_loss), to_np(penalties), to_np(te_loss)
 
 
 def train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, config, word2id, id2word):
@@ -232,7 +226,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
             report_loss = []
 
             # Training
-            loss_ml, decoder_log_probs, nll_loss, penalty, te_loss = train_batch(one2seq_batch, model, optimizer, criterion, replay_memory, config, word2id)
+            loss_ml, nll_loss, penalty, te_loss = train_batch(one2seq_batch, model, optimizer, criterion, replay_memory, config, word2id)
             train_losses.append(loss_ml)
             report_loss.append(('train_ml_loss', loss_ml))
             report_loss.append(('PPL', loss_ml))
