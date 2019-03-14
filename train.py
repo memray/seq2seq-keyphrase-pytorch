@@ -340,7 +340,7 @@ def main():
     print(config)
     if config['general']['philly']:
         output_dir = os.getenv('PT_OUTPUT_DIR', '/tmp')
-        data_dir = os.getenv('PT_DATA_DIR')
+        data_dir = "/mnt/_default/"
 
         config['evaluate']['log_path'] = pjoin(output_dir, config['evaluate']['log_path'])
         config['checkpoint']['checkpoint_path'] = pjoin(output_dir, config['checkpoint']['checkpoint_path'])
