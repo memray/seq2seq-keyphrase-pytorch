@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Python File Template 
-"""
 import json
 import os
 import sys

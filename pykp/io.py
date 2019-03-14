@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Python File Template 
-"""
 import codecs
 import inspect
 import itertools

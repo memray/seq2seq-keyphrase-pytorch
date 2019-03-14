@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Python File Template 
-"""
 import logging
 import torch
 import torch.nn as nn

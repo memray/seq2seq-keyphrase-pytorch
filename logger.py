@@ -4,8 +4,7 @@ import sys
 
 
 def init_logging(logger_name, log_file, stdout=False):
-    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s',
-                                  datefmt='%m/%d/%Y %H:%M:%S')
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(module)s: %(message)s', datefmt='%m/%d/%Y %H:%M:%S')
 
     print('Making log output file: %s' % log_file)
     print(log_file[: log_file.rfind(os.sep)])

@@ -1,8 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Large chunk borrowed from PyTorch DataLoader
-"""
-
 import os
 
 __author__ = "Rui Meng"
