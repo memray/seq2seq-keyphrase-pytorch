@@ -30,7 +30,7 @@ training:
 
 evaluate:
   log_path: "logs"
-  eval_method: "greedy"
+  eval_method: "greedy"  # greedy, beam_search, beam_first
   max_sent_length: 20
   beam_size: 5
   batch_size: 16
