@@ -267,7 +267,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
 def load_data_and_vocab(config, load_train=True):
 
     logging.info("Loading vocab from disk: %s" % (config['general']['vocab_path']))
-    word2id, id2word, _ = torch.load(config['general']['vocab_path'], 'wb')
+    word2id, id2word = torch.load(config['general']['vocab_path'], 'wb')
     tmp = []
     for i in range(len(id2word)):
         tmp.append(id2word[i])
