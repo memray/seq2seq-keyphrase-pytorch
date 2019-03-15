@@ -24,7 +24,6 @@ import logger
 from beam_search import SequenceGenerator
 from evaluate import evaluate_beam_search
 from pykp.dataloader import KeyphraseDataLoader
-from utils import Progbar
 
 import pykp
 from pykp.io import KeyphraseDataset
@@ -213,7 +212,6 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
     replay_memory = ReplayMemory(config['model']['orthogonal_regularization']['replay_buffer_capacity'])
 
     for epoch in range(config['training']['epochs']):
-        # progbar = Progbar(logger=logging, title='Training', target=len(train_data_loader), batch_size=train_data_loader.batch_size, total_examples=len(train_data_loader.dataset.examples))
 
         report_total_loss, report_nll_loss, report_penalty, report_te_loss = [], [], [], []
 
@@ -231,12 +229,6 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
             report_nll_loss.append(nll_loss)
             report_te_loss.append(te_loss)
             report_penalty.append(penalty)
-            # report_loss.append(('train_ml_loss', loss_ml))
-            # report_loss.append(('PPL', loss_ml))
-            # report_loss.append(('nll_loss', nll_loss))
-            # report_loss.append(('penalty', penalty))
-            # report_loss.append(('te_loss', te_loss))
-            # progbar.update(epoch, batch_i, report_loss)
         print("total loss %f, nll loss %f, penalty %f, te loss %f" % (np.mean(report_total_loss), np.mean(report_nll_loss), np.mean(report_penalty), np.mean(report_te_loss)))
         logging.info("total loss %f, nll loss %f, penalty %f, te loss %f" % (np.mean(report_total_loss), np.mean(report_nll_loss), np.mean(report_penalty), np.mean(report_te_loss)))
 

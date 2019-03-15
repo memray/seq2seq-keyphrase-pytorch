@@ -10,7 +10,6 @@ import numpy as np
 
 import pykp
 from pykp.io import EOS_WORD, SEP_WORD, UNK_WORD
-from utils import Progbar
 stemmer = PorterStemmer()
 
 
@@ -170,8 +169,6 @@ def clean_list_of_list(list_of_list):
 
 def evaluate_beam_search(generator, data_loader, config, word2id, id2word, title='', epoch=1, save_path=None):
     logging = init_logging(title, save_path + '/%s.log' % title)
-    progbar = Progbar(logger=logging, title=title, target=len(data_loader.dataset.examples), batch_size=data_loader.batch_size,
-                      total_examples=len(data_loader.dataset.examples))
 
     example_idx = 0
     score_dict = {}
@@ -276,9 +273,6 @@ def evaluate_beam_search(generator, data_loader, config, word2id, id2word, title
                 print_out += "\n --- total precision, recall, fscore: " + str(np.average(score_dict['precision_soft'])) + " , " +\
                             str(np.average(score_dict['recall_soft'])) + " , " +\
                             str(np.average(score_dict['f_score_soft']))
-
-                progbar.update(epoch, example_idx, [('f_score_exact', np.average(score_dict['f_score_exact'])),
-                                                    ('f_score_soft', np.average(score_dict['f_score_soft']))])
 
                 example_idx += 1
             logging.info(print_out)
