@@ -238,10 +238,20 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
         print("Validation @ Epoch=%d" % (epoch))
         valid_score_dict = evaluate_beam_search(generator, valid_data_loader, config, word2id, id2word, title='Validating, epoch=%d' % (epoch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d' % (epoch))
         print("validation f score exact:", np.average(valid_score_dict['f_score_exact']))
-        logging.info("NOW TEST...")
+        logging.info("--------- validation")
+        print("--------- validation")
+        for key in valid_score_dict:
+            logging.info("-- validation %s : %f" % (key, np.average(valid_score_dict[key])))
+            print("-- validation %s : %f" % (key, np.average(valid_score_dict[key])))
+        logging.info("--------- test")
         print("Test @ Epoch=%d" % (epoch))
         test_score_dict = evaluate_beam_search(generator, test_data_loader, config, word2id, id2word, title='Testing, epoch=%d' % (epoch), epoch=epoch, save_path=config['evaluate']['log_path'] + '/epoch%d' % (epoch))
-        print("test f score exact:", np.average(test_score_dict['f_score_exact']))
+        logging.info("--------- test")
+        print("--------- test")
+        for key in test_score_dict:
+            logging.info("-- test %s : %f" % (key, np.average(test_score_dict[key])))
+            print("-- test %s : %f" % (key, np.average(test_score_dict[key])))
+            
 
         train_ml_history_losses.append(copy.copy(train_losses))
         train_losses = []
