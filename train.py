@@ -238,6 +238,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
             # report_loss.append(('te_loss', te_loss))
             # progbar.update(epoch, batch_i, report_loss)
         print("total loss %f, nll loss %f, penalty %f, te loss %f" % (np.mean(report_total_loss), np.mean(report_nll_loss), np.mean(report_penalty), np.mean(report_te_loss)))
+        logging.info("total loss %f, nll loss %f, penalty %f, te loss %f" % (np.mean(report_total_loss), np.mean(report_nll_loss), np.mean(report_penalty), np.mean(report_te_loss)))
 
         # Validate and save checkpoint at end of epoch
         logging.info('*' * 50)
