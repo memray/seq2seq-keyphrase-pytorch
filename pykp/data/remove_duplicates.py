@@ -3,44 +3,17 @@ Remove the docs in training set that overlap with test sets or are duplicate
 Multiprocessing: doesn't work really well, just use n_job=1 to ensure the order and completeness of output
 """
 
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 import argparse
 import codecs
 import json
-import multiprocessing
 import os
 import re
 import string
 import threading
-import time
-import queue
 
 import nltk
-import torch
 from tqdm import tqdm
 
-import config
-import pykp.io
-
-
-parser = argparse.ArgumentParser(
-    description='remove_duplicates.py',
-    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-
-# **Preprocess Options**
-parser.add_argument('-datatype', default='paper',
-                    choices=['paper', 'qa', 'mag'],
-                    help="Specify which type of data.")
-
-parser.add_argument('-train_file', required=True,
-                    help="The path to the training data file (raw json) to filter.")
-
-parser.add_argument('-test_dataset_dir', default='source_data/',
-                    help="The folder to the test data (raw json).")
-
-opt = parser.parse_args()
 stopwords = nltk.corpus.stopwords.words('english')
 stopwords.extend(string.punctuation)
 stopwords.extend(string.digits)
@@ -48,12 +21,40 @@ stopwords.append('')
 
 valid_num = 0
 
-def load_data_from_json_iterator(path, dataset_name, id_field, title_field, text_field, keyword_field, trg_delimiter=';'):
+def init_args():
+    parser = argparse.ArgumentParser(
+        description='remove_duplicates.py',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    # **Preprocess Options**
+    parser.add_argument('-datatype', default='paper',
+                        choices=['paper', 'qa', 'mag'],
+                        help="Specify which type of data.")
+
+    parser.add_argument('-train_file', required=True,
+                        help="The path to the training data file (raw json) to filter.")
+
+    parser.add_argument('-test_dataset_dir', default='source_data/',
+                        help="The folder to the test data (raw json).")
+
+    parser.add_argument('-n_jobs', default=4, type=int,
+                        help="Number of workers")
+
+    parser.add_argument('-shard_size', default=10000, type=int,
+                        help="Split dataset by which size of each shard.")
+
+    opt = parser.parse_args()
+
+    return opt
+
+def example_iterator_from_json(path, dataset_name, id_field, title_field, text_field, keyword_field, trg_delimiter=';', is_train=False):
     '''
     Load id/title/abstract/keyword, don't do any preprocessing
     ID is required to match the original data
     '''
     global valid_num
+    print("Loading %s" % os.path.abspath(path))
+
     with codecs.open(path, "r", "utf-8") as corpus_file:
         for idx, line in enumerate(corpus_file):
             # if(idx == 2000):
@@ -62,12 +63,13 @@ def load_data_from_json_iterator(path, dataset_name, id_field, title_field, text
 
             _json = json.loads(line)
 
-            if id_field is None:
+            if id_field is None or id_field not in _json:
                 id_str = '%s_%d' % (dataset_name, idx)
             else:
                 id_str = _json[id_field]
 
-            if title_field not in _json or keyword_field not in _json or text_field not in _json:
+            if is_train and title_field not in _json or keyword_field not in _json or text_field not in _json:
+                # print("Data is missing:\n%s" % (_json))
                 continue
 
             title_str = _json[title_field].strip(string.punctuation)
@@ -81,10 +83,10 @@ def load_data_from_json_iterator(path, dataset_name, id_field, title_field, text
                 keyphrase_strs = [k.strip(string.punctuation) for k in _json[keyword_field]
                                   if len(k.strip(string.punctuation)) > 0]
 
-            if dataset_name == 'mag_training' and abstract_str.startswith('"Full textFull text"'):
+            if is_train and abstract_str.startswith('Full textFull text'):
                 continue
 
-            if len(title_str) == 0 or len(abstract_str) == 0 or len(keyphrase_strs) == 0:
+            if is_train and len(title_str) == 0 or len(abstract_str) == 0 or len(keyphrase_strs) == 0:
                 continue
 
             example = {
@@ -171,6 +173,7 @@ def detect_duplicate_job(train_example, testsets_dict, title_pool):
 
 
 def main():
+    opt = init_args()
     # specify for which dataset (for valid/test) we need to remove duplicate data samples from training data
     if opt.datatype == 'paper':
         total_num = 530631
@@ -196,9 +199,9 @@ def main():
 
 
     print("Loading training data...")
-    train_examples_iter = load_data_from_json_iterator(opt.train_file, train_dataset_name,
-                                                       train_id_field, train_title_field, train_text_field,
-                                                       train_keyword_field, trg_delimiter)
+    train_examples_iter = example_iterator_from_json(opt.train_file, train_dataset_name,
+                                                     train_id_field, train_title_field, train_text_field,
+                                                     train_keyword_field, trg_delimiter)
 
     testsets_dict = {}
 
@@ -211,10 +214,10 @@ def main():
         for type in ['validation', 'testing']:
             test_dataset_subname = '%s_%s' % (test_dataset_name, type)
             source_test_file = os.path.join(opt.test_dataset_dir, test_dataset_name, test_dataset_subname+'.json')
-            test_examples = list(load_data_from_json_iterator(source_test_file, test_dataset_subname,
-                                                              test_id_field, test_title_field,
-                                                              test_text_field, test_keyword_field,
-                                                              trg_delimiter))
+            test_examples = list(example_iterator_from_json(source_test_file, test_dataset_subname,
+                                                            test_id_field, test_title_field,
+                                                            test_text_field, test_keyword_field,
+                                                            trg_delimiter))
 
             testset = {}
             for test_num, test_example in enumerate(test_examples):

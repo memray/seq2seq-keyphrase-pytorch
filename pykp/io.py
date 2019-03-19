@@ -216,7 +216,7 @@ class KeyphraseDatasetTorchText(torchtext.data.Dataset):
         super(KeyphraseDatasetTorchText, self).__init__(examples, fields, **kwargs)
 
 
-def load_json_data(path, name=None, src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';'):
+def load_json_data(path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';'):
     '''
     To load keyphrase data from file, generate src by concatenating the contents in src_fields
     Input file should be json format, one document per line
@@ -284,7 +284,7 @@ def tokenize_filter_data(
 
         src = src.lower() if opt.lower else src
         src_tokens = tokenize_fn(src)
-        if opt.src_seq_length_trunc and len(src) > opt.src_seq_length_trunc:
+        if opt.src_seq_length_trunc and len(src_tokens) > opt.src_seq_length_trunc:
             src_tokens = src_tokens[:opt.src_seq_length_trunc]
 
         # FILTER 3.1: if length of src exceeds limit, discard
@@ -306,7 +306,7 @@ def tokenize_filter_data(
             trg = re.sub(r'\[.*?\]', '', trg)
             trg = re.sub(r'\{.*?\}', '', trg)
 
-            # FILTER 2: ingore all the keyphrases that contains strange punctuations, very DIRTY data!
+            # FILTER 2: ingore all the phrases that contains strange punctuations, very DIRTY data!
             puncts = re.findall(r'[,_\"<>\(\){}\[\]\?~`!@$%\^=]', trg)
 
             trg_tokens = tokenize_fn(trg)
@@ -775,7 +775,7 @@ def initialize_fields(opt):
     return fields
 
 
-def load_src_trgs_pairs(source_json_path, src_fields, trg_fields, opt, valid_check=False):
+def load_src_trgs_pairs(source_json_path, dataset_name, src_fields, trg_fields, opt, valid_check=False):
     tokenized_pairs_cache_path = source_json_path + '_tokenized.tmp'
     if os.path.exists(tokenized_pairs_cache_path):
         print('Loading tokenized_pairs from ' + tokenized_pairs_cache_path)
@@ -784,6 +784,7 @@ def load_src_trgs_pairs(source_json_path, src_fields, trg_fields, opt, valid_che
     else:
         print('Generating tokenized_pairs and dumping to ' + tokenized_pairs_cache_path)
         src_trgs_pairs = load_json_data(source_json_path,
+                                        dataset_name,
                                         src_fields=src_fields,
                                         trg_fields=trg_fields,
                                         trg_delimiter=';')
