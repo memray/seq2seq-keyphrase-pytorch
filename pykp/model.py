@@ -165,7 +165,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                                                 ctx_mask=s2s_src_mask)
 
         _, (ae_src_h_t, ae_src_c_t), _ = self.ae_encode(input_trg)
-        ae_decoder_log_probs = self.ae_decode(trg_inputs=input_trg, enc_hidden=(ae_src_h_t, ae_src_c_t))
+        ae_decoder_log_probs = self.ae_decode(trg_inputs=input_trg, oov_list=oov_lists, enc_hidden=(ae_src_h_t, ae_src_c_t))
         return ae_decoder_log_probs, s2s_decoder_log_probs
 
     def s2s_encode(self, input_src):
@@ -206,7 +206,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return decoder_log_probs
 
-    def ae_decode(self, trg_inputs, enc_hidden):
+    def ae_decode(self, trg_inputs, oov_list, enc_hidden):
 
         batch_size = trg_inputs.size(0)
         max_length = trg_inputs.size(1)
@@ -222,7 +222,17 @@ class Seq2SeqLSTMAttention(nn.Module):
         decoder_outputs, _ = self.decoder(decoder_input, init_hidden)
         decoder_outputs = nn.functional.dropout(decoder_outputs, p=self.dropout, training=self.training)
         decoder_logits = self.decoder2vocab(decoder_outputs.view(-1, self.trg_hidden_dim))  # (batch*max_len, vocab)
+
         decoder_log_probs = torch.log_softmax(decoder_logits, -1)  # (batch*max_len, vocab)
+        max_oov_number = max([len(oovs) for oovs in oov_list])
+        # flatten and extend size of decoder_probs from (vocab_size) to(vocab_size+max_oov_number)
+        if max_oov_number > 0:
+
+            extended_logits = Variable(torch.FloatTensor([-np.inf] * max_oov_number))  # max_oov_num
+            extended_logits = extended_logits.unsqueeze(0).expand(batch_size * max_length, max_oov_number).contiguous()
+            extended_logits = extended_logits.cuda() if torch.cuda.is_available() else extended_logits
+            decoder_log_probs = torch.cat((decoder_log_probs, extended_logits), dim=1)
+
         decoder_log_probs = decoder_log_probs.view(batch_size, max_length, -1)
         decoder_log_probs = decoder_log_probs * trg_mask.unsqueeze(-1)
 
