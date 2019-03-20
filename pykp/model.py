@@ -126,7 +126,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             self.pointer_softmax_target = TimeDistributedDense(mlp=nn.Linear(self.trg_hidden_dim, self.pointer_softmax_hidden_dim))
             self.pointer_softmax_squash = TimeDistributedDense(mlp=nn.Linear(self.pointer_softmax_hidden_dim, 1))
 
-        self.encoder2decoder_hidden = nn.Linear(self.src_hidden_dim, self.trg_hidden_dim)
+        self.encoder2decoder_hidden = nn.Linear(self.src_hidden_dim * 2, self.trg_hidden_dim)
         self.encoder2decoder_cell = nn.Linear(self.src_hidden_dim * 2, self.trg_hidden_dim)
 
         self.decoder2vocab = nn.Linear(self.trg_hidden_dim, self.vocab_size)
@@ -194,7 +194,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
 
-        trg_emb = self.embedding(trg_inputs)
+        trg_emb, _ = self.embedding(trg_inputs)
         trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
 
         decoder_input = trg_emb
@@ -284,7 +284,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         if torch.cuda.is_available():
             trg_mask = trg_mask.cuda()
 
-        trg_emb = self.embedding(trg_input)  # (batch_size, trg_len=1, emb_dim)
+        trg_emb, _ = self.embedding(trg_input)  # (batch_size, trg_len=1, emb_dim)
         trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
 
         dec_input = trg_emb
