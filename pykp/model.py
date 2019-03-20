@@ -98,10 +98,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.nlayers_trg = self.config['model']['dec_layers']
         self.dropout = self.config['model']['dropout']
 
-        self.enable_target_encoder = self.config['model']['target_encoder']['target_encoder_lambda'] > 0.0
-        self.target_encoder_dim = self.config['model']['target_encoder']['rnn_hidden_size']
-        self.target_encoding_mlp_hidden_dim = self.config['model']['target_encoder']['target_encoding_mlp_hidden_dim']
-
     def _def_layers(self):
       
         self.get_mask = GetMask(self.pad_token_src)
@@ -113,7 +109,7 @@ class Seq2SeqLSTMAttention(nn.Module):
                                batch_first=True,
                                dropout=self.dropout if self.nlayers_src > 1 else 0)
 
-        self.decoder = nn.LSTM(input_size=self.embedding_size if not self.enable_target_encoder else self.embedding_size + self.target_encoding_mlp_hidden_dim[0],
+        self.decoder = nn.LSTM(input_size=self.embedding_size,
                                hidden_size=self.trg_hidden_dim,
                                num_layers=self.nlayers_trg,
                                bidirectional=False,

@@ -38,11 +38,9 @@ def to_np(x):
     return x.data.cpu().numpy()
 
 
-def train_batch(_batch, model, optimizer, criterion, replay_memory, config, word2id):
+def train_batch(_batch, model, optimizer, criterion, config, word2id):
     src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists = _batch
     max_oov_number = max([len(oov) for oov in oov_lists])
-    trg_copy_target_np = copy.copy(trg_copy_target)
-    trg_copy_np = copy.copy(trg)
 
     optimizer.zero_grad()
     if torch.cuda.is_available():
@@ -52,7 +50,7 @@ def train_batch(_batch, model, optimizer, criterion, replay_memory, config, word
         trg_copy_target = trg_copy_target.cuda()
         src_oov = src_oov.cuda()
 
-    decoder_log_probs, decoder_outputs, source_representations = model.forward(src, src_len, trg, src_oov, oov_lists)
+    decoder_log_probs, _, _ = model.forward(src, src_len, trg, src_oov, oov_lists)
 
     nll_loss = criterion(decoder_log_probs.contiguous().view(-1, len(word2id) + max_oov_number),
                          trg_copy_target.contiguous().view(-1))
@@ -83,8 +81,6 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
     best_performance = 0.0
 
     train_losses = []
-    replay_memory = ReplayMemory(config['model']['orthogonal_regularization']['replay_buffer_capacity'])
-
     for epoch in range(config['training']['epochs']):
 
         report_total_loss, report_nll_loss = [], []
@@ -97,7 +93,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
             model.train()
 
             # Training
-            loss_ml, nll_loss = train_batch(batch, model, optimizer, criterion, replay_memory, config, word2id)
+            loss_ml, nll_loss = train_batch(batch, model, optimizer, criterion, config, word2id)
             train_losses.append(loss_ml)
             report_total_loss.append(loss_ml)
             report_nll_loss.append(nll_loss)
