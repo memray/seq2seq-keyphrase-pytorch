@@ -48,13 +48,3 @@ model:
   enc_layers: 1
   dec_layers: 1
   dropout: 0.3
-  target_encoder:
-    target_encoder_lambda: 0.0
-    rnn_hidden_size: 64
-    target_encoding_mlp_hidden_dim: [32, 32]
-    n_negative_samples: 32
-  orthogonal_regularization:
-    orthogonal_regularization_lambda: 0.0
-    orthogonal_regularization_position: "sep"  # sep, post
-    replay_buffer_capacity: 128
-    orth_reg_mode: 0  # 0: only to decodings, 1: apply orth reg also on target encodings
