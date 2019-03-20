@@ -421,7 +421,7 @@ class FastBiLSTM(torch.nn.Module):
     def __init__(self, ninp, nhid):
         super(FastBiLSTM, self).__init__()
         self.ninp = ninp
-        self.nhids = nhid // 2
+        self.nhid = nhid // 2
         self.rnn = torch.nn.LSTM(self.ninp, self.nhid, num_layers=1, bidirectional=True)
 
 

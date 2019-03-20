@@ -103,7 +103,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.embedding = Embedding(self.embedding_size, self.vocab_size)
 
         self.s2s_encoder = FastBiLSTM(ninp=self.embedding_size,
-                                      nhids=self.src_hidden_dim)
+                                      nhid=self.src_hidden_dim)
 
         self.ae_encoder = nn.LSTM(input_size=self.embedding_size,
                                   hidden_size=self.src_hidden_dim,
@@ -152,15 +152,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         torch.save(self.state_dict(), save_to)
         print("Saved checkpoint to %s..." % (save_to))
 
-    def init_encoder_state(self, input):
-        """Get cell states and hidden states."""
-        batch_size = input.size(0)
-        h0_encoder = Variable(torch.zeros(self.encoder.num_layers * 2, batch_size, self.src_hidden_dim), requires_grad=False)
-        c0_encoder = Variable(torch.zeros(self.encoder.num_layers * 2, batch_size, self.src_hidden_dim), requires_grad=False)
-        if torch.cuda.is_available():
-            h0_encoder, c0_encoder = h0_encoder.cuda(), c0_encoder.cuda()
-        return h0_encoder, c0_encoder
-
     def init_decoder_state(self, enc_h, enc_c):
         # prepare the init hidden vector for decoder, 
         # inputs are (batch_size, num_layers * 2 * enc_hidden_dim)
@@ -185,16 +176,14 @@ class Seq2SeqLSTMAttention(nn.Module):
     def s2s_encode(self, input_src):
         src_emb, src_mask = self.embedding(input_src)
         src_emb = nn.functional.dropout(src_emb, p=self.dropout, training=self.training)
-        h0_encoder, c0_encoder = self.init_encoder_state(input_src)
-        src_h, (src_h_t, src_c_t) = self.s2s_encoder(src_emb, src_mask, (h0_encoder, c0_encoder))
+        src_h, (src_h_t, src_c_t) = self.s2s_encoder(src_emb, src_mask)
         src_h = nn.functional.dropout(src_h, p=self.dropout, training=self.training)
         return src_h, (src_h_t, src_c_t)
         
     def ae_encode(self, input_src):
         src_emb, src_mask = self.embedding(input_src)
         src_emb = nn.functional.dropout(src_emb, p=self.dropout, training=self.training)
-        h0_encoder, c0_encoder = self.init_encoder_state(input_src)
-        src_h, (src_h_t, src_c_t) = self.ae_encoder(src_emb, src_mask, (h0_encoder, c0_encoder))
+        src_h, (src_h_t, src_c_t) = self.ae_encoder(src_emb, src_mask)
         src_h = nn.functional.dropout(src_h, p=self.dropout, training=self.training)
         return src_h, (src_h_t, src_c_t)
 
