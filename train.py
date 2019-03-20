@@ -49,16 +49,17 @@ def train_batch(_batch, model, optimizer, criterion, config, word2id):
         trg_copy_target = trg_copy_target.cuda()
         src_oov = src_oov.cuda()
 
-    decoder_log_probs, _, _ = model.forward(src, trg, src_oov, oov_lists)
+    s2s_decoder_log_probs, ae_decoder_log_probs = model.forward(src, trg, src_oov, oov_lists)
 
-    nll_loss = criterion(decoder_log_probs.contiguous().view(-1, len(word2id) + max_oov_number),
-                         trg_copy_target.contiguous().view(-1))
-    loss = nll_loss
+    s2s_loss = criterion(s2s_decoder_log_probs.contiguous().view(-1, len(word2id) + max_oov_number), trg_copy_target.contiguous().view(-1))
+    ae_loss = criterion(ae_decoder_log_probs.contiguous().view(-1, len(word2id) + max_oov_number), trg_copy_target.contiguous().view(-1))
+
+    loss = s2s_loss + ae_loss
     loss.backward(retain_graph=True)
     torch.nn.utils.clip_grad_norm_(model.parameters(), config['training']['optimizer']['clip_grad_norm'])
     optimizer.step()
 
-    return to_np(loss), to_np(nll_loss)
+    return to_np(loss), to_np(s2s_loss), to_np(ae_loss)
 
 
 def train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, config, word2id, id2word):
@@ -82,7 +83,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
     train_losses = []
     for epoch in range(config['training']['epochs']):
 
-        report_total_loss, report_nll_loss = [], []
+        report_total_loss, report_s2s_loss, report_ae_loss = [], [], []
 
         print('*' * 20)
         print("Training @ Epoch=%d" % (epoch))
@@ -92,12 +93,13 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
             model.train()
 
             # Training
-            loss_ml, nll_loss = train_batch(batch, model, optimizer, criterion, config, word2id)
+            loss_ml, s2s_loss, ae_loss = train_batch(batch, model, optimizer, criterion, config, word2id)
             train_losses.append(loss_ml)
             report_total_loss.append(loss_ml)
-            report_nll_loss.append(nll_loss)
-        print("total loss %f, nll loss %f" % (np.mean(report_total_loss), np.mean(report_nll_loss)))
-        logging.info("total loss %f, nll loss %f" % (np.mean(report_total_loss), np.mean(report_nll_loss)))
+            report_s2s_loss.append(s2s_loss)
+            report_ae_loss.append(ae_loss)
+        print("total loss %f, s2s loss %f, ae loss %f" % (np.mean(report_total_loss), np.mean(report_s2s_loss), np.mean(report_ae_loss)))
+        logging.info("total loss %f, s2s loss %f, ae loss %f" % (np.mean(report_total_loss), np.mean(report_s2s_loss), np.mean(report_ae_loss)))
 
         # Validate and save checkpoint at end of epoch
         logging.info('*' * 50)

@@ -158,12 +158,15 @@ class Seq2SeqLSTMAttention(nn.Module):
 
     def forward(self, input_src, input_trg, input_src_ext, oov_lists):
 
-        src_h, (src_h_t, src_c_t), src_mask = self.s2s_encode(input_src)
-        decoder_probs, decoder_hiddens = self.s2s_decode(trg_inputs=input_trg, src_map=input_src_ext,
-                                                     oov_list=oov_lists, enc_context=src_h,
-                                                     enc_hidden=(src_h_t, src_c_t),
-                                                     ctx_mask=src_mask)
-        return decoder_probs, decoder_hiddens, src_h_t
+        s2s_src_h, (s2s_src_h_t, s2s_src_c_t), s2s_src_mask = self.s2s_encode(input_src)
+        s2s_decoder_log_probs = self.s2s_decode(trg_inputs=input_trg, src_map=input_src_ext,
+                                                oov_list=oov_lists, enc_context=s2s_src_h,
+                                                enc_hidden=(s2s_src_h_t, s2s_src_c_t),
+                                                ctx_mask=s2s_src_mask)
+
+        _, (ae_src_h_t, ae_src_c_t), _ = self.ae_encode(input_trg)
+        ae_decoder_log_probs = self.ae_decode(trg_inputs=input_trg, enc_hidden=(ae_src_h_t, ae_src_c_t))
+        return ae_decoder_log_probs, s2s_decoder_log_probs
 
     def s2s_encode(self, input_src):
         src_emb, src_mask = self.embedding(input_src)
@@ -201,7 +204,30 @@ class Seq2SeqLSTMAttention(nn.Module):
         decoder_outputs = decoder_outputs.permute(1, 0, 2)  # (batch_size, trg_len, trg_hidden_dim)
         decoder_log_probs = self.s2s_merge_probs(decoder_outputs, weighted_context, decoder_logits, attn_weights, src_map, oov_list, trg_mask)
 
-        return decoder_log_probs, decoder_outputs
+        return decoder_log_probs
+
+    def ae_decode(self, trg_inputs, enc_hidden):
+
+        batch_size = trg_inputs.size(0)
+        max_length = trg_inputs.size(1)
+
+        init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
+
+        trg_emb, trg_mask = self.embedding(trg_inputs)
+        trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
+
+        decoder_input = trg_emb
+        decoder_input = nn.functional.dropout(decoder_input, p=self.dropout, training=self.training)
+
+        decoder_outputs, _ = self.decoder(decoder_input, init_hidden)
+        decoder_outputs = nn.functional.dropout(decoder_outputs, p=self.dropout, training=self.training)
+        decoder_logits = self.decoder2vocab(decoder_outputs.view(-1, self.trg_hidden_dim))  # (batch*max_len, vocab)
+        decoder_log_probs = torch.log_softmax(decoder_logits, -1)  # (batch*max_len, vocab)
+        decoder_log_probs = decoder_log_probs.view(batch_size, max_length, -1)
+        decoder_log_probs = decoder_log_probs * trg_mask.unsqueeze(-1)
+
+        return decoder_log_probs
+
 
     def s2s_merge_probs(self, decoder_hidden, context_representations, decoder_logits, copy_probs, src_map, oov_list, trg_mask):
 
