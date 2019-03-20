@@ -105,12 +105,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.s2s_encoder = FastBiLSTM(ninp=self.embedding_size,
                                       nhid=self.src_hidden_dim)
 
-        self.ae_encoder = nn.LSTM(input_size=self.embedding_size,
-                                  hidden_size=self.src_hidden_dim,
-                                  num_layers=1,
-                                  bidirectional=True,
-                                  batch_first=True,
-                                  dropout=0)
+        self.ae_encoder = FastBiLSTM(ninp=self.embedding_size,
+                                     nhid=self.src_hidden_dim)
 
         self.decoder = nn.LSTM(input_size=self.embedding_size,
                                hidden_size=self.trg_hidden_dim,
@@ -160,17 +156,13 @@ class Seq2SeqLSTMAttention(nn.Module):
         decoder_init_cell = nn.Tanh()(self.encoder2decoder_cell(enc_c)).unsqueeze(0)
         return decoder_init_hidden, decoder_init_cell
 
-    def forward(self, input_src, input_trg, input_src_ext, oov_lists, trg_mask=None, ctx_mask=None):
+    def forward(self, input_src, input_trg, input_src_ext, oov_lists):
 
-        if not ctx_mask:
-            ctx_mask = self.get_mask(input_src)  # same size as input_src
-        if not trg_mask:
-            trg_mask = self.get_mask(input_trg)  # same size as input_trg
-        src_h, (src_h_t, src_c_t) = self.s2s_encode(input_src)
+        src_h, (src_h_t, src_c_t), src_mask = self.s2s_encode(input_src)
         decoder_probs, decoder_hiddens = self.s2s_decode(trg_inputs=input_trg, src_map=input_src_ext,
                                                      oov_list=oov_lists, enc_context=src_h,
                                                      enc_hidden=(src_h_t, src_c_t),
-                                                     trg_mask=trg_mask, ctx_mask=ctx_mask)
+                                                     ctx_mask=src_mask)
         return decoder_probs, decoder_hiddens, src_h_t
 
     def s2s_encode(self, input_src):
@@ -178,23 +170,23 @@ class Seq2SeqLSTMAttention(nn.Module):
         src_emb = nn.functional.dropout(src_emb, p=self.dropout, training=self.training)
         src_h, (src_h_t, src_c_t) = self.s2s_encoder(src_emb, src_mask)
         src_h = nn.functional.dropout(src_h, p=self.dropout, training=self.training)
-        return src_h, (src_h_t, src_c_t)
+        return src_h, (src_h_t, src_c_t), src_mask
         
     def ae_encode(self, input_src):
         src_emb, src_mask = self.embedding(input_src)
         src_emb = nn.functional.dropout(src_emb, p=self.dropout, training=self.training)
         src_h, (src_h_t, src_c_t) = self.ae_encoder(src_emb, src_mask)
         src_h = nn.functional.dropout(src_h, p=self.dropout, training=self.training)
-        return src_h, (src_h_t, src_c_t)
+        return src_h, (src_h_t, src_c_t), src_mask
 
-    def s2s_decode(self, trg_inputs, src_map, oov_list, enc_context, enc_hidden, trg_mask, ctx_mask):
+    def s2s_decode(self, trg_inputs, src_map, oov_list, enc_context, enc_hidden, ctx_mask):
 
         batch_size = trg_inputs.size(0)
         max_length = trg_inputs.size(1)
 
         init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
 
-        trg_emb, _ = self.embedding(trg_inputs)
+        trg_emb, trg_mask = self.embedding(trg_inputs)
         trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
 
         decoder_input = trg_emb
@@ -280,11 +272,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         batch_size = trg_input.size(0)
 
-        trg_mask = Variable(torch.FloatTensor(torch.ones(trg_input.size())))
-        if torch.cuda.is_available():
-            trg_mask = trg_mask.cuda()
-
-        trg_emb, _ = self.embedding(trg_input)  # (batch_size, trg_len=1, emb_dim)
+        trg_emb, trg_mask = self.embedding(trg_input)  # (batch_size, trg_len=1, emb_dim)
         trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
 
         dec_input = trg_emb

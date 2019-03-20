@@ -220,9 +220,7 @@ class SequenceGenerator(object):
         """
         self.model.eval()
         batch_size = len(src_input)
-
-        src_mask = self.get_mask(src_input)  # same size as input_src
-        src_context, (src_h, src_c) = self.model.s2s_encode(src_input)
+        src_context, (src_h, src_c), src_mask = self.model.s2s_encode(src_input)
 
         # prepare the init hidden vector, (batch_size, trg_seq_len,
         # dec_hidden_dim)
@@ -389,9 +387,7 @@ class SequenceGenerator(object):
         """
         self.model.eval()  # have to be in training mode, to backprop
         batch_size = len(src_input)
-
-        src_mask = self.get_mask(src_input)  # same size as input_src
-        src_context, (src_h, src_c) = self.model.s2s_encode(src_input)
+        src_context, (src_h, src_c), src_mask = self.model.s2s_encode(src_input)
 
         # prepare the init hidden vector, (batch_size, trg_seq_len,
         # dec_hidden_dim)
