@@ -172,20 +172,20 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             src_str = [b['src_str'] for b in batches]
             trg_str = [b['trg_str'] for b in batches]
 
-        # sort all the sequences in the order of source lengths, to meet the requirement of pack_padded_sequence
-        src_len_order = np.argsort([len(s) for s in src])[::-1]
-        src = [src[i] for i in src_len_order]
-        src_oov = [src_oov[i] for i in src_len_order]
-        trg = [trg[i] for i in src_len_order]
-        trg_target = [trg_target[i] for i in src_len_order]
-        trg_copy_target = [trg_copy_target[i] for i in src_len_order]
-        oov_lists = [oov_lists[i] for i in src_len_order]
-        if self.include_original:
-            src_str = [src_str[i] for i in src_len_order]
-            trg_str = [trg_str[i] for i in src_len_order]
+        # # sort all the sequences in the order of source lengths, to meet the requirement of pack_padded_sequence
+        # src_len_order = np.argsort([len(s) for s in src])[::-1]
+        # src = [src[i] for i in src_len_order]
+        # src_oov = [src_oov[i] for i in src_len_order]
+        # trg = [trg[i] for i in src_len_order]
+        # trg_target = [trg_target[i] for i in src_len_order]
+        # trg_copy_target = [trg_copy_target[i] for i in src_len_order]
+        # oov_lists = [oov_lists[i] for i in src_len_order]
+        # if self.include_original:
+        #     src_str = [src_str[i] for i in src_len_order]
+        #     trg_str = [trg_str[i] for i in src_len_order]
 
         # pad the one2many variables
-        src_o2s, src_o2s_len, _ = self._pad(src)
+        src_o2s, _, _ = self._pad(src)
         trg_o2s, _, _ = self._pad(trg)
         src_oov_o2s, _, _ = self._pad(src_oov)
         trg_target_o2s, _, _      = self._pad(trg_target)
