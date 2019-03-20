@@ -39,14 +39,13 @@ def to_np(x):
 
 
 def train_batch(_batch, model, optimizer, criterion, config, word2id):
-    src, trg, trg_target, trg_copy_target, src_oov, oov_lists = _batch
+    src, trg, trg_copy_target, src_oov, oov_lists = _batch
     max_oov_number = max([len(oov) for oov in oov_lists])
 
     optimizer.zero_grad()
     if torch.cuda.is_available():
         src = src.cuda()
         trg = trg.cuda()
-        trg_target = trg_target.cuda()
         trg_copy_target = trg_copy_target.cuda()
         src_oov = src_oov.cuda()
 

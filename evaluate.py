@@ -176,7 +176,7 @@ def evaluate_beam_search(generator, data_loader, config, word2id, id2word, title
     enumerate_this = data_loader if config['general']['philly'] else tqdm(data_loader)
     for i, batch in enumerate(enumerate_this):
 
-        src_list, trg_list, _, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = batch
+        src_list, trg_list, trg_copy_target_list, src_oov_map_list, oov_list, src_str_list, trg_str_list = batch
 
         if torch.cuda.is_available():
             src_list = src_list.cuda()

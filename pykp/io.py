@@ -128,11 +128,10 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         # extended src (oov words are replaced with temporary idx, e.g. 50000, 50001 etc.)
         src_oov = [[self.word2id[BOS_WORD]] + b['src_oov'] + [self.word2id[EOS_WORD]] for b in batches]
         # target_input: input to decoder, starts with BOS and oovs are replaced with <unk>
-        trg, trg_copy_target, trg_target = [], [], []
+        trg, trg_copy_target = [], []
         for b in batches:
             tmp_trg = [self.word2id[BOS_WORD]]
             tmp_trg_copy_target = []
-            tmp_trg_target = []
             if self.ordering == "origin":
                 b_trg, b_trg_copy = b['trg'], b['trg_copy']
             elif self.ordering == "alphabet":
@@ -152,16 +151,12 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             for i in range(len(b_trg)):
                 tmp_trg += b_trg[i]
                 tmp_trg_copy_target += b_trg_copy[i]
-                tmp_trg_target += b_trg[i]
                 if i == len(b_trg) - 1:
-                    tmp_trg_target += [self.word2id[EOS_WORD]]
                     tmp_trg_copy_target += [self.word2id[EOS_WORD]]
                 else:
                     tmp_trg += [self.word2id[SEP_WORD]]
-                    tmp_trg_target += [self.word2id[SEP_WORD]]
                     tmp_trg_copy_target += [self.word2id[SEP_WORD]]
             trg.append(tmp_trg)
-            trg_target.append(tmp_trg_target)
             trg_copy_target.append(tmp_trg_copy_target)
 
         # target_for_loss: input to criterion
@@ -172,41 +167,19 @@ class KeyphraseDataset(torch.utils.data.Dataset):
             src_str = [b['src_str'] for b in batches]
             trg_str = [b['trg_str'] for b in batches]
 
-        # # sort all the sequences in the order of source lengths, to meet the requirement of pack_padded_sequence
-        # src_len_order = np.argsort([len(s) for s in src])[::-1]
-        # src = [src[i] for i in src_len_order]
-        # src_oov = [src_oov[i] for i in src_len_order]
-        # trg = [trg[i] for i in src_len_order]
-        # trg_target = [trg_target[i] for i in src_len_order]
-        # trg_copy_target = [trg_copy_target[i] for i in src_len_order]
-        # oov_lists = [oov_lists[i] for i in src_len_order]
-        # if self.include_original:
-        #     src_str = [src_str[i] for i in src_len_order]
-        #     trg_str = [trg_str[i] for i in src_len_order]
-
         # pad the one2many variables
         src_o2s, _, _ = self._pad(src)
         trg_o2s, _, _ = self._pad(trg)
         src_oov_o2s, _, _ = self._pad(src_oov)
-        trg_target_o2s, _, _      = self._pad(trg_target)
         trg_copy_target_o2s, _, _ = self._pad(trg_copy_target)
         oov_lists_o2s = oov_lists
 
         assert (len(src) == len(src_o2s) == len(src_oov_o2s) == len(trg_copy_target_o2s) == len(oov_lists_o2s))
 
-        '''
-        for s, s_o2o, t, t_o2o in zip(list(itertools.chain(*[[src[idx]]*len(t) for idx,t in enumerate(trg)])), src_o2o.data.numpy(), list(itertools.chain(*[t for t in trg])), trg_o2o.data.numpy()):
-            print('=' * 30)
-            print('[Source]        %s' % str([self.id2word[w] for w in s]))
-            print('[Target]        %s' % str([self.id2word[w] for w in t]))
-            print('[Source O2O]    %s' % str([self.id2word[w] for w in s_o2o]))
-            print('[Target O2O]    %s' % str([self.id2word[w] for w in t_o2o]))
-        '''
-
         if self.include_original:
-            return (src_o2s, trg_o2s, trg_target_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s, src_str, trg_str)
+            return (src_o2s, trg_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s, src_str, trg_str)
         else:
-            return (src_o2s, trg_o2s, trg_target_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s)
+            return (src_o2s, trg_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s)
 
 
 def load_json_data(path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';'):

@@ -7,7 +7,7 @@ import random
 
 import pykp
 from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, MultilayerPerceptron, UniLSTM
-from pykp.eric_layers import FastBiLSTM, FastUniLSTM, Embedding
+from pykp.eric_layers import FastBiLSTM, Embedding
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
