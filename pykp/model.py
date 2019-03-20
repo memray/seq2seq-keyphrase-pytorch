@@ -126,7 +126,7 @@ class Seq2SeqLSTMAttention(nn.Module):
             self.pointer_softmax_target = TimeDistributedDense(mlp=nn.Linear(self.trg_hidden_dim, self.pointer_softmax_hidden_dim))
             self.pointer_softmax_squash = TimeDistributedDense(mlp=nn.Linear(self.pointer_softmax_hidden_dim, 1))
 
-        self.encoder2decoder_hidden = nn.Linear(self.src_hidden_dim * 2, self.trg_hidden_dim)
+        self.encoder2decoder_hidden = nn.Linear(self.src_hidden_dim, self.trg_hidden_dim)
         self.encoder2decoder_cell = nn.Linear(self.src_hidden_dim * 2, self.trg_hidden_dim)
 
         self.decoder2vocab = nn.Linear(self.trg_hidden_dim, self.vocab_size)

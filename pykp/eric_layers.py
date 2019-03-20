@@ -421,11 +421,11 @@ class FastBiLSTM(torch.nn.Module):
     def __init__(self, ninp, nhid):
         super(FastBiLSTM, self).__init__()
         self.ninp = ninp
-        self.nhid = nhid // 2
+        self.nhid = nhid
         self.rnn = torch.nn.LSTM(self.ninp, self.nhid, num_layers=1, bidirectional=True)
 
 
-    def forward(self, x, mask, init_states=None):
+    def forward(self, x, mask):
 
         def pad_(tensor, n):
             if n > 0:
@@ -465,10 +465,7 @@ class FastBiLSTM(torch.nn.Module):
 
         # Pack it up
         rnn_input = torch.nn.utils.rnn.pack_padded_sequence(x, lengths)
-        if init_states is None:
-            seq, last = self.rnn(rnn_input)
-        else:
-            seq, last = self.rnn(rnn_input, init_states)
+        seq, last = self.rnn(rnn_input)
         last_state_h = torch.cat([last[0][0], last[0][1]], 1)  # batch x hid_f+hid_b
         last_state_c = torch.cat([last[1][0], last[1][1]], 1)  # batch x hid_f+hid_b
         # Unpack everything
