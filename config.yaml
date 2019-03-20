@@ -45,6 +45,4 @@ model:
   embedding_size: 150
   rnn_hidden_size: 300
   pointer_softmax_hidden_dim: 64
-  enc_layers: 1
-  dec_layers: 1
   dropout: 0.3

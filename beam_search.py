@@ -209,7 +209,7 @@ class SequenceGenerator(object):
 
         return seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists
 
-    def beam_search(self, src_input, src_len, src_oov, oov_list, word2id):
+    def beam_search(self, src_input, src_oov, oov_list, word2id):
         """Runs beam search sequence generation given input (padded word indexes)
 
         Args:
@@ -222,7 +222,7 @@ class SequenceGenerator(object):
         batch_size = len(src_input)
 
         src_mask = self.get_mask(src_input)  # same size as input_src
-        src_context, (src_h, src_c) = self.model.encode(src_input, src_len)
+        src_context, (src_h, src_c) = self.model.s2s_encode(src_input)
 
         # prepare the init hidden vector, (batch_size, trg_seq_len,
         # dec_hidden_dim)
@@ -269,12 +269,11 @@ class SequenceGenerator(object):
 
             # flatten 2d sequences (batch_size, beam_size) into 1d batches
             # (batch_size * beam_size) to feed model
-            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(
-                partial_sequences)
+            seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists = self.sequence_to_batch(partial_sequences)
 
             # Run one-step generation. probs=(batch_size, 1, K),
             # dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
-            log_probs, new_dec_hiddens = self.model.generate(
+            log_probs, new_dec_hiddens = self.model.s2s_generate(
                 trg_input=inputs,
                 dec_hidden=dec_hiddens,
                 enc_context=contexts,
@@ -379,7 +378,7 @@ class SequenceGenerator(object):
 
         return complete_sequences
 
-    def sample(self, src_input, src_len, src_oov, oov_list, word2id):
+    def sample(self, src_input, src_oov, oov_list, word2id):
         """
         Sample k sequeces for each src in src_input
 
@@ -392,7 +391,7 @@ class SequenceGenerator(object):
         batch_size = len(src_input)
 
         src_mask = self.get_mask(src_input)  # same size as input_src
-        src_context, (src_h, src_c) = self.model.encode(src_input, src_len)
+        src_context, (src_h, src_c) = self.model.s2s_encode(src_input)
 
         # prepare the init hidden vector, (batch_size, trg_seq_len,
         # dec_hidden_dim)
@@ -435,7 +434,7 @@ class SequenceGenerator(object):
 
             # Run one-step generation. log_probs=(batch_size, 1, K),
             # dec_hidden=tuple of (1, batch_size, trg_hidden_dim)
-            log_probs, new_dec_hiddens = self.model.generate(
+            log_probs, new_dec_hiddens = self.model.s2s_generate(
                 trg_input=inputs,
                 dec_hidden=dec_hiddens,
                 enc_context=contexts,

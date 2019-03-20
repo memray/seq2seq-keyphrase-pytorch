@@ -204,9 +204,9 @@ class KeyphraseDataset(torch.utils.data.Dataset):
         '''
 
         if self.include_original:
-            return (src_o2s, src_o2s_len, trg_o2s, trg_target_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s, src_str, trg_str)
+            return (src_o2s, trg_o2s, trg_target_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s, src_str, trg_str)
         else:
-            return (src_o2s, src_o2s_len, trg_o2s, trg_target_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s)
+            return (src_o2s, trg_o2s, trg_target_o2s, trg_copy_target_o2s, src_oov_o2s, oov_lists_o2s)
 
 
 def load_json_data(path, name='kp20k', src_fields=['title', 'abstract'], trg_fields=['keyword'], trg_delimiter=';'):

@@ -39,7 +39,7 @@ def to_np(x):
 
 
 def train_batch(_batch, model, optimizer, criterion, config, word2id):
-    src, src_len, trg, trg_target, trg_copy_target, src_oov, oov_lists = _batch
+    src, trg, trg_target, trg_copy_target, src_oov, oov_lists = _batch
     max_oov_number = max([len(oov) for oov in oov_lists])
 
     optimizer.zero_grad()
@@ -50,7 +50,7 @@ def train_batch(_batch, model, optimizer, criterion, config, word2id):
         trg_copy_target = trg_copy_target.cuda()
         src_oov = src_oov.cuda()
 
-    decoder_log_probs, _, _ = model.forward(src, src_len, trg, src_oov, oov_lists)
+    decoder_log_probs, _, _ = model.forward(src, trg, src_oov, oov_lists)
 
     nll_loss = criterion(decoder_log_probs.contiguous().view(-1, len(word2id) + max_oov_number),
                          trg_copy_target.contiguous().view(-1))

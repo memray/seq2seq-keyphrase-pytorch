@@ -301,3 +301,221 @@ class UniLSTM(torch.nn.Module):
             mask.unsqueeze(-1)  # batch x time x hid
         hidden_states = hidden_states.permute(1, 0, 2)  # time x batch x hid
         return hidden_states, last_states
+
+
+class FastUniLSTM(torch.nn.Module):
+    """
+    Adapted from https://github.com/facebookresearch/DrQA/
+    now supports:   different rnn size for each layer
+                    all zero rows in batch (from time distributed layer, by reshaping certain dimension)
+    """
+
+    def __init__(self, ninp, nhids, dropout_between_rnn_layers=0.):
+        super(FastUniLSTM, self).__init__()
+        self.ninp = ninp
+        self.nhids = nhids
+        self.nlayers = len(self.nhids)
+        self.dropout_between_rnn_layers = dropout_between_rnn_layers
+        self.stack_rnns()
+
+    def stack_rnns(self):
+        rnns = [torch.nn.LSTM(self.ninp if i == 0 else self.nhids[i - 1],
+                              self.nhids[i],
+                              num_layers=1,
+                              bidirectional=False) for i in range(self.nlayers)]
+        self.rnns = torch.nn.ModuleList(rnns)
+
+    def forward(self, x, mask):
+
+        def pad_(tensor, n):
+            if n > 0:
+                zero_pad = torch.autograd.Variable(torch.zeros((n,) + tensor.size()[1:]))
+                if x.is_cuda:
+                    zero_pad = zero_pad.cuda()
+                tensor = torch.cat([tensor, zero_pad])
+            return tensor
+
+        """
+        inputs: x:          batch x time x inp
+                mask:       batch x time
+        output: encoding:   batch x time x hidden[-1]
+        """
+        # Compute sorted sequence lengths
+        batch_size = x.size(0)
+        lengths = mask.data.eq(1).long().sum(1)  # .squeeze()
+        _, idx_sort = torch.sort(lengths, dim=0, descending=True)
+        _, idx_unsort = torch.sort(idx_sort, dim=0)
+
+        lengths = list(lengths[idx_sort])
+        idx_sort = torch.autograd.Variable(idx_sort)
+        idx_unsort = torch.autograd.Variable(idx_unsort)
+
+        # Sort x
+        x = x.index_select(0, idx_sort)
+
+        # remove non-zero rows, and remember how many zeros
+        n_nonzero = np.count_nonzero(lengths)
+        n_zero = batch_size - n_nonzero
+        if n_zero != 0:
+            lengths = lengths[:n_nonzero]
+            x = x[:n_nonzero]
+
+        # Transpose batch and sequence dims
+        x = x.transpose(0, 1)
+
+        # Pack it up
+        rnn_input = torch.nn.utils.rnn.pack_padded_sequence(x, lengths)
+
+        # Encode all layers
+        outputs = [rnn_input]
+        for i in range(self.nlayers):
+            rnn_input = outputs[-1]
+
+            # dropout between rnn layers
+            if self.dropout_between_rnn_layers > 0:
+                dropout_input = F.dropout(rnn_input.data,
+                                          p=self.dropout_between_rnn_layers,
+                                          training=self.training)
+                rnn_input = torch.nn.utils.rnn.PackedSequence(dropout_input,
+                                                              rnn_input.batch_sizes)
+            seq, last = self.rnns[i](rnn_input)
+            outputs.append(seq)
+            if i == self.nlayers - 1:
+                # last layer
+                last_state = last[0]  # (num_layers * num_directions, batch, hidden_size)
+                last_state = last_state[0]  # batch x hidden_size
+
+        # Unpack everything
+        for i, o in enumerate(outputs[1:], 1):
+            outputs[i] = torch.nn.utils.rnn.pad_packed_sequence(o)[0]
+        output = outputs[-1]
+
+        # Transpose and unsort
+        output = output.transpose(0, 1)  # batch x time x enc
+
+        # re-padding
+        output = pad_(output, n_zero)
+        last_state = pad_(last_state, n_zero)
+
+        output = output.index_select(0, idx_unsort)
+        last_state = last_state.index_select(0, idx_unsort)
+
+        # Pad up to original batch sequence length
+        if output.size(1) != mask.size(1):
+            padding = torch.zeros(output.size(0),
+                                  mask.size(1) - output.size(1),
+                                  output.size(2)).type(output.data.type())
+            output = torch.cat([output, torch.autograd.Variable(padding)], 1)
+
+        output = output.contiguous() * mask.unsqueeze(-1)
+        return output, last_state, mask
+
+
+class FastBiLSTM(torch.nn.Module):
+    """
+    Adapted from https://github.com/facebookresearch/DrQA/
+    now supports:   different rnn size for each layer
+                    all zero rows in batch (from time distributed layer, by reshaping certain dimension)
+    """
+
+    def __init__(self, ninp, nhid):
+        super(FastBiLSTM, self).__init__()
+        self.ninp = ninp
+        self.nhids = nhid // 2
+        self.rnn = torch.nn.LSTM(self.ninp, self.nhid, num_layers=1, bidirectional=True)
+
+
+    def forward(self, x, mask, init_states=None):
+
+        def pad_(tensor, n):
+            if n > 0:
+                zero_pad = torch.autograd.Variable(torch.zeros((n,) + tensor.size()[1:]))
+                if x.is_cuda:
+                    zero_pad = zero_pad.cuda()
+                tensor = torch.cat([tensor, zero_pad])
+            return tensor
+
+        """
+        inputs: x:          batch x time x inp
+                mask:       batch x time
+        output: encoding:   batch x time x hidden[-1]
+        """
+        # Compute sorted sequence lengths
+        batch_size = x.size(0)
+        lengths = mask.data.eq(1).long().sum(1)  # .squeeze()
+        _, idx_sort = torch.sort(lengths, dim=0, descending=True)
+        _, idx_unsort = torch.sort(idx_sort, dim=0)
+
+        lengths = list(lengths[idx_sort])
+        idx_sort = torch.autograd.Variable(idx_sort)
+        idx_unsort = torch.autograd.Variable(idx_unsort)
+
+        # Sort x
+        x = x.index_select(0, idx_sort)
+
+        # remove non-zero rows, and remember how many zeros
+        n_nonzero = np.count_nonzero(lengths)
+        n_zero = batch_size - n_nonzero
+        if n_zero != 0:
+            lengths = lengths[:n_nonzero]
+            x = x[:n_nonzero]
+
+        # Transpose batch and sequence dims
+        x = x.transpose(0, 1)
+
+        # Pack it up
+        rnn_input = torch.nn.utils.rnn.pack_padded_sequence(x, lengths)
+        if init_states is None:
+            seq, last = self.rnn(rnn_input)
+        else:
+            seq, last = self.rnn(rnn_input, init_states)
+        last_state_h = torch.cat([last[0][0], last[0][1]], 1)  # batch x hid_f+hid_b
+        last_state_c = torch.cat([last[1][0], last[1][1]], 1)  # batch x hid_f+hid_b
+        # Unpack everything
+        output = torch.nn.utils.rnn.pad_packed_sequence(seq)[0]
+        # Transpose and unsort
+        output = output.transpose(0, 1)  # batch x time x enc
+
+        # re-padding
+        output = pad_(output, n_zero)
+        last_state_h = pad_(last_state_h, n_zero)
+        last_state_c = pad_(last_state_c, n_zero)
+
+        output = output.index_select(0, idx_unsort)
+        last_state_h = last_state_h.index_select(0, idx_unsort)
+        last_state_c = last_state_c.index_select(0, idx_unsort)
+
+        # Pad up to original batch sequence length
+        if output.size(1) != mask.size(1):
+            padding = torch.zeros(output.size(0),
+                                  mask.size(1) - output.size(1),
+                                  output.size(2)).type(output.data.type())
+            output = torch.cat([output, torch.autograd.Variable(padding)], 1)
+
+        output = output.contiguous() * mask.unsqueeze(-1)
+        return output, (last_state_h, last_state_c)
+
+
+class Embedding(torch.nn.Module):
+    '''
+    inputs: x:          batch x seq (x is post-padded by 0s)
+    outputs:embedding:  batch x seq x emb
+            mask:       batch x seq
+    '''
+
+    def __init__(self, embedding_size, vocab_size):
+        super(Embedding, self).__init__()
+        self.embedding_size = embedding_size
+        self.vocab_size = vocab_size
+        self.embedding_layer = torch.nn.Embedding(self.vocab_size, self.embedding_size, padding_idx=0)
+
+    def compute_mask(self, x):
+        mask = torch.ne(x, 0).float()
+        if x.is_cuda:
+            mask = mask.cuda()
+        return mask
+
+    def forward(self, x):
+        embeddings = self.embedding_layer(x)  # batch x time x emb
+        mask = self.compute_mask(x)  # batch x time
+        return embeddings, mask

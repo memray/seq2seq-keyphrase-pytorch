@@ -7,6 +7,7 @@ import random
 
 import pykp
 from pykp.eric_layers import GetMask, masked_softmax, TimeDistributedDense, Average, Concat, MultilayerPerceptron, UniLSTM
+from pykp.eric_layers import FastBiLSTM, FastUniLSTM, Embedding
 
 __author__ = "Rui Meng"
 __email__ = "rui.meng@pitt.edu"
@@ -94,27 +95,29 @@ class Seq2SeqLSTMAttention(nn.Module):
         self.trg_hidden_dim = self.config['model']['rnn_hidden_size']
         self.ctx_hidden_dim = self.config['model']['rnn_hidden_size']
         self.pointer_softmax_hidden_dim = self.config['model']['pointer_softmax_hidden_dim']
-        self.nlayers_src = self.config['model']['enc_layers']
-        self.nlayers_trg = self.config['model']['dec_layers']
         self.dropout = self.config['model']['dropout']
 
     def _def_layers(self):
       
         self.get_mask = GetMask(self.pad_token_src)
-        self.embedding = nn.Embedding(self.vocab_size, self.embedding_size, self.pad_token_src)
-        self.encoder = nn.LSTM(input_size=self.embedding_size,
-                               hidden_size=self.src_hidden_dim,
-                               num_layers=self.nlayers_src,
-                               bidirectional=True,
-                               batch_first=True,
-                               dropout=self.dropout if self.nlayers_src > 1 else 0)
+        self.embedding = Embedding(self.embedding_size, self.vocab_size)
+
+        self.s2s_encoder = FastBiLSTM(ninp=self.embedding_size,
+                                      nhids=self.src_hidden_dim)
+
+        self.ae_encoder = nn.LSTM(input_size=self.embedding_size,
+                                  hidden_size=self.src_hidden_dim,
+                                  num_layers=1,
+                                  bidirectional=True,
+                                  batch_first=True,
+                                  dropout=0)
 
         self.decoder = nn.LSTM(input_size=self.embedding_size,
                                hidden_size=self.trg_hidden_dim,
-                               num_layers=self.nlayers_trg,
+                               num_layers=1,
                                bidirectional=False,
                                batch_first=False,
-                               dropout=self.dropout if self.nlayers_trg > 1 else 0)
+                               dropout=0)
 
         self.attention_layer = Attention(self.src_hidden_dim * 2, self.trg_hidden_dim)
 
@@ -125,6 +128,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         self.encoder2decoder_hidden = nn.Linear(self.src_hidden_dim * 2, self.trg_hidden_dim)
         self.encoder2decoder_cell = nn.Linear(self.src_hidden_dim * 2, self.trg_hidden_dim)
+
         self.decoder2vocab = nn.Linear(self.trg_hidden_dim, self.vocab_size)
 
     def load_pretrained_model(self, load_from):
@@ -165,37 +169,36 @@ class Seq2SeqLSTMAttention(nn.Module):
         decoder_init_cell = nn.Tanh()(self.encoder2decoder_cell(enc_c)).unsqueeze(0)
         return decoder_init_hidden, decoder_init_cell
 
-    def forward(self, input_src, input_src_len, input_trg, input_src_ext, oov_lists, trg_mask=None, ctx_mask=None):
+    def forward(self, input_src, input_trg, input_src_ext, oov_lists, trg_mask=None, ctx_mask=None):
 
         if not ctx_mask:
             ctx_mask = self.get_mask(input_src)  # same size as input_src
         if not trg_mask:
             trg_mask = self.get_mask(input_trg)  # same size as input_trg
-        src_h, (src_h_t, src_c_t) = self.encode(input_src, input_src_len)
-        decoder_probs, decoder_hiddens = self.decode(trg_inputs=input_trg, src_map=input_src_ext,
+        src_h, (src_h_t, src_c_t) = self.s2s_encode(input_src)
+        decoder_probs, decoder_hiddens = self.s2s_decode(trg_inputs=input_trg, src_map=input_src_ext,
                                                      oov_list=oov_lists, enc_context=src_h,
                                                      enc_hidden=(src_h_t, src_c_t),
                                                      trg_mask=trg_mask, ctx_mask=ctx_mask)
         return decoder_probs, decoder_hiddens, src_h_t
 
-    def encode(self, input_src, input_src_len):
-
-        src_emb = self.embedding(input_src)
+    def s2s_encode(self, input_src):
+        src_emb, src_mask = self.embedding(input_src)
         src_emb = nn.functional.dropout(src_emb, p=self.dropout, training=self.training)
-        src_emb = nn.utils.rnn.pack_padded_sequence(src_emb, input_src_len, batch_first=True)
-
-        self.h0_encoder, self.c0_encoder = self.init_encoder_state(input_src)
-        src_h, (src_h_t, src_c_t) = self.encoder(src_emb, (self.h0_encoder, self.c0_encoder))
-        src_h, _ = nn.utils.rnn.pad_packed_sequence(src_h, batch_first=True)
+        h0_encoder, c0_encoder = self.init_encoder_state(input_src)
+        src_h, (src_h_t, src_c_t) = self.s2s_encoder(src_emb, src_mask, (h0_encoder, c0_encoder))
         src_h = nn.functional.dropout(src_h, p=self.dropout, training=self.training)
+        return src_h, (src_h_t, src_c_t)
+        
+    def ae_encode(self, input_src):
+        src_emb, src_mask = self.embedding(input_src)
+        src_emb = nn.functional.dropout(src_emb, p=self.dropout, training=self.training)
+        h0_encoder, c0_encoder = self.init_encoder_state(input_src)
+        src_h, (src_h_t, src_c_t) = self.ae_encoder(src_emb, src_mask, (h0_encoder, c0_encoder))
+        src_h = nn.functional.dropout(src_h, p=self.dropout, training=self.training)
+        return src_h, (src_h_t, src_c_t)
 
-        # concatenate to (batch_size, hidden_size * num_directions)
-        h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
-        c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
-
-        return src_h, (h_t, c_t)
-
-    def decode(self, trg_inputs, src_map, oov_list, enc_context, enc_hidden, trg_mask, ctx_mask):
+    def s2s_decode(self, trg_inputs, src_map, oov_list, enc_context, enc_hidden, trg_mask, ctx_mask):
 
         batch_size = trg_inputs.size(0)
         max_length = trg_inputs.size(1)
@@ -215,11 +218,11 @@ class Seq2SeqLSTMAttention(nn.Module):
         decoder_logits = self.decoder2vocab(h_tildes.view(-1, self.trg_hidden_dim)).view(batch_size, max_length, -1)
 
         decoder_outputs = decoder_outputs.permute(1, 0, 2)  # (batch_size, trg_len, trg_hidden_dim)
-        decoder_log_probs = self.merge_copy_probs(decoder_outputs, weighted_context, decoder_logits, attn_weights, src_map, oov_list, trg_mask)
+        decoder_log_probs = self.s2s_merge_probs(decoder_outputs, weighted_context, decoder_logits, attn_weights, src_map, oov_list, trg_mask)
 
         return decoder_log_probs, decoder_outputs
 
-    def merge_copy_probs(self, decoder_hidden, context_representations, decoder_logits, copy_probs, src_map, oov_list, trg_mask):
+    def s2s_merge_probs(self, decoder_hidden, context_representations, decoder_logits, copy_probs, src_map, oov_list, trg_mask):
 
         batch_size, max_length, _ = copy_probs.size()
         src_len = src_map.size(1)
@@ -284,7 +287,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         return decoder_log_probs
 
-    def generate(self, trg_input, dec_hidden, enc_context, ctx_mask=None, src_map=None, oov_list=None):
+    def s2s_generate(self, trg_input, dec_hidden, enc_context, ctx_mask=None, src_map=None, oov_list=None):
 
         batch_size = trg_input.size(0)
 
@@ -306,6 +309,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         # (batch_size, trg_len, trg_hidden_size) -> (batch_size, 1, vocab_size)
         decoder_logit = self.decoder2vocab(h_tilde.view(-1, self.trg_hidden_dim))
         decoder_logit = decoder_logit.view(batch_size, 1, self.vocab_size)
-        decoder_log_prob = self.merge_copy_probs(decoder_output, weighted_context, decoder_logit, attn_weight, src_map, oov_list, trg_mask)
+        decoder_log_prob = self.s2s_merge_probs(decoder_output, weighted_context, decoder_logit, attn_weight, src_map, oov_list, trg_mask)
 
         return decoder_log_prob, dec_hidden
