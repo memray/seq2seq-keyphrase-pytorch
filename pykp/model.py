@@ -155,15 +155,24 @@ class Seq2SeqLSTMAttention(nn.Module):
         decoder_init_cell = enc_c.unsqueeze(0)
         return decoder_init_hidden, decoder_init_cell
 
+    def add_gaussian(self, inp, mean=0.0, stddev=0.1):
+        noise = Variable(inp.data.new(inp.size()).normal_(mean, stddev))
+        return inp + noise
+
     def forward(self, input_src, input_trg, input_src_ext, oov_lists):
 
         s2s_src_h, (s2s_src_h_t, s2s_src_c_t), s2s_src_mask = self.s2s_encode(input_src)
+        s2s_src_h_t = self.add_gaussian(s2s_src_h_t)
+        s2s_src_c_t = self.add_gaussian(s2s_src_c_t)
+
         s2s_decoder_log_probs = self.s2s_decode(trg_inputs=input_trg, src_map=input_src_ext,
                                                 oov_list=oov_lists, enc_context=s2s_src_h,
                                                 enc_hidden=(s2s_src_h_t, s2s_src_c_t),
                                                 ctx_mask=s2s_src_mask)
 
         _, (ae_src_h_t, ae_src_c_t), _ = self.ae_encode(input_trg)
+        ae_src_h_t = self.add_gaussian(ae_src_h_t)
+        ae_src_c_t = self.add_gaussian(ae_src_c_t)
         ae_decoder_log_probs = self.ae_decode(trg_inputs=input_trg, oov_list=oov_lists, enc_hidden=(ae_src_h_t, ae_src_c_t))
         return ae_decoder_log_probs, s2s_decoder_log_probs
 
