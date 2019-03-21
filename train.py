@@ -46,7 +46,9 @@ def compute_regularization(z_s2s, z_ae):
     # push far z_s2s of one example with all other examples
     term_2 = None
     for i in range(batch_size):
-        for j in range(i, batch_size):
+        for j in range(batch_size):
+            if i == j:
+                continue
             tmp = torch.sqrt(torch.clamp(torch.mean((z_s2s[i] - z_s2s[j]) ** 2, -1), min=0.0))
             tmp = torch.clamp(tmp, max=CAP)
             term_2 = tmp if term_2 is None else term_2 + tmp
@@ -54,7 +56,9 @@ def compute_regularization(z_s2s, z_ae):
     # push far z_ae of one example with all other examples
     term_3 = None
     for i in range(batch_size):
-        for j in range(i, batch_size):
+        for j in range(batch_size):
+            if i == j:
+                continue
             tmp = torch.sqrt(torch.clamp(torch.mean((z_ae[i] - z_ae[j]) ** 2, -1), min=0.0))
             tmp = torch.clamp(tmp, max=CAP)
             term_3 = tmp if term_3 is None else term_3 + tmp
