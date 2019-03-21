@@ -161,20 +161,26 @@ class Seq2SeqLSTMAttention(nn.Module):
 
     def forward(self, input_src, input_trg, input_src_ext, oov_lists):
 
+        # sequence to sequence
         s2s_src_h, (s2s_src_h_t, s2s_src_c_t), s2s_src_mask = self.s2s_encode(input_src)
         s2s_src_h_t = self.add_gaussian(s2s_src_h_t)
         s2s_src_c_t = self.add_gaussian(s2s_src_c_t)
-
         s2s_decoder_log_probs = self.s2s_decode(trg_inputs=input_trg, src_map=input_src_ext,
                                                 oov_list=oov_lists, enc_context=s2s_src_h,
                                                 enc_hidden=(s2s_src_h_t, s2s_src_c_t),
                                                 ctx_mask=s2s_src_mask)
-
+        # autoencoder
         _, (ae_src_h_t, ae_src_c_t), _ = self.ae_encode(input_trg)
         ae_src_h_t = self.add_gaussian(ae_src_h_t)
         ae_src_c_t = self.add_gaussian(ae_src_c_t)
         ae_decoder_log_probs = self.ae_decode(trg_inputs=input_trg, oov_list=oov_lists, enc_hidden=(ae_src_h_t, ae_src_c_t))
-        return ae_decoder_log_probs, s2s_decoder_log_probs
+        # interpolation
+        U = torch.FloatTensor(input_src.size(0), 1).uniform_(0.0, 1.0)
+        interp_src_h_t = U * s2s_src_h_t + (1.0 - U) * ae_src_h_t
+        interp_src_c_t = U * s2s_src_c_t + (1.0 - U) * ae_src_c_t
+        interp_decoder_log_probs = self.ae_decode(trg_inputs=input_trg, oov_list=oov_lists, enc_hidden=(interp_src_h_t, interp_src_c_t))
+
+        return ae_decoder_log_probs, s2s_decoder_log_probs, interp_decoder_log_probs
 
     def s2s_encode(self, input_src):
         src_emb, src_mask = self.embedding(input_src)
