@@ -38,6 +38,30 @@ def to_np(x):
     return x.data.cpu().numpy()
 
 
+def compute_regularization(z_s2s, z_ae):
+    CAP = 0.3  # as in the paper
+    batch_size = z_s2s.size(0)
+    # pull close z_s2s and z_ae for each example
+    term_1 = torch.mean(torch.sqrt(torch.mean((z_s2s - z_ae) ** 2, -1)))
+    # push far z_s2s of one example with all other examples
+    term_2 = None
+    for i in range(batch_size):
+        for j in range(i, batch_size):
+            tmp = torch.sqrt(torch.clamp(torch.mean((z_s2s[i] - z_s2s[j]) ** 2, -1), min=0.0))
+            tmp = torch.clamp(tmp, max=CAP)
+            term_2 = tmp if term_2 is None else term_2 + tmp
+    term_2 = term_2 / (batch_size * (batch_size - 1))
+    # push far z_ae of one example with all other examples
+    term_3 = None
+    for i in range(batch_size):
+        for j in range(i, batch_size):
+            tmp = torch.sqrt(torch.clamp(torch.mean((z_ae[i] - z_ae[j]) ** 2, -1), min=0.0))
+            tmp = torch.clamp(tmp, max=CAP)
+            term_3 = tmp if term_3 is None else term_3 + tmp
+    term_3 = term_3 / (batch_size * (batch_size - 1))
+    return term_1 - term_2 - term_3
+
+
 def train_batch(_batch, model, optimizer, criterion, config, word2id):
     src, trg, trg_copy_target, src_oov, oov_lists = _batch
     max_oov_number = max([len(oov) for oov in oov_lists])
@@ -49,18 +73,22 @@ def train_batch(_batch, model, optimizer, criterion, config, word2id):
         trg_copy_target = trg_copy_target.cuda()
         src_oov = src_oov.cuda()
 
-    s2s_decoder_log_probs, ae_decoder_log_probs, interp_decoder_log_probs = model.forward(src, trg, src_oov, oov_lists)
+    s2s_decoder_log_probs, ae_decoder_log_probs, interp_decoder_log_probs, z_s2s, z_ae = model.forward(src, trg, src_oov, oov_lists)
 
     s2s_loss = criterion(s2s_decoder_log_probs.contiguous().view(-1, len(word2id) + max_oov_number), trg_copy_target.contiguous().view(-1))
     ae_loss = criterion(ae_decoder_log_probs.contiguous().view(-1, len(word2id) + max_oov_number), trg_copy_target.contiguous().view(-1))
     interp_loss = criterion(interp_decoder_log_probs.contiguous().view(-1, len(word2id) + max_oov_number), trg_copy_target.contiguous().view(-1))
+    fuse_loss = compute_regularization(z_s2s, z_ae)
+    
+    lambda_interp = config['model']['lambda_interp']
+    lambda_fuse = config['model']['lambda_fuse']
 
-    loss = s2s_loss + ae_loss + interp_loss
+    loss = s2s_loss + ae_loss + interp_loss * lambda_interp + fuse_loss * lambda_fuse
     loss.backward(retain_graph=True)
     torch.nn.utils.clip_grad_norm_(model.parameters(), config['training']['optimizer']['clip_grad_norm'])
     optimizer.step()
 
-    return to_np(loss), to_np(s2s_loss), to_np(ae_loss), to_np(interp_loss)
+    return to_np(loss), to_np(s2s_loss), to_np(ae_loss), to_np(interp_loss), to_np(fuse_loss)
 
 
 def train_model(model, optimizer, criterion, train_data_loader, valid_data_loader, test_data_loader, config, word2id, id2word):
@@ -84,7 +112,7 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
     train_losses = []
     for epoch in range(config['training']['epochs']):
 
-        report_total_loss, report_s2s_loss, report_ae_loss, report_interp_loss = [], [], [], []
+        report_total_loss, report_s2s_loss, report_ae_loss, report_interp_loss, report_fuse_loss = [], [], [], [], []
 
         print('*' * 20)
         print("Training @ Epoch=%d" % (epoch))
@@ -94,14 +122,15 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
             model.train()
 
             # Training
-            loss_ml, s2s_loss, ae_loss, interp_loss = train_batch(batch, model, optimizer, criterion, config, word2id)
-            train_losses.append(loss_ml)
-            report_total_loss.append(loss_ml)
+            total_loss, s2s_loss, ae_loss, interp_loss, fuse_loss = train_batch(batch, model, optimizer, criterion, config, word2id)
+            train_losses.append(total_loss)
+            report_total_loss.append(total_loss)
             report_s2s_loss.append(s2s_loss)
             report_ae_loss.append(ae_loss)
             report_interp_loss.append(interp_loss)
-        print("total loss %f, s2s loss %f, ae loss %f, interp loss %f" % (np.mean(report_total_loss), np.mean(report_s2s_loss), np.mean(report_ae_loss), np.mean(report_interp_loss)))
-        logging.info("total loss %f, s2s loss %f, ae loss %f, interp loss %f" % (np.mean(report_total_loss), np.mean(report_s2s_loss), np.mean(report_ae_loss), np.mean(report_interp_loss)))
+            report_fuse_loss.append(fuse_loss)
+        print("total loss %f, s2s loss %f, ae loss %f, interp loss %f, fuse loss %f" % (np.mean(report_total_loss), np.mean(report_s2s_loss), np.mean(report_ae_loss), np.mean(report_interp_loss), np.mean(report_fuse_loss)))
+        logging.info("total loss %f, s2s loss %f, ae loss %f, interp loss %f, fuse loss %f" % (np.mean(report_total_loss), np.mean(report_s2s_loss), np.mean(report_ae_loss), np.mean(report_interp_loss), np.mean(report_fuse_loss)))
 
         # Validate and save checkpoint at end of epoch
         logging.info('*' * 50)

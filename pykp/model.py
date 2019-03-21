@@ -176,11 +176,12 @@ class Seq2SeqLSTMAttention(nn.Module):
         ae_decoder_log_probs = self.ae_decode(trg_inputs=input_trg, oov_list=oov_lists, enc_hidden=(ae_src_h_t, ae_src_c_t))
         # interpolation
         U = torch.FloatTensor(input_src.size(0), 1).uniform_(0.0, 1.0)
+        U = U.cuda() if torch.cuda.is_available() else U
         interp_src_h_t = U * s2s_src_h_t + (1.0 - U) * ae_src_h_t
         interp_src_c_t = U * s2s_src_c_t + (1.0 - U) * ae_src_c_t
         interp_decoder_log_probs = self.ae_decode(trg_inputs=input_trg, oov_list=oov_lists, enc_hidden=(interp_src_h_t, interp_src_c_t))
 
-        return ae_decoder_log_probs, s2s_decoder_log_probs, interp_decoder_log_probs
+        return ae_decoder_log_probs, s2s_decoder_log_probs, interp_decoder_log_probs, s2s_src_h_t, ae_src_h_t
 
     def s2s_encode(self, input_src):
         src_emb, src_mask = self.embedding(input_src)

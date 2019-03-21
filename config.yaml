@@ -46,3 +46,5 @@ model:
   rnn_hidden_size: 300
   pointer_softmax_hidden_dim: 64
   dropout: 0.3
+  lambda_interp: 1.0
+  lambda_fuse: 30.0
