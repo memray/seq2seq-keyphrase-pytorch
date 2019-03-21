@@ -209,7 +209,7 @@ class SequenceGenerator(object):
 
         return seq_id2batch_id, flattened_id_map, inputs, dec_hiddens, contexts, ctx_mask, src_oovs, oov_lists
 
-    def beam_search(self, src_input, src_oov, oov_list, word2id):
+    def beam_search(self, src_input, src_oov, oov_list, word2id, sample_sphere_radius=1.0):
         """Runs beam search sequence generation given input (padded word indexes)
 
         Args:
@@ -221,6 +221,12 @@ class SequenceGenerator(object):
         self.model.eval()
         batch_size = len(src_input)
         src_context, (src_h, src_c), src_mask = self.model.s2s_encode(src_input)
+        # add noise layer
+        src_h = self.model.add_gaussian(src_h)
+        src_c = self.model.add_gaussian(src_c)
+        # randomly sample a vector from the sphere surface
+        src_h = self.model.add_noise_from_sphere(src_h, radius=sample_sphere_radius)
+        src_c = self.model.add_noise_from_sphere(src_c, radius=sample_sphere_radius)
 
         # prepare the init hidden vector, (batch_size, trg_seq_len,
         # dec_hidden_dim)
@@ -376,7 +382,7 @@ class SequenceGenerator(object):
 
         return complete_sequences
 
-    def sample(self, src_input, src_oov, oov_list, word2id):
+    def sample(self, src_input, src_oov, oov_list, word2id, sample_sphere_radius=1.0):
         """
         Sample k sequeces for each src in src_input
 
@@ -388,6 +394,12 @@ class SequenceGenerator(object):
         self.model.eval()  # have to be in training mode, to backprop
         batch_size = len(src_input)
         src_context, (src_h, src_c), src_mask = self.model.s2s_encode(src_input)
+        # add noise layer
+        src_h = self.model.add_gaussian(src_h)
+        src_c = self.model.add_gaussian(src_c)
+        # randomly sample a vector from the sphere surface
+        src_h = self.model.add_noise_from_sphere(src_h, radius=sample_sphere_radius)
+        src_c = self.model.add_noise_from_sphere(src_c, radius=sample_sphere_radius)
 
         # prepare the init hidden vector, (batch_size, trg_seq_len,
         # dec_hidden_dim)

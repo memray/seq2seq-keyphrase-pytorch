@@ -188,13 +188,12 @@ def evaluate_beam_search(generator, data_loader, config, word2id, id2word, title
 
         # list(batch) of list(beam size) of Sequence
         if config['evaluate']['eval_method'] in ["beam_search", "beam_first"]:
-            pred_seq_list = generator.beam_search(src_list, src_oov_map_list, oov_list, word2id)
+            pred_seq_list = generator.beam_search(src_list, src_oov_map_list, oov_list, word2id, sample_sphere_radius=config['evaluate']['sample_sphere_radius'])
             best_pred_seq = pred_seq_list
             eval_topk = 5
         elif config['evaluate']['eval_method'] in ["greedy"]:
-            pred_seq_list = generator.sample(src_list, src_oov_map_list, oov_list, word2id)
-            best_pred_seq = [b[0]
-                             for b in pred_seq_list]  # list(batch) of Sequence
+            pred_seq_list = generator.sample(src_list, src_oov_map_list, oov_list, word2id, sample_sphere_radius=config['evaluate']['sample_sphere_radius'])
+            best_pred_seq = [b[0] for b in pred_seq_list]  # list(batch) of Sequence
             eval_topk = 1000
         else:
             raise NotImplementedError

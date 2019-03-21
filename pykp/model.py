@@ -159,6 +159,17 @@ class Seq2SeqLSTMAttention(nn.Module):
         noise = Variable(inp.data.new(inp.size()).normal_(mean, stddev))
         return inp + noise
 
+    def add_noise_from_sphere(self, inp, radius=1.0):
+        # vector r that is uniformly sampled from a hypersphere of radius
+        noise = torch.FloatTensor(inp.size()).uniform_(0.0, 1.0)
+        noise = noise.cuda() if torch.cuda.is_available() else noise
+        r_square = torch.sum(noise ** 2, -1)  # batch
+        r_square = torch.clamp(r_square, min=0.0)
+        tmp = (radius ** 2) / r_square
+        tmp = torch.sqrt(tmp)
+        noise = noise * tmp
+        return inp + noise
+
     def forward(self, input_src, input_trg, input_src_ext, oov_lists):
 
         # sequence to sequence
