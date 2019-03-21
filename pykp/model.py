@@ -92,8 +92,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         # model config
         self.embedding_size = self.config['model']['embedding_size']
         self.src_hidden_dim = self.config['model']['rnn_hidden_size']
-        self.trg_hidden_dim = self.config['model']['rnn_hidden_size']
-        self.ctx_hidden_dim = self.config['model']['rnn_hidden_size']
+        self.trg_hidden_dim = self.config['model']['rnn_hidden_size'] * 2
         self.pointer_softmax_hidden_dim = self.config['model']['pointer_softmax_hidden_dim']
         self.dropout = self.config['model']['dropout']
 
@@ -152,8 +151,8 @@ class Seq2SeqLSTMAttention(nn.Module):
         # prepare the init hidden vector for decoder, 
         # inputs are (batch_size, num_layers * 2 * enc_hidden_dim)
         # outputs are (1 <num layers>, batch_size, dec_hidden_dim)
-        decoder_init_hidden = nn.Tanh()(self.encoder2decoder_hidden(enc_h)).unsqueeze(0)
-        decoder_init_cell = nn.Tanh()(self.encoder2decoder_cell(enc_c)).unsqueeze(0)
+        decoder_init_hidden = enc_h.unsqueeze(0)
+        decoder_init_cell = enc_c.unsqueeze(0)
         return decoder_init_hidden, decoder_init_cell
 
     def forward(self, input_src, input_trg, input_src_ext, oov_lists):
@@ -170,32 +169,23 @@ class Seq2SeqLSTMAttention(nn.Module):
 
     def s2s_encode(self, input_src):
         src_emb, src_mask = self.embedding(input_src)
-        src_emb = nn.functional.dropout(src_emb, p=self.dropout, training=self.training)
         src_h, (src_h_t, src_c_t) = self.s2s_encoder(src_emb, src_mask)
-        src_h = nn.functional.dropout(src_h, p=self.dropout, training=self.training)
         return src_h, (src_h_t, src_c_t), src_mask
         
     def ae_encode(self, input_src):
         src_emb, src_mask = self.embedding(input_src)
-        src_emb = nn.functional.dropout(src_emb, p=self.dropout, training=self.training)
         src_h, (src_h_t, src_c_t) = self.ae_encoder(src_emb, src_mask)
-        src_h = nn.functional.dropout(src_h, p=self.dropout, training=self.training)
         return src_h, (src_h_t, src_c_t), src_mask
 
     def s2s_decode(self, trg_inputs, src_map, oov_list, enc_context, enc_hidden, ctx_mask):
 
-        batch_size = trg_inputs.size(0)
-        max_length = trg_inputs.size(1)
-
+        batch_size, max_length = trg_inputs.size(0), trg_inputs.size(1)
         init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
 
         trg_emb, trg_mask = self.embedding(trg_inputs)
         trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
 
-        decoder_input = trg_emb
-        decoder_input = nn.functional.dropout(decoder_input, p=self.dropout, training=self.training)
-
-        decoder_outputs, _ = self.decoder(decoder_input, init_hidden)
+        decoder_outputs, _ = self.decoder(trg_emb, init_hidden)
         decoder_outputs = nn.functional.dropout(decoder_outputs, p=self.dropout, training=self.training)
         
         h_tildes, weighted_context, attn_weights = self.attention_layer(decoder_outputs.permute(1, 0, 2), enc_context, encoder_mask=ctx_mask)
@@ -208,18 +198,13 @@ class Seq2SeqLSTMAttention(nn.Module):
 
     def ae_decode(self, trg_inputs, oov_list, enc_hidden):
 
-        batch_size = trg_inputs.size(0)
-        max_length = trg_inputs.size(1)
-
+        batch_size, max_length = trg_inputs.size(0), trg_inputs.size(1)
         init_hidden = self.init_decoder_state(enc_hidden[0], enc_hidden[1])
 
         trg_emb, trg_mask = self.embedding(trg_inputs)
         trg_emb = trg_emb.permute(1, 0, 2)  # (trg_len, batch_size, embed_dim)
 
-        decoder_input = trg_emb
-        decoder_input = nn.functional.dropout(decoder_input, p=self.dropout, training=self.training)
-
-        decoder_outputs, _ = self.decoder(decoder_input, init_hidden)
+        decoder_outputs, _ = self.decoder(trg_emb, init_hidden)
         decoder_outputs = nn.functional.dropout(decoder_outputs, p=self.dropout, training=self.training)
         decoder_logits = self.decoder2vocab(decoder_outputs.view(-1, self.trg_hidden_dim))  # (batch*max_len, vocab)
 
@@ -227,7 +212,6 @@ class Seq2SeqLSTMAttention(nn.Module):
         max_oov_number = max([len(oovs) for oovs in oov_list])
         # flatten and extend size of decoder_probs from (vocab_size) to(vocab_size+max_oov_number)
         if max_oov_number > 0:
-
             extended_logits = Variable(torch.FloatTensor([-np.inf] * max_oov_number))  # max_oov_num
             extended_logits = extended_logits.unsqueeze(0).expand(batch_size * max_length, max_oov_number).contiguous()
             extended_logits = extended_logits.cuda() if torch.cuda.is_available() else extended_logits
