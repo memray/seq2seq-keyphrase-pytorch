@@ -161,7 +161,6 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
             logging.info("++ test %s : %f" % (key, np.average(test_score_dict[key])))
             print("++ test %s : %f" % (key, np.average(test_score_dict[key])))
             
-
         train_ml_history_losses.append(copy.copy(train_losses))
         train_losses = []
 
@@ -175,8 +174,6 @@ def train_model(model, optimizer, criterion, train_data_loader, valid_data_loade
         # only store the checkpoints that make better validation performances
         if is_best_performance:
             # Save the checkpoint
-            # logging.info('Saving checkpoint to: %s' % os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '_%s.epoch=%d.model.pt' % (config['general']['dataset'], epoch)))
-            # model.save_model_to_path(os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '_%s.epoch=%d.model.pt' % (config['general']['dataset'], epoch)))
             logging.info('Saving checkpoint to: %s' % os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '_%s.model.pt' % (config['general']['dataset'])))
             model.save_model_to_path(os.path.join(config['checkpoint']['checkpoint_path'], config['checkpoint']['experiment_tag'] + '_%s.model.pt' % (config['general']['dataset'])))
         logging.info('*' * 50)
