@@ -44,25 +44,31 @@ def compute_regularization(z_s2s, z_ae):
     # pull close z_s2s and z_ae for each example
     term_1 = torch.mean(torch.sqrt(torch.mean((z_s2s - z_ae) ** 2, -1)))
     # push far z_s2s of one example with all other examples
-    term_2 = None
-    for i in range(batch_size):
-        for j in range(batch_size):
-            if i == j:
-                continue
-            tmp = torch.sqrt(torch.clamp(torch.mean((z_s2s[i] - z_s2s[j]) ** 2, -1), min=0.0))
-            tmp = torch.clamp(tmp, max=CAP)
-            term_2 = tmp if term_2 is None else term_2 + tmp
-    term_2 = term_2 / (batch_size * (batch_size - 1))
+    if batch_size <= 1:
+        term_2 = 0.0
+    else:
+        term_2 = None
+        for i in range(batch_size):
+            for j in range(batch_size):
+                if i == j:
+                    continue
+                tmp = torch.sqrt(torch.clamp(torch.mean((z_s2s[i] - z_s2s[j]) ** 2, -1), min=0.0))
+                tmp = torch.clamp(tmp, max=CAP)
+                term_2 = tmp if term_2 is None else term_2 + tmp
+        term_2 = term_2 / (batch_size * (batch_size - 1))
     # push far z_ae of one example with all other examples
-    term_3 = None
-    for i in range(batch_size):
-        for j in range(batch_size):
-            if i == j:
-                continue
-            tmp = torch.sqrt(torch.clamp(torch.mean((z_ae[i] - z_ae[j]) ** 2, -1), min=0.0))
-            tmp = torch.clamp(tmp, max=CAP)
-            term_3 = tmp if term_3 is None else term_3 + tmp
-    term_3 = term_3 / (batch_size * (batch_size - 1))
+    if batch_size <= 1:
+        term_3 = 0.0
+    else:
+        term_3 = None
+        for i in range(batch_size):
+            for j in range(batch_size):
+                if i == j:
+                    continue
+                tmp = torch.sqrt(torch.clamp(torch.mean((z_ae[i] - z_ae[j]) ** 2, -1), min=0.0))
+                tmp = torch.clamp(tmp, max=CAP)
+                term_3 = tmp if term_3 is None else term_3 + tmp
+        term_3 = term_3 / (batch_size * (batch_size - 1))
     return term_1 - term_2 - term_3
 
 
