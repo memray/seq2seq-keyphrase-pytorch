@@ -167,7 +167,7 @@ class Seq2SeqLSTMAttention(nn.Module):
         r_square = torch.clamp(r_square, min=0.0)
         tmp = (radius ** 2) / r_square
         tmp = torch.sqrt(tmp)
-        noise = noise * tmp
+        noise = noise * tmp.unsqueeze(-1)
         return inp + noise
 
     def forward(self, input_src, input_trg, input_src_ext, oov_lists):
