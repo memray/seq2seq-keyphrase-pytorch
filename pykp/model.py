@@ -157,7 +157,7 @@ class Seq2SeqLSTMAttention(nn.Module):
 
     def add_gaussian(self, inp, mean=0.0, stddev=0.1):
         if isinstance(inp, tuple):
-            noise = Variable(inp.data.new(inp[0].size()).normal_(mean, stddev))
+            noise = Variable(inp[0].data.new(inp[0].size()).normal_(mean, stddev))
             return (inp[0] + noise, inp[1] + noise)
         noise = Variable(inp.data.new(inp.size()).normal_(mean, stddev))
         return inp + noise
