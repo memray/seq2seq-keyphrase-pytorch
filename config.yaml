@@ -34,7 +34,7 @@ evaluate:
   max_sent_length: 20
   beam_size: 5
   batch_size: 16
-  sample_sphere_radius: 1.5
+  sample_sphere_radius: 0.0  # 1.5
 
 checkpoint:
   checkpoint_path: "checkpoints"

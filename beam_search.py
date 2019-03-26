@@ -222,8 +222,7 @@ class SequenceGenerator(object):
         batch_size = len(src_input)
         src_context, (src_h, src_c), src_mask = self.model.s2s_encode(src_input)
         # add noise layer
-        src_h = self.model.add_gaussian(src_h)
-        src_c = self.model.add_gaussian(src_c)
+        src_h, src_c = self.model.add_gaussian((src_h, src_c))
         # randomly sample a vector from the sphere surface
         src_h = self.model.add_noise_from_sphere(src_h, radius=sample_sphere_radius)
         src_c = self.model.add_noise_from_sphere(src_c, radius=sample_sphere_radius)
@@ -395,8 +394,7 @@ class SequenceGenerator(object):
         batch_size = len(src_input)
         src_context, (src_h, src_c), src_mask = self.model.s2s_encode(src_input)
         # add noise layer
-        src_h = self.model.add_gaussian(src_h)
-        src_c = self.model.add_gaussian(src_c)
+        src_h, src_c = self.model.add_gaussian((src_h, src_c))
         # randomly sample a vector from the sphere surface
         src_h = self.model.add_noise_from_sphere(src_h, radius=sample_sphere_radius)
         src_c = self.model.add_noise_from_sphere(src_c, radius=sample_sphere_radius)

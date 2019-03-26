@@ -156,11 +156,16 @@ class Seq2SeqLSTMAttention(nn.Module):
         return decoder_init_hidden, decoder_init_cell
 
     def add_gaussian(self, inp, mean=0.0, stddev=0.1):
+        if isinstance(inp, tuple):
+            noise = Variable(inp.data.new(inp[0].size()).normal_(mean, stddev))
+            return (inp[0] + noise, inp[1] + noise)
         noise = Variable(inp.data.new(inp.size()).normal_(mean, stddev))
         return inp + noise
 
     def add_noise_from_sphere(self, inp, radius=1.0):
         # vector r that is uniformly sampled from a hypersphere of radius
+        if radius == 0.0:
+            return inp
         noise = torch.FloatTensor(inp.size()).uniform_(0.0, 1.0)
         noise = noise.cuda() if torch.cuda.is_available() else noise
         r_square = torch.sum(noise ** 2, -1)  # batch
@@ -174,16 +179,14 @@ class Seq2SeqLSTMAttention(nn.Module):
 
         # sequence to sequence
         s2s_src_h, (s2s_src_h_t, s2s_src_c_t), s2s_src_mask = self.s2s_encode(input_src)
-        s2s_src_h_t = self.add_gaussian(s2s_src_h_t)
-        s2s_src_c_t = self.add_gaussian(s2s_src_c_t)
+        s2s_src_h_t, s2s_src_c_t = self.add_gaussian((s2s_src_h_t, s2s_src_c_t))
         s2s_decoder_log_probs = self.s2s_decode(trg_inputs=input_trg, src_map=input_src_ext,
                                                 oov_list=oov_lists, enc_context=s2s_src_h,
                                                 enc_hidden=(s2s_src_h_t, s2s_src_c_t),
                                                 ctx_mask=s2s_src_mask)
         # autoencoder
         _, (ae_src_h_t, ae_src_c_t), _ = self.ae_encode(input_trg)
-        ae_src_h_t = self.add_gaussian(ae_src_h_t)
-        ae_src_c_t = self.add_gaussian(ae_src_c_t)
+        ae_src_h_t, ae_src_c_t = self.add_gaussian((ae_src_h_t, ae_src_c_t))
         ae_decoder_log_probs = self.ae_decode(trg_inputs=input_trg, oov_list=oov_lists, enc_hidden=(ae_src_h_t, ae_src_c_t))
         # interpolation
         U = torch.FloatTensor(input_src.size(0), 1).uniform_(0.0, 1.0)
