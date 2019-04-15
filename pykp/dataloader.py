@@ -292,9 +292,9 @@ class KeyphraseDataLoader(object):
 
     def __init__(self, dataset, max_batch_example=5, max_batch_pair=1, shuffle=False, sampler=None, batch_sampler=None,
                  num_workers=0, collate_fn=default_collate, pin_memory=False, drop_last=False):
-        self.dataset     = dataset
+        self.dataset            = dataset
         # used for generating one2many batches
-        self.num_trgs           = [len(e['trg']) for e in dataset.examples]
+        self.num_trgs           = [len(e['trg']) for e in dataset.get_examples()]
         self.batch_size         = max_batch_pair
         self.max_example_number = max_batch_example
         self.num_workers        = num_workers

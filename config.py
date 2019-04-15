@@ -22,8 +22,8 @@ def init_opt(description):
     if opt.seed > 0:
         torch.manual_seed(opt.seed)
 
-    if torch.cuda.is_available() and not opt.device_ids:
-        opt.device_ids = 0
+    if torch.cuda.is_available() and not opt.gpuid:
+        opt.gpuid = 0
 
     if hasattr(opt, 'train_ml') and opt.train_ml:
         opt.exp += '.ml'
@@ -64,6 +64,15 @@ def init_opt(description):
     if not os.path.exists(opt.plot_path):
         os.makedirs(opt.plot_path)
 
+    if opt.exp.startswith('kp20k'):
+        opt.test_dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'kp20k', 'duc']
+    elif opt.exp.startswith('stackexchange'):
+        opt.test_dataset_names = ['stackexchange']
+    elif opt.exp.startswith('twacg'):
+        opt.test_dataset_names = ['twacg']
+    else:
+        raise Exception('Unsupported training data')
+
     # dump the setting (opt) to disk in order to reuse easily
     if opt.train_from:
         train_from_model_dir = opt.train_from[:opt.train_from.rfind('model/') + 6]
@@ -78,7 +87,7 @@ def init_opt(description):
         prev_opt.test_dataset_names = opt.test_dataset_names
 
         prev_opt.exp = opt.exp
-        prev_opt.vocab = opt.vocab
+        prev_opt.vocab_path = opt.vocab_path
         prev_opt.exp_path = opt.exp_path
         prev_opt.pred_path = opt.pred_path
         prev_opt.model_path = opt.model_path
@@ -268,10 +277,10 @@ def preprocess_opts(parser):
 
 def train_opts(parser):
     # Model loading/saving options
-    parser.add_argument('-data', required=True,
+    parser.add_argument('-data_path_prefix', required=True,
                         help="""Path prefix to the ".train.pt" and
                         ".valid.pt" file path from preprocess.py""")
-    parser.add_argument('-vocab', required=True,
+    parser.add_argument('-vocab_path', required=True,
                         help="""Path prefix to the ".vocab.pt"
                         file path from preprocess.py""")
 
@@ -423,16 +432,19 @@ def train_opts(parser):
                         help='Maximum sentence length.')
 
 def predict_opts(parser):
-    parser.add_argument('-must_appear_in_src', action="store_true", default="True",
+    parser.add_argument('-must_appear_in_src', action='store_true', default=False,
                         help='whether the predicted sequences must appear in the source text')
 
-    parser.add_argument('-report_score_names', type=str, nargs='+', default=['f_score@5_exact', 'f_score@5_soft', 'f_score@10_exact', 'f_score@10_soft'], help="""Default measure to report""")
+    parser.add_argument('-report_score_names', type=str, nargs='+',
+                        # default=['f_score@5_exact', 'f_score@10_exact', 'f_score@5_soft', 'f_score@10_soft'],
+                        default=['f_score@5_exact', 'f_score@10_exact'],
+                        help="""Default measure to report""")
 
     parser.add_argument('-test_dataset_root_path', type=str, default="data/")
 
     parser.add_argument('-test_dataset_names', type=str, nargs='+',
-                        default=['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k', 'stackexchange'],
-                        help='Name of each test dataset, also the name of folder from which we load processed test dataset.')
+                        default=[],
+                        help='(Set later) Name of each test dataset, also the name of folder from which we load processed test dataset.')
 
     # parser.add_argument('-num_oneword_seq', type=int, default=10000,
     #                     help='Source sequence to decode (one line per sequence)')

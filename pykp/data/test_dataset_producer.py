@@ -312,10 +312,10 @@ def export_extra_dataset_to_json():
         # print(dataset_loader.doc_list[20])
 
 
-test_dataset_names = ['inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k', 'stackexchange']
+test_dataset_names = ['stackexchange', 'inspec', 'nus', 'semeval', 'krapivin', 'duc', 'kp20k']
+
 def load_testset_from_json_and_add_pos_tag():
     pos_tagger = load_pos_tagger()
-
 
     for dataset_name in test_dataset_names:
         abstract_key = 'abstract'
@@ -332,26 +332,121 @@ def load_testset_from_json_and_add_pos_tag():
             for line in json_file:
                 dataset_dict_list.append(json.loads(line))
 
-        # postag title/abstract and insert into data example
-        postag_dataset_dict_list = []
-        for e_id, example_dict in enumerate(dataset_dict_list):
-            if e_id % 10 == 0:
-                print('Processing %d/%d' % (e_id, len(dataset_dict_list)))
-            title_postag_tokens = pos_tagger.tag(copyseq_tokenize(example_dict['title']))
-            # print('#(title token)=%d : %s' % (len(title_postag_tokens), str(title_postag_tokens)))
-            abstract_postag_tokens = pos_tagger.tag(copyseq_tokenize(example_dict[abstract_key]))
-            # print('#(abstract token)=%d : %s' % (len(abstract_postag_tokens), str(abstract_postag_tokens)))
-            example_dict['title_postag'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in title_postag_tokens])
-            example_dict['abstract_postag'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in abstract_postag_tokens])
-            postag_dataset_dict_list.append(example_dict)
-
-        print('Dumping %s' % dataset_name)
+        print('Processing and dumping to %s' % dataset_name)
         # dump back to json
+        json_path = os.path.join(basedir, dataset_name, dataset_name + '_testing_postag.json')
         with open(json_path, 'w') as json_file:
-            for example_dict in postag_dataset_dict_list:
+            # postag title/abstract and insert into data example
+            for e_id, example_dict in enumerate(dataset_dict_list):
+                print('=' * 50)
+                print(e_id)
+                print(example_dict['title'])
+                print('len(title)=%d' % len(example_dict['title']))
+                print('len(abstract)=%d' % len(example_dict[abstract_key]))
+
+                if len(example_dict[abstract_key]) > 1000:
+                    print('truncate to 1000 words')
+                    example_dict[abstract_key] = example_dict[abstract_key][:1000]
+
+                if e_id % 10 == 0:
+                    print('Processing %d/%d' % (e_id, len(dataset_dict_list)))
+
+                title_postag_tokens = pos_tagger.tag(copyseq_tokenize(example_dict['title']))
+                # print('#(title token)=%d : %s' % (len(title_postag_tokens), str(title_postag_tokens)))
+                abstract_postag_tokens = pos_tagger.tag(copyseq_tokenize(example_dict[abstract_key]))
+                # print('#(abstract token)=%d : %s' % (len(abstract_postag_tokens), str(abstract_postag_tokens)))
+                example_dict['title_postag'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in title_postag_tokens])
+                example_dict['abstract_postag'] = ' '.join([str(t[0])+'_'+str(t[1]) for t in abstract_postag_tokens])
+
+                # for example_dict in postag_dataset_dict_list:
                 json_file.write(json.dumps(example_dict) + '\n')
 
 
+def export_to_UTD_format(dataset_name, dump_path):
+    # export test data only
+    plain_text_dir = os.path.join(dump_path, 'plain_text')
+    postag_text_dir = os.path.join(dump_path, 'text')
+    keyphrase_dir = os.path.join(dump_path, 'keyphrase')
+    list_file_path = os.path.join(dump_path, '%s_list.txt' % dataset_name)
+    dirs = [plain_text_dir, postag_text_dir, keyphrase_dir]
+    for dir in dirs:
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+
+    title_key = 'title'
+    abstract_key = 'abstract'
+    keyword_key = 'abstract'
+    if dataset_name == 'stackexchange':
+        abstract_key = 'question'
+        keyword_key = 'tags'
+
+    text_filename_list = []
+    data_json_path = os.path.join(basedir, dataset_name, dataset_name + '_testing_postag.json')
+    with open(data_json_path, 'r') as data_json_file:
+        for doc_id, line in enumerate(data_json_file):
+            example_dict = json.loads(line)
+            text_filename_list.append('%s.txt' % doc_id)
+            with open(os.path.join(plain_text_dir, '%s.txt' % doc_id), 'w') as plain_text:
+                plain_text.write(example_dict[title_key] + '.\n' + example_dict[abstract_key])
+            with open(os.path.join(postag_text_dir, '%s.txt' % doc_id), 'w') as postag_text:
+                postag_text.write(example_dict['title_postag'] + ' ._. ' + example_dict['abstract_postag'])
+            with open(os.path.join(keyphrase_dir, '%s.txt' % doc_id), 'w') as keyphrase_file:
+                for target in example_dict[keyword_key].split(';'):
+                    keyphrase_file.write(target+'\n')
+
+    with open(list_file_path, 'w') as list_file:
+        for text_filename in text_filename_list:
+            list_file.write(text_filename+'\n')
+
+    print('Export to UTD format done!')
+
+
+def export_to_maui_format(dataset_name, dump_path, mode=None):
+    assert mode in ['kea', 'maui']
+    title_key = 'title'
+    abstract_key = 'abstract'
+    keyword_key = 'abstract'
+    if dataset_name == 'stackexchange':
+        abstract_key = 'question'
+        keyword_key = 'tags'
+
+    # export both training and testing
+    for data_type in ['train', 'test']:
+        dump_dir_path = os.path.join(dump_path, data_type)
+        if not os.path.exists(dump_dir_path):
+            os.makedirs(dump_dir_path)
+
+        if dataset_name == 'stackexchange' and data_type=='train':
+            data_json_path = os.path.join(basedir, dataset_name, dataset_name + '_validation.json')
+        else:
+            data_json_path = os.path.join(basedir, dataset_name, dataset_name + '_testing.json')
+
+        with open(data_json_path, 'r') as data_json_file:
+            for doc_id, line in enumerate(data_json_file):
+                example_dict = json.loads(line)
+                with open(os.path.join(dump_dir_path, '%s.txt' % doc_id), 'w') as text_file:
+                    text_file.write(example_dict[title_key] + '.\n' + example_dict[abstract_key])
+                with open(os.path.join(dump_dir_path, '%s.key' % doc_id), 'w') as key_file:
+                    for target in example_dict[keyword_key].split(';'):
+                        if mode == 'maui':
+                            key_file.write(target + '\t1\n')
+                        elif mode == 'kea':
+                            key_file.write(target + '\n')
+                        else:
+                            raise Exception('Wrong mode')
+
+    print('Export to %s format done!' % mode)
+
+
 if __name__ == '__main__':
-    export_extra_dataset_to_json()
+    # export_extra_dataset_to_json()
     # load_testset_from_json_and_add_pos_tag()
+
+    dataset_names = ['stackexchange']
+    for dataset_name in dataset_names:
+        dump_path = '/Users/memray/Project/keyphrase/seq2seq-keyphrase/dataset/keyphrase/baseline-data/%s/' % dataset_name
+        export_to_UTD_format(dataset_name, dump_path)
+        dump_path = '/Users/memray/Project/keyphrase/seq2seq-keyphrase/dataset/keyphrase/baseline-data/maui/%s/' % dataset_name
+        export_to_maui_format(dataset_name, dump_path, mode='maui')
+        dump_path = '/Users/memray/Project/keyphrase/seq2seq-keyphrase/dataset/keyphrase/baseline-data/kea/%s/' % dataset_name
+        export_to_maui_format(dataset_name, dump_path, mode='kea')

@@ -8,6 +8,7 @@ model/*
 
 data/
 /exp/
+/prev_exp/
 /data.zip
 /pred/
 
@@ -123,5 +124,3 @@ ENV/
 !/pykp/data/
 /pykp/stanford-postagger/
 /prediction/
-/data/
-/.idea/
