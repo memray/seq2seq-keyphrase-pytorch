@@ -863,6 +863,8 @@ def main():
     [logging.info('%s    :    %s' % (k, str(v))) for k, v in opt.__dict__.items()]
 
     logging.info('======================  Checking GPU Availability  =========================')
+    logger.info("torch.cuda.is_available()={}".format(torch.cuda.is_available()))
+
     if torch.cuda.is_available():
         if isinstance(opt.gpuid, int):
             opt.gpuid = [opt.gpuid]

@@ -54,8 +54,15 @@ def evaluate_(source_str_list, targets_str_list, prediction_str_list,
     assert filter_criteria in ['absent', 'present', 'all']
     stemmer = PorterStemmer()
 
-    if output_path != None and not os.path.exists(output_path):
-        os.makedirs(output_path)
+    if output_path != None:
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+        if not os.path.exists(os.path.join(output_path, model_name)):
+            os.makedirs(os.path.join(output_path, model_name))
+
+    json_writer = open(os.path.join(output_path, model_name, '%s.json' % dataset_name), 'w+')
+    score_csv_path = os.path.join(output_path, 'all_scores.csv')
+    csv_writer = open(score_csv_path, 'a')
 
     print('Evaluating on %s@%s' % (model_name, dataset_name))
     # Evaluation part
@@ -96,7 +103,7 @@ def evaluate_(source_str_list, targets_str_list, prediction_str_list,
 
         # if doc_id > 5:
         #     break
-        if doc_id % 10000 == 0:
+        if doc_id + 1 % 1000 == 0:
             print(doc_id)
 
         '''
@@ -104,8 +111,7 @@ def evaluate_(source_str_list, targets_str_list, prediction_str_list,
         '''
         stemmed_source_text_tokens = [stemmer.stem(t).strip().lower() for t in io.copyseq_tokenize(source_text)]
         stemmed_targets_tokens = [[stemmer.stem(w).strip().lower() for w in io.copyseq_tokenize(target)] for target in targets]
-        stemmed_predictions_tokens = [[stemmer.stem(w).strip().lower() for w in io.copyseq_tokenize(prediction)]
-                               for prediction in predictions]
+        stemmed_predictions_tokens = [[stemmer.stem(w).strip().lower() for w in io.copyseq_tokenize(prediction)] for prediction in predictions]
 
         '''
         check and filter targets/predictions by whether it appear in source text
@@ -285,8 +291,7 @@ def evaluate_(source_str_list, targets_str_list, prediction_str_list,
 
         # print(out_dict)
 
-        with open(os.path.join(output_path, '%d.json' % doc_id), 'w') as f_:
-            f_.write(json.dumps(out_dict))
+        json_writer.write(json.dumps(out_dict)+'\n')
 
         assert len(out_dict['trg_str']) == len(out_dict['trg_present_flag'])
         assert len(out_dict['pred_str']) == len(out_dict['present_flag']) \
@@ -327,12 +332,6 @@ def evaluate_(source_str_list, targets_str_list, prediction_str_list,
     '''
     Compute the corpus evaluation
     '''
-    # print(os.path.abspath(os.path.join(output_path)))
-    # print(os.path.abspath(os.path.join(output_path, '..')))
-    # print(os.path.join(os.path.abspath(os.path.join('..', output_path)), 'evaluate-' + model_name+'-'+dataset_name+'.txt'))
-    score_csv_path = os.path.join(os.path.abspath(os.path.join(output_path, '..')), 'all_scores.csv')
-    csv_writer = open(score_csv_path, 'a')
-
     overall_score = {}
 
     for k in [5, 10]:
@@ -342,6 +341,10 @@ def evaluate_(source_str_list, targets_str_list, prediction_str_list,
 
         if real_test_size * k < overall_prediction_number:
             overall_prediction_number = real_test_size * k
+
+        overall_score['target_number'] = sum([m['target_number'] for m in macro_metrics])
+        overall_score['correct_number@%d' % k] = sum([m['correct_number@%d' % k] for m in macro_metrics])
+        overall_score['prediction_number@%d' % k] = overall_prediction_number
 
         # Compute the macro Measures, by averaging the macro-score of each prediction
         overall_score['p@%d' % k] = float(sum([m['p@%d' % k] for m in macro_metrics])) / float(real_test_size)
@@ -353,7 +356,7 @@ def evaluate_(source_str_list, targets_str_list, prediction_str_list,
         output_str = 'Overall - valid testing data=%d, Number of Target=%d/%d, ' \
                      'Number of Prediction=%d, Number of Correct=%d' % (
                     real_test_size,
-                    overall_target_number, overall_target_number,
+                    overall_target_number, total_number_groundtruth,
                     overall_prediction_number, correct_number
         )
         logger.info(output_str)
@@ -366,28 +369,6 @@ def evaluate_(source_str_list, targets_str_list, prediction_str_list,
         )
         logger.info(output_str)
 
-        # Print micro-average performance
-        '''
-        overall_score['micro_p@%d' % k] = correct_number / float(overall_prediction_number)
-        overall_score['micro_r@%d' % k] = correct_number / float(overall_target_number)
-        if overall_score['micro_p@%d' % k] + overall_score['micro_r@%d' % k] > 0:
-            overall_score['micro_f1@%d' % k] = 2 * overall_score['micro_p@%d' % k] * overall_score[
-                'micro_r@%d' % k] / float(overall_score['micro_p@%d' % k] + overall_score['micro_r@%d' % k])
-        else:
-            overall_score['micro_f1@%d' % k] = 0
-
-        output_str = 'micro:\t\tP@%d=%f, R@%d=%f, F1@%d=%f' % (
-                    k, overall_score['micro_p@%d' % k],
-                    k, overall_score['micro_r@%d' % k],
-                    k, overall_score['micro_f1@%d' % k]
-        )
-        logger.info(output_str)
-        csv_writer.write(', %f, %f, %f' % (
-                    overall_score['micro_p@%d' % k],
-                    overall_score['micro_r@%d' % k],
-                    overall_score['micro_f1@%d' % k]
-        ))
-        '''
         # Compute the binary preference measure (Bpref)
         overall_score['bpref@%d' % k] = float(sum([m['bpref@%d' % k] for m in macro_metrics])) / float(real_test_size)
 
@@ -400,13 +381,21 @@ def evaluate_(source_str_list, targets_str_list, prediction_str_list,
         )
         logger.info(output_str)
 
-    csv_writer.write('%s, %s, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f\n' % (
+    csv_writer.write('%s, %s, '
+                     '%d, %d, %d, %d, %d, %d, '
+                     '%f, %f, %f, %f, %f, '
+                     '%f, %f, %f, %f, %f\n' % (
                 model_name, dataset_name,
+                len(source_str_list), real_test_size,
+                total_number_groundtruth, total_number_groundtruth_for_evaluate,
+                overall_score['correct_number@%d' % 5], overall_score['correct_number@%d' % 10],
+
                 overall_score['p@%d' % 5],
                 overall_score['r@%d' % 5],
                 overall_score['f1@%d' % 5],
                 overall_score['bpref@%d' % 5],
                 overall_score['mrr@%d' % 5],
+
                 overall_score['p@%d' % 10],
                 overall_score['r@%d' % 10],
                 overall_score['f1@%d' % 10],
@@ -414,6 +403,7 @@ def evaluate_(source_str_list, targets_str_list, prediction_str_list,
                 overall_score['mrr@%d' % 10]
     ))
 
+    json_writer.close()
     csv_writer.close()
     # """
 
@@ -441,7 +431,7 @@ def load_predictions_from_file(prediction_dir, file_suffix='.txt'):
     for pred_file_name in os.listdir(prediction_dir):
         if not pred_file_name.endswith(file_suffix):
             continue
-        doc_id = int(pred_file_name[: pred_file_name.find(file_suffix)])
+        doc_id = pred_file_name[: pred_file_name.find(file_suffix)]
         prediction_str_list = []
         with open(os.path.join(prediction_dir, pred_file_name), 'r') as pred_file:
             for line in pred_file:
@@ -460,7 +450,7 @@ def load_plain_text(text_dir):
     for source_file_name in os.listdir(text_dir):
         if not source_file_name.endswith('.txt'):
             continue
-        doc_id = int(source_file_name[: source_file_name.find('.txt')])
+        doc_id = source_file_name[: source_file_name.find('.txt')]
         with open(os.path.join(text_dir, source_file_name), 'r') as pred_file:
             text = ' '.join([l.strip() for l in pred_file.readlines()])
             # postag = [t.split('_')[1] for t in text_tokens]
@@ -474,14 +464,14 @@ def load_plain_text(text_dir):
     return source_text_list
 
 
-def load_postagged_text(postagged_text_dir):
+def load_postag_text(postag_text_dir):
     source_text_dict = {}
 
-    for source_file_name in os.listdir(postagged_text_dir):
+    for source_file_name in os.listdir(postag_text_dir):
         if not source_file_name.endswith('.txt'):
             continue
-        doc_id = int(source_file_name[: source_file_name.find('.txt')])
-        with open(os.path.join(postagged_text_dir, source_file_name), 'r') as pred_file:
+        doc_id = source_file_name[: source_file_name.find('.txt')]
+        with open(os.path.join(postag_text_dir, source_file_name), 'r') as pred_file:
             text_tokens = (' '.join(pred_file.readlines())).split()
             text = ' '.join([t.split('_')[0] for t in text_tokens])
             # postag = [t.split('_')[1] for t in text_tokens]
@@ -495,30 +485,23 @@ def load_postagged_text(postagged_text_dir):
     return source_text_list
 
 
-def evaluate_baselines():
+def evaluate_baselines(models, test_sets, output_dir, filter_criteria, plain_or_postag):
     '''
     evaluate baselines' performance
+    plain_or_postag: specify the source of source text. The postag text leads to more bias, but this is the way used in Meng 17.
     :return:
     '''
-    # base_dir = '/Users/memray/Project/Keyphrase_Extractor-UTD/'
-    # 'TfIdf', 'TextRank', 'SingleRank', 'ExpandRank', 'Maui', 'KEA', 'RNN_present', 'CopyRNN_present_singleword=0', 'CopyRNN_present_singleword=1', 'CopyRNN_present_singleword=2'
-
-    filter_criteria = 'present'
-    models = ['TfIdf', 'TextRank', 'SingleRank', 'ExpandRank', 'Maui', 'KEA', 'CopyRNN']
-    models = ['TfIdf']
-
-    # test_sets = ['inspec', 'nus', 'semeval', 'krapivin', 'kp20k']
-    test_sets = ['stackexchange']
-    # test_sets = ['twacg']
-
-    base_dir = '../prediction/'
+    base_dir = 'prediction/'
     print(os.path.abspath(base_dir))
 
-    if not os.path.exists(os.path.join(base_dir, 'output_json')):
-        os.makedirs(os.path.join(base_dir, 'output_json'))
-    score_csv_path = os.path.join(base_dir, 'output_json', 'all_scores.csv')
-    with open(score_csv_path, 'w') as csv_writer:
-        csv_writer.write('model, data, p@5, r@5, f1@5, bpref@5, mrr@5, p@10, r@10, f1@10, bpref@10, mrr@10\n')
+    if not os.path.exists(os.path.join(base_dir, output_dir)):
+        os.makedirs(os.path.join(base_dir, output_dir))
+    score_csv_path = os.path.join(base_dir, output_dir, 'all_scores.csv')
+    with open(score_csv_path, 'w+') as csv_writer:
+        csv_writer.write('model, data, '
+                         '#doc, #valid_doc, #tgt, #valid_tgt, #corr@5, #corr@10, '
+                         'p@5, r@5, f1@5, bpref@5, mrr@5, '
+                         'p@10, r@10, f1@10, bpref@10, mrr@10\n')
 
     for model_name in models:
         for dataset_name in test_sets:
@@ -534,21 +517,14 @@ def evaluate_baselines():
                 src_fields = ['title', 'abstract']
                 trg_fields = ['keyword']
 
-
-            '''
-            source_json_path = os.path.join('../source_data', dataset_name, '%s_training.json' % (dataset_name))
-            src_trgs_pairs = load_json_data(source_json_path,
-                                            dataset_name,
-                                            src_fields=src_fields,
-                                            trg_fields=trg_fields,
-                                            trg_delimiter=';')
-            source_str_list = [p[0] for p in src_trgs_pairs]
-            targets_str_list = [p[1] for p in src_trgs_pairs]
-            '''
-            # postagged_text_dir = '/Users/memray/Project/keyphrase/seq2seq-keyphrase/dataset/keyphrase/baseline-data/%s/text' % dataset_name
-            # source_str_list = load_postagged_text(postagged_text_dir)
-            plain_text_dir = '/Users/memray/Project/keyphrase/seq2seq-keyphrase/dataset/keyphrase/baseline-data/%s/plain_text' % dataset_name
-            source_str_list = load_plain_text(plain_text_dir)
+            if plain_or_postag == 'postag':
+                postag_text_dir = '/Users/memray/Project/keyphrase/seq2seq-keyphrase/dataset/keyphrase/baseline-data/%s/text' % dataset_name
+                source_str_list = load_postag_text(postag_text_dir)
+            elif plain_or_postag == 'plain':
+                plain_text_dir = '/Users/memray/Project/keyphrase/seq2seq-keyphrase/dataset/keyphrase/baseline-data/%s/plain_text' % dataset_name
+                source_str_list = load_plain_text(plain_text_dir)
+            else:
+                raise NotImplementedError
 
             targets_dir = '/Users/memray/Project/keyphrase/seq2seq-keyphrase/dataset/keyphrase/baseline-data/%s/keyphrase' % dataset_name
             targets_str_list = load_predictions_from_file(targets_dir, file_suffix='.txt')
@@ -566,12 +542,13 @@ def evaluate_baselines():
             print('#(preds)=%d' % len(prediction_str_list))
             evaluate_(source_str_list, targets_str_list, prediction_str_list, model_name, dataset_name, filter_criteria,
                       matching_after_stemming = True,
-                      output_path=os.path.join(base_dir, 'output_json', '%s_%s' % (model_name, dataset_name)))
+                      output_path=os.path.join(base_dir, output_dir))
 
             #if model_name == 'Maui':
             #    prediction_dir = '/Users/memray/Project/seq2seq-keyphrase/dataset/keyphrase/baseline-data/maui/maui_output/' + dataset_name
             #if model_name == 'Kea':
             #    prediction_dir = '/Users/memray/Project/seq2seq-keyphrase/dataset/keyphrase/baseline-data/maui/kea_output/' + dataset_name
+
 
 """
 def significance_test():
@@ -597,11 +574,27 @@ def significance_test():
                 print(s_test)
 """
 
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger()
-print('Log path: %s' % (os.path.abspath('../prediction/post_evaluate.log')))
-logger = init_logging(os.path.abspath('../prediction/post_evaluate.log'))
+print('Log path: %s' % (os.path.abspath('prediction/post_evaluate.log')))
+logger = init_logging(os.path.abspath('prediction/post_evaluate.log'))
 
 if __name__ == '__main__':
-    evaluate_baselines()
+    # 'TfIdf', 'TextRank', 'SingleRank', 'ExpandRank', 'Maui', 'KEA', 'RNN_present', 'CopyRNN_present_singleword=0', 'CopyRNN_present_singleword=1', 'CopyRNN_present_singleword=2'
+    filter_criteria = 'present' # we don't have absent predictions for these models actually
+    # models = ['TfIdf', 'TextRank', 'SingleRank', 'ExpandRank', 'Maui', 'KEA', 'CopyRNN_meng17']
+    models = ['CopyRNN_meng17']
+
+    test_sets = ['duc', 'kp20k']
+    # test_sets = ['duc', 'inspec', 'nus', 'semeval', 'krapivin', 'kp20k']
+    # test_sets = ['stackexchange']
+    # test_sets = ['twacg']
+
+    # plain is only available for ['duc', 'kp20k']
+    plain_or_postag = 'plain'
+    # plain_or_postag = 'postag'
+
+    evaluate_baselines(models, test_sets, output_dir='output_json_%s_20190415' % plain_or_postag,
+                       filter_criteria=filter_criteria, plain_or_postag=plain_or_postag)
     # significance_test()

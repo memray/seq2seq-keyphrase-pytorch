@@ -413,10 +413,10 @@ def train_opts(parser):
                         help="Name of the experiment for logging.")
     parser.add_argument('-exp_path', type=str, default="exp/%s.%s",
                         help="Path of experiment log/plot.")
-    parser.add_argument('-pred_path', type=str, default="pred/%s.%s",
-                        help="Path of outputs of predictions.")
-    parser.add_argument('-model_path', type=str, default="model/%s.%s",
-                        help="Path of checkpoints.")
+    # parser.add_argument('-pred_path', type=str, default="pred/%s.%s",
+    #                     help="Path of outputs of predictions.")
+    # parser.add_argument('-model_path', type=str, default="model/%s.%s",
+    #                     help="Path of checkpoints.")
 
     # beam search setting
     parser.add_argument('-beam_search_batch_example', type=int, default=8,
