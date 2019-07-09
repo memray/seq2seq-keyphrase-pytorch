@@ -179,7 +179,7 @@ def evaluate_multiple_datasets(generator, data_loaders, opt, title='', epoch=1, 
     # create a new tuple (key='all_datasets') by merging all results
     merged_score_dict = {}
     for dataset_name, score_dict in datasets_score_dict.items():
-        for score_name, score_values in score_dict.items:
+        for score_name, score_values in score_dict.items():
             merged_score_values = merged_score_dict.get(score_name, [])
             merged_score_values.extend(score_values)
             merged_score_dict[score_name] = merged_score_values
